@@ -1,0 +1,61 @@
+{
+	"name": "fragmt",
+	"version": "0.0.0",
+	"description": "Git-native documentation environment — Notion-style editing over plain markdown in your own repo",
+	"license": "MIT",
+	"author": "Andrei Migatchev",
+	"homepage": "https://github.com/ChaosChild/fragmt#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/ChaosChild/fragmt.git"
+	},
+	"bugs": "https://github.com/ChaosChild/fragmt/issues",
+	"keywords": [
+		"documentation",
+		"markdown",
+		"git",
+		"docs-as-code",
+		"wiki"
+	],
+	"type": "module",
+	"engines": {
+		"node": ">=22"
+	},
+	"bin": {
+		"fragmt": "./dist/cli/index.js"
+	},
+	"files": [
+		"dist",
+		"ui/dist"
+	],
+	"scripts": {
+		"dev": "tsx watch src/cli/index.ts serve",
+		"dev:server": "tsx watch src/cli/index.ts serve --port 4400",
+		"dev:ui": "vite dev ui",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"format": "biome format --write .",
+		"test": "vitest run",
+		"build": "tsc -p tsconfig.build.json && vite build ui"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.7",
+		"@types/node": "^26.1.2",
+		"@types/react": "^19.2.18",
+		"@types/react-dom": "^19.2.4",
+		"@vitejs/plugin-react": "^6.0.5",
+		"tsx": "^4.23.7",
+		"typescript": "^7.0.2",
+		"vite": "^8.2.0",
+		"vitest": "^4.1.10"
+	},
+	"dependencies": {
+		"@hono/node-server": "^2.1.0",
+		"gray-matter": "^4.0.3",
+		"hono": "^4.13.0",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"react-markdown": "^10.1.0",
+		"remark-gfm": "^4.0.1"
+	}
+}

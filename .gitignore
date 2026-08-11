@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+
+# Build output
+dist/
+build/
+ui/dist/
+
+# Environment / secrets
+.env
+.env.*
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local AI agents' workspaces
+.lavish/
+.od-skills/
+.claude/settings.local.json
