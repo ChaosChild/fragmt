@@ -6,8 +6,12 @@ import { Hono } from "hono";
 import {
 	DocNotFoundError,
 	DocPathError,
+	docHash,
+	GitIdentityError,
 	listTree,
 	readDoc,
+	StaleDocError,
+	writeDoc,
 } from "../core/index.js";
 
 export interface ServerContext {
@@ -40,11 +44,52 @@ export function createApp(ctx: ServerContext): Hono {
 				path: doc.path,
 				frontmatter: doc.frontmatter,
 				markdown: doc.markdown,
+				hash: docHash(doc.markdown),
 			});
 		} catch (e) {
 			if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
 			if (e instanceof DocNotFoundError)
 				return c.json({ error: "doc not found" }, 404);
+			throw e;
+		}
+	});
+
+	app.put("/api/docs/*", async (c) => {
+		let docPath: string;
+		try {
+			docPath = decodeURIComponent(c.req.path.slice(DOCS_PREFIX.length));
+		} catch {
+			return c.json({ error: "invalid doc path" }, 400);
+		}
+		let payload: { markdown?: unknown; baseHash?: unknown };
+		try {
+			payload = (await c.req.json()) as typeof payload;
+		} catch {
+			return c.json({ error: "invalid request body" }, 400);
+		}
+		if (
+			typeof payload.markdown !== "string" ||
+			typeof payload.baseHash !== "string"
+		) {
+			return c.json({ error: "markdown and baseHash are required" }, 400);
+		}
+		try {
+			const { sha, hash } = await writeDoc(
+				ctx.repoRoot,
+				ctx.docsRoot,
+				docPath,
+				payload.markdown,
+				payload.baseHash,
+			);
+			return c.json({ sha, hash });
+		} catch (e) {
+			if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
+			if (e instanceof DocNotFoundError)
+				return c.json({ error: "doc not found" }, 404);
+			if (e instanceof StaleDocError)
+				return c.json({ error: "doc changed since load — reload" }, 409);
+			if (e instanceof GitIdentityError)
+				return c.json({ error: "git identity not configured" }, 409);
 			throw e;
 		}
 	});

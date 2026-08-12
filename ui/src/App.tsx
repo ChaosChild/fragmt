@@ -49,6 +49,16 @@ export function App() {
 			);
 	}, [selected]);
 
+	// Refetch after a discarded/stale buffer (the 409 reload path).
+	const reloadSelected = () => {
+		if (!selected) return;
+		getDoc(selected)
+			.then(setDoc)
+			.catch((e: unknown) =>
+				setError(e instanceof Error ? e.message : String(e)),
+			);
+	};
+
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
@@ -67,7 +77,12 @@ export function App() {
 					)}
 				</aside>
 				<main className="main">
-					<DocView doc={doc} selected={selected} />
+					<DocView
+						doc={doc}
+						selected={selected}
+						onSaved={setDoc}
+						onReload={reloadSelected}
+					/>
 				</main>
 			</div>
 		</>
