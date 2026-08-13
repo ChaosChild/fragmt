@@ -15,6 +15,21 @@ export function docHash(markdown: string): string {
 	return createHash("sha256").update(markdown).digest("hex");
 }
 
+/**
+ * The canonical body shape readDoc returns and writeDoc compares against:
+ * LF endings, no leading newlines, exactly one trailing newline (empty stays
+ * empty). The editor drops leading blank lines on parse, so keeping them in
+ * the served body would make every first save rewrite the fence boundary —
+ * normalizing on both sides keeps the hash contract stable and the diff
+ * minimal.
+ */
+export function canonicalBody(content: string): string {
+	const trimmed = content
+		.replace(/\r\n/g, "\n")
+		.replace(/^\n+/, "")
+		.replace(/\n+$/, "");
+	return trimmed === "" ? "" : `${trimmed}\n`;
+}
 export interface Doc {
 	path: string;
 	frontmatter: Record<string, unknown>;
@@ -64,7 +79,7 @@ export function readDoc(
 	return {
 		path: docPath,
 		frontmatter: (parsed.data as Record<string, unknown>) ?? {},
-		markdown: parsed.content,
+		markdown: canonicalBody(parsed.content),
 		rawFrontmatter: parsed.matter ?? "",
 	};
 }
@@ -78,7 +93,7 @@ export function readDoc(
  * 3. stale check — sha256 of the current body must equal `baseHash`;
  * 4. reattach the CURRENT file's raw frontmatter byte-for-byte (never
  *    re-serialize the YAML — the diff must not touch what wasn't edited);
- * 5. write LF, exactly one trailing newline;
+ * 5. write LF, exactly one trailing newline, fence-to-body gap preserved;
  * 6. commit through the `commitAs` seam.
  */
 export async function writeDoc(
@@ -94,14 +109,15 @@ export async function writeDoc(
 	}
 	const user = await localUser(repoRoot);
 	const parsed = matter(readFileSync(abs, "utf8"), {});
-	if (docHash(parsed.content) !== baseHash) {
+	if (docHash(canonicalBody(parsed.content)) !== baseHash) {
 		throw new StaleDocError(`doc changed since load: ${docPath}`);
 	}
-	const normalized = `${body.replace(/\r\n/g, "\n").replace(/\n+$/, "")}\n`;
-	// gray-matter's `.matter` includes the newline after the opening `---`
-	// but not the one before the close, so this rebuilds the fence exactly.
+	const normalized = canonicalBody(body);
+	// Keep the whitespace between the fence and the body byte-for-byte from
+	// the current file — dropping it puts the fence itself into the diff.
+	const gap = parsed.matter ? (parsed.content.match(/^\n+/)?.[0] ?? "") : "";
 	const raw = parsed.matter
-		? `---${parsed.matter}\n---\n${normalized}`
+		? `---${parsed.matter}\n---\n${gap}${normalized}`
 		: normalized;
 	writeFileSync(abs, raw);
 	const repoRel = relative(repoRoot, abs).split(sep).join("/");
