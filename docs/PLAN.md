@@ -48,11 +48,11 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 **Goal:** edit a real doc in Tiptap and save it as a commit. Deliberately before file ops — this is the riskiest part. **Proves:** the spike's round-trip result holds in a real browser, not just headless Node.
 
 - [x] Tiptap editor wired up with the spike's extension set (StarterKit + list/table/image)
-- [ ] Custom `data-c` comment mark ported into the editor
-- [ ] gray-matter frontmatter strip on load / reattach on save
-- [ ] `commitAs(user, change)` seam; user from local git config
-- [ ] Save = write file through `commitAs`
-- [ ] Promote the spike's round-trip corpus test into a permanent automated test (CI)
+- [x] Custom `data-c` comment mark ported into the editor
+- [x] gray-matter frontmatter strip on load / reattach on save
+- [x] `commitAs(user, change)` seam; user from local git config
+- [x] Save = write file through `commitAs`
+- [x] Promote the spike's round-trip corpus test into a permanent automated test (CI)
 
 ## M3 — Files & branches
 
