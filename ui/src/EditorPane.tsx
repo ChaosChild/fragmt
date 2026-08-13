@@ -24,8 +24,11 @@ export function EditorPane({
 	saving: boolean;
 	ref?: Ref<EditorPaneHandle>;
 }) {
-	const editor = useEditor({ extensions: editorExtensions, content: "" });
-
+	const editor = useEditor({
+		extensions: editorExtensions,
+		content: "",
+		autofocus: true,
+	});
 	// The tiptap-markdown override of setContent parses markdown; the plain
 	// `content` option would be read as HTML.
 	useEffect(() => {
