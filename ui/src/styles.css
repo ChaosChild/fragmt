@@ -745,7 +745,23 @@ body {
 .markdown {
 	font-family: var(--font-serif);
 	font-optical-sizing: auto;
+	/* Defect 1 — Tiptap injects `white-space: break-spaces; word-wrap:
+	   break-word` on the ProseMirror div (node_modules/@tiptap/core/dist/
+	   index.js, `var style =`). `break-spaces` breaks lines at spaces that
+	   `normal` never would, so words shifted down a line in edit mode. Pin
+	   the same values here: both modes then break at identical points.
+	   (The injection also lists a `pre-wrap` fallback; every supported
+	   browser has break-spaces, so only it is effective — and pinned.) */
+	white-space: break-spaces;
+	word-wrap: break-word;
+	/* Same injection disables ligatures (`font-variant-ligatures: none;
+	   font-feature-settings: "liga" 0`). Newsreader ships ligatures; they
+	   change glyph widths, so every long line would rewrap differently in
+	   edit mode. Disable them in read mode too — identical metrics. */
+	font-variant-ligatures: none;
+	font-feature-settings: "liga" 0;
 }
+
 .markdown h1 {
 	font-size: 2.6rem;
 	font-weight: 600;
@@ -920,10 +936,18 @@ body {
 	box-shadow: none;
 	background: transparent;
 }
-/* StarterKit wraps list-item text in <p> (task items in <div><p>), which the
-   paragraph margin would inflate — read mode has plain inline items. */
-.editor-pane .edit-area li > p,
-.editor-pane .edit-area li > div > p {
+/* StarterKit wraps text in <p> where read mode keeps it inline. Tight bullet/
+   ordered lists (tiptap-markdown renders the `tight` class — verified in the
+   live DOM) are inline text in read mode, so their paragraph margin must
+   collapse; loose lists keep it, exactly like remark's loose rendering. Task
+   items are the only node producing `li > div > p` (Tiptap renders them
+   tight regardless — the taskList ul carries no `tight` class), and table
+   cells render "block+" as a paragraph per cell while read-mode cells are
+   inline text — zero those always. */
+.editor-pane .edit-area .tight > li > p,
+.editor-pane .edit-area li > div > p,
+.editor-pane .edit-area td > p,
+.editor-pane .edit-area th > p {
 	margin: 0;
 }
 /* Tiptap's task item is <li data-checked><label>…</label><div><p>text</p></div></li>.
@@ -936,6 +960,11 @@ body {
 }
 .editor-pane .edit-area li[data-checked] > label input {
 	cursor: pointer;
+	/* remark-gfm inserts a literal " " text node between checkbox and text
+	   (mdast-util-to-hast/lib/handlers/list-item.js); Tiptap's inlined
+	   label/div/p chain has no whitespace node — this margin recreates the
+	   identical gap. */
+	margin-right: 0.25em;
 }
 /* Task items show only the checkbox — no disc marker beside it, in read
    mode (remark-gfm) and edit mode (Tiptap) alike. */
@@ -943,6 +972,18 @@ body {
 .markdown li[data-checked] {
 	list-style: none;
 }
+/* Read-mode checkbox: the gap IS the literal space node, so pin the box —
+   no UA margin may add to it (matches edit mode's explicit gap above). */
+.markdown li.task-list-item > input {
+	margin-right: 0;
+}
+/* Tiptap injects `.ProseMirror pre { white-space: pre-wrap }` (author
+   origin, beats the inherited value) — read mode keeps the UA `pre` and
+   scrolls via overflow-x. Restore it so long lines overflow identically. */
+.editor-pane .edit-area pre {
+	white-space: pre;
+}
+
 .editor-pane .data-mark {
 	background: var(--accent-tint);
 	border-bottom: 1px dashed var(--accent);
