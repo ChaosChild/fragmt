@@ -901,68 +901,47 @@ body {
 }
 
 /* ═══ EDITOR ═══════════════════════════════════════════════════ */
+/* Edit mode IS the read-mode typography: the content wrapper carries the
+   same `markdown` class as the rendered article, so entering edit mode must
+   not change how the document looks (DESIGN, "Editor (M2)"). Only
+   ProseMirror-structure rules live here — the bits the markdown class
+   cannot know about. No border or focus chrome: the document is the surface. */
 .editor-pane .edit-area {
 	min-height: 55vh;
-	border: 1px solid transparent;
-	border-radius: var(--radius);
-	padding: var(--space-3) var(--space-4);
+}
+/* Focus lands on the inner `.ProseMirror` contenteditable, and the browser
+   draws its default outline on the focused element itself — the removal must
+   target that element, not the wrapper. No focus chrome in edit mode: the
+   document is the surface. */
+.editor-pane .edit-area .ProseMirror:focus,
+.editor-pane .edit-area:focus-within {
 	outline: none;
-	font-family: var(--font-serif);
-	font-size: var(--text-base);
-	line-height: var(--leading-body);
-	font-optical-sizing: auto;
+	border: none;
+	box-shadow: none;
+	background: transparent;
 }
-.editor-pane .edit-area:focus {
-	border-color: var(--border);
-	background: var(--surface);
+/* StarterKit wraps list-item text in <p> (task items in <div><p>), which the
+   paragraph margin would inflate — read mode has plain inline items. */
+.editor-pane .edit-area li > p,
+.editor-pane .edit-area li > div > p {
+	margin: 0;
 }
-.editor-pane .edit-area h1 {
-	font-size: 2.6rem;
-	font-weight: 600;
-	line-height: 1.08;
-	margin: 0 0 var(--space-3);
-	letter-spacing: -0.02em;
+/* Tiptap's task item is <li data-checked><label>…</label><div><p>text</p></div></li>.
+   Inline the label, the content div AND the paragraph inside it, so the
+   checkbox sits in the line of text exactly as remark-gfm renders it. */
+.editor-pane .edit-area li[data-checked] > label,
+.editor-pane .edit-area li[data-checked] > div,
+.editor-pane .edit-area li[data-checked] > div > p {
+	display: inline;
 }
-.editor-pane .edit-area h1::after {
-	content: "";
-	display: block;
-	width: 2.5rem;
-	height: 2px;
-	background: var(--accent);
-	border-radius: 1px;
-	margin-top: var(--space-4);
+.editor-pane .edit-area li[data-checked] > label input {
+	cursor: pointer;
 }
-.editor-pane .edit-area h2 {
-	font-size: 1.65rem;
-	font-weight: 600;
-	line-height: var(--leading-tight);
-	margin: var(--space-12) 0 var(--space-3);
-}
-.editor-pane .edit-area h3 {
-	font-size: 1.3rem;
-	font-weight: 600;
-	line-height: var(--leading-tight);
-	margin: var(--space-8) 0 var(--space-2);
-}
-.editor-pane .edit-area p {
-	margin: 0 0 var(--space-4);
-}
-.editor-pane .edit-area code {
-	font-family: var(--font-mono);
-	font-size: 0.82em;
-	background: var(--pane);
-	border: 1px solid var(--border-soft);
-	padding: 0.1em 0.38em;
-	border-radius: 4px;
-}
-.editor-pane .edit-area blockquote {
-	border-left: 2px solid var(--accent);
-	padding: var(--space-1) var(--space-5);
-	font-family: var(--font-serif);
-	font-style: italic;
-	font-size: 1.15rem;
-	line-height: 1.5;
-	margin: var(--space-6) 0;
+/* Task items show only the checkbox — no disc marker beside it, in read
+   mode (remark-gfm) and edit mode (Tiptap) alike. */
+.markdown li.task-list-item,
+.markdown li[data-checked] {
+	list-style: none;
 }
 .editor-pane .data-mark {
 	background: var(--accent-tint);

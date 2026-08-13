@@ -28,6 +28,10 @@ export function EditorPane({
 		extensions: editorExtensions,
 		content: "",
 		autofocus: true,
+		// The content-editable div carries the read-mode typography class, so
+		// edit mode IS the rendered document (DESIGN: "Editor (M2)") — no
+		// reflow, no re-skin.
+		editorProps: { attributes: { class: "markdown" } },
 	});
 	// The tiptap-markdown override of setContent parses markdown; the plain
 	// `content` option would be read as HTML.
