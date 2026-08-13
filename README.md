@@ -3,7 +3,7 @@
 [![CI](https://github.com/ChaosChild/fragmt/actions/workflows/ci.yml/badge.svg)](https://github.com/ChaosChild/fragmt/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-brightgreen.svg)](package.json)
-[![Status](https://img.shields.io/badge/status-early%20%C2%B7%20read--only-orange.svg)](docs/PLAN.md)
+[![Status](https://img.shields.io/badge/status-early%20%C2%B7%20editing--works-orange.svg)](docs/PLAN.md)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 A git-native documentation environment for small dev teams, start-ups, and solo
@@ -53,21 +53,23 @@ markdown and its full git history.
 
 ## Status
 
-**Early — read-only.** Not published to npm yet; run it from source.
+**Early — editing works.** Not published to npm yet; run it from source.
 
 | Milestone | State |
 | --- | --- |
 | M0 — environment prep | shipped |
 | M1 — read-only (init, serve, tree + doc API, UI shell) | shipped |
-| M2 — round-trip editing | next, and the riskiest milestone |
+| M2 — round-trip editing (Tiptap, save = commit) | shipped |
 | M3 — files & branches | specced |
 | M4 — inline comments | specced |
 | M5 — dogfood hardening | specced |
 
-Today you can browse a repo's docs in the UI. You cannot edit them yet — that's
-M2. v1 is done when the author writes this project's own docs in the tool daily
-instead of in a text editor. Full detail, including what was deliberately cut,
-is in the [build plan](docs/PLAN.md).
+Today you can browse a repo's docs in the UI, edit them in a Notion-style
+WYSIWYG editor, and save — each save is a git commit under your local git
+identity, with frontmatter preserved byte-for-byte and a stale-base-hash guard
+against concurrent edits. v1 is done when the author writes this project's own
+docs in the tool daily instead of in a text editor. Full detail, including
+what was deliberately cut, is in the [build plan](docs/PLAN.md).
 
 ## Quickstart
 
@@ -138,7 +140,8 @@ only, which also makes it the seam for the planned MCP server.
 | Method | Route | Returns |
 | --- | --- | --- |
 | `GET` | `/api/tree` | The folder tree rooted at `docsRoot` |
-| `GET` | `/api/docs/<path>` | One doc, frontmatter split from body |
+| `GET` | `/api/docs/<path>` | One doc, frontmatter split from body, plus `hash` |
+| `PUT` | `/api/docs/<path>` | Save: commit the body, return `{ sha, hash }` |
 
 ```jsonc
 // GET /api/tree
@@ -153,7 +156,11 @@ only, which also makes it the seam for the planned MCP server.
 }
 
 // GET /api/docs/docs/PLAN.md
-{ "path": "docs/PLAN.md", "frontmatter": { "title": "..." }, "markdown": "# ..." }
+{ "path": "docs/PLAN.md", "frontmatter": { "title": "..." }, "markdown": "# ...", "hash": "…" }
+
+// PUT /api/docs/docs/PLAN.md
+// request: { "markdown": "# ...", "baseHash": "<hash from GET>" }
+// response: { "sha": "40-hex commit sha", "hash": "…" }   // new baseHash
 ```
 
 Tree rules: dot-folders, `node_modules`, and `dist` are skipped; directories
@@ -164,7 +171,11 @@ Errors are typed rather than generic. A path that escapes `docsRoot` or does
 not end in `.md` is a **400**, including percent-encoded forms such as
 `..%2f` — the traversal guard inspects the raw request line before framework
 normalization can collapse the segments. A well-formed path with no file behind
-it is a **404**.
+it is a **404**. Saves carry a `baseHash` (the sha256 of the body as loaded):
+if the file changed on disk in between — another tool, another save, git —
+the save is a **409** and the file is left untouched. A missing git identity
+(`user.name`/`user.email` unset anywhere git looks) is also a **409** — fragmt
+never invents a commit author.
 
 ## Project layout
 
@@ -178,11 +189,13 @@ docs/         requirements, architecture, design, milestone specs
 spikes/       throwaway experiments; excluded from lint and typecheck
 ```
 
-Built on TypeScript, Node 22, [Hono](https://hono.dev), React 19 + Vite, and
+Built on TypeScript, Node 22, [Hono](https://hono.dev), React 19 + Vite,
+[Tiptap 3](https://tiptap.dev) + [tiptap-markdown](https://github.com/aguingand/tiptap-markdown)
+for the editor, and
 [gray-matter](https://github.com/jonschlinkert/gray-matter) for frontmatter.
 Git is a thin `execFile` wrapper around system git — no libgit2, no
-isomorphic-git. Tiptap arrives in M2 as the editor, chosen over BlockNote
-because it survived the [round-trip spike](docs/SPIKE.md).
+isomorphic-git. Tiptap was chosen over BlockNote because it survived the
+[round-trip spike](docs/SPIKE.md).
 
 ## Development
 

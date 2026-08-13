@@ -17,13 +17,20 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 ## Build status
 
 - **Shipped:** M0 + M1 read-only, plus open-source release prep — all squashed into the initial public commit. `npm ci && typecheck && lint && biome ci && test` green; 32 tests.
-- **Realized versions:** TypeScript 7.0.2, Biome 2.5.7, Vite 8, React 19, Vitest 4, Node 22, @types/node 26.
+- **Shipped:** M2 round-trip editing — Tiptap editor, save-as-commit through `commitAs`, stale-hash 409 guard, byte-for-byte frontmatter reattach, and the permanent corpus gate (`tests/roundtrip.test.ts`, built on the app's own extension array). 51 tests.
+- **Realized versions:** TypeScript 7.0.2, Biome 2.5.7, Vite 8, React 19, Vitest 4, Node 22, @types/node 26; Tiptap 3.x, tiptap-markdown 0.9.x, happy-dom (M2, per the spike-validated majors).
 - **Deliberate deviations from the stack notes above:**
   - `tsconfig.json` gained `esModuleInterop` — `gray-matter` is CJS; standard fix for default-importing it under `nodenext`.
   - `biome.json` scope-disables two CSS rules (`noDescendingSpecificity`, `noImportantStyles`) for `**/*.css` — both conflict with the approved hand-crafted design (the reduced-motion `!important` is a genuine a11y override).
+- **Deliberate deviations from the M2 spec (all proven by the acceptance run):**
+  - gray-matter's parse cache drops its non-enumerable `matter` field on the cached copy — a read-then-write of the same doc would silently lose frontmatter. All parses now pass an options object to bypass the cache.
+  - `writeDoc` resolves the git identity *before* writing (missing identity leaves the working tree clean) and returns the hash of the normalized body (the raw payload's hash could mismatch disk).
+  - `TightTaskList` extension: tiptap-markdown's tight-lists default omits task lists, which serialize loose — one checkbox flip would rewrite every line of a task list. The spike missed this; the corpus gate pins tight serialization.
+  - Canonical body shape (LF, no leading newlines, one trailing newline) on both read and write, fence-to-body gap preserved from the file: gray-matter's content includes the blank line after the frontmatter fence and the editor drops it on parse, so without this every first save rewrote the fence boundary.
+  - `npm run typecheck` now also covers `ui/` (new `ui/tsconfig.json` + `vite-env.d.ts`) — M2's first user of the UI tree under `tsc`.
+  - Known first-save behavior: the editor's serializer is canonical — hand-wrapped paragraphs collapse to one line, `~` gets escaped (`\~`), blank lines are inserted after headings. Steady-state saves are minimal-diff (verified: five checkbox ticks → five changed lines).
 - **Deferred:** `docs/app.html` doc cards show author/version/last-edit/snippet, but M1's `/api/tree` carries none and there's no git layer until M2. Cards render the visual with available data; a git-log metadata API is a v1.x addition.
-- **Release prep (pre-M2):** README/CONTRIBUTING for the public repo; config renamed `.mddocs.json` → `.fragmt.json`; `.gitattributes` pins LF (the Windows line-ending risk below was breaking `biome ci` on every file in a Windows clone); `ui/dist` resolved against the module rather than `cwd`, so `serve` works outside the install dir; `tests/server.test.ts` added — the raw-URL traversal guard had no coverage, and testing it surfaced `%2e%2e` returning 404 instead of the spec'd 400 (no file ever leaked; guard now decodes once before checking).
-- **Next:** M2 (round-trip editing) — the gate, and the riskiest milestone.
+- **Next:** M3 (files & branches) — `commitAs` and `writeDoc` are the seams every file op flows through.
 
 ## M0 — Environment prep
 
