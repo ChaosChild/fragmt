@@ -28,31 +28,71 @@ export function DocView({
 	selected,
 	onSaved,
 	onReload,
+	onDirtyChange,
+	pendingBranch,
+	onPendingBranchCancel,
+	onPendingBranchGo,
+	conflict,
+	onDismissConflict,
+	onBeforeEdit,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
 	onSaved: (doc: DocResponse) => void;
 	onReload: () => void;
+	onDirtyChange: (dirty: boolean) => void;
+	/** A branch switch waiting on the save-or-discard choice (M3). */
+	pendingBranch: string | null;
+	onPendingBranchCancel: () => void;
+	onPendingBranchGo: () => void;
+	/** Sync conflict message (M3) — the calm banner, never a merge UI. */
+	conflict: string | null;
+	onDismissConflict: () => void;
+	onBeforeEdit: () => void;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
-	const [dirty, setDirty] = useState(false);
+	const [dirty, setDirtyLocal] = useState(false);
+	// EditorPane reports buffer dirtiness; App needs it for the branch-switch
+	// guard (M3), so every change also flows up.
+	const setDirty = (d: boolean) => {
+		setDirtyLocal(d);
+		onDirtyChange(d);
+	};
 	const [confirmingCancel, setConfirmingCancel] = useState(false);
 	const editorRef = useRef<EditorPaneHandle>(null);
 	const paneRef = useRef<HTMLDivElement>(null);
 
-	// The confirm banner renders at the top of the pane — bring it into view
-	// when it appears, otherwise a mid-document Esc raises it unseen.
+	// The confirm banners render at the top of the pane — bring them into view
+	// when one appears, otherwise a mid-document Esc raises it unseen.
 	useEffect(() => {
-		if (confirmingCancel) {
+		if (confirmingCancel || pendingBranch) {
 			paneRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
 		}
-	}, [confirmingCancel]);
+	}, [confirmingCancel, pendingBranch]);
+
+	const conflictBanner = conflict && (
+		<div className="conflict-banner" role="alert">
+			<div>
+				<strong>Sync conflict</strong>
+				{conflict} Resolve the file in your editor or on GitHub — the next sync
+				picks up the result.
+			</div>
+			<button
+				type="button"
+				className="iconbtn subtle dismiss"
+				onClick={onDismissConflict}
+			>
+				Dismiss
+			</button>
+		</div>
+	);
 
 	if (!selected) {
 		return (
 			<div className="doc-pane">
+				{conflictBanner}
 				<p className="label-meta">Select a document.</p>
 			</div>
 		);
@@ -67,8 +107,8 @@ export function DocView({
 		</nav>
 	);
 
-	async function handleSave() {
-		if (!doc || saving) return;
+	async function handleSave(): Promise<boolean> {
+		if (!doc || saving) return false;
 		const markdown = editorRef.current?.getMarkdown() ?? "";
 		setSaving(true);
 		setSaveError(null);
@@ -78,12 +118,14 @@ export function DocView({
 			setDirty(false);
 			setConfirmingCancel(false);
 			onSaved({ ...doc, markdown, hash });
+			return true;
 		} catch (e) {
 			if (e instanceof SaveError && e.status === 409) {
 				setSaveError("changed on disk — copy your changes, then reload");
 			} else {
 				setSaveError(e instanceof Error ? e.message : String(e));
 			}
+			return false;
 		} finally {
 			setSaving(false);
 		}
@@ -99,10 +141,7 @@ export function DocView({
 			return;
 		}
 		if (confirmingCancel) {
-			setEditing(false);
-			setSaveError(null);
-			setConfirmingCancel(false);
-			setDirty(false);
+			discardAndClose();
 			return;
 		}
 		setConfirmingCancel(true);
@@ -114,6 +153,48 @@ export function DocView({
 		setConfirmingCancel(false);
 		setDirty(false);
 	}
+
+	// A blocked branch switch: same save-or-discard shape as requestCancel,
+	// but confirming performs the switch instead of just exiting (M3).
+	const pendingBanner = pendingBranch && (
+		<div className="conflict-banner" role="alert">
+			<div>
+				<strong>Switch to {pendingBranch}?</strong>
+				This document has unsaved changes.
+			</div>
+			<div className="doc-actions">
+				<button
+					type="button"
+					className="iconbtn subtle dismiss"
+					onClick={onPendingBranchCancel}
+				>
+					Keep editing
+				</button>
+				<button
+					type="button"
+					className="iconbtn"
+					onClick={() => {
+						discardAndClose();
+						onPendingBranchGo();
+					}}
+				>
+					Discard
+				</button>
+				<button
+					type="button"
+					className="iconbtn primary"
+					disabled={saving}
+					onClick={() =>
+						void handleSave().then((ok) => {
+							if (ok) onPendingBranchGo();
+						})
+					}
+				>
+					Save
+				</button>
+			</div>
+		</div>
+	);
 
 	if (editing && doc) {
 		return (
@@ -139,6 +220,8 @@ export function DocView({
 						</button>
 					</div>
 				</div>
+				{conflictBanner}
+				{pendingBanner}
 				{confirmingCancel && (
 					<div className="conflict-banner" role="alert">
 						<div>
@@ -204,6 +287,7 @@ export function DocView({
 						type="button"
 						className="iconbtn"
 						onClick={() => {
+							onBeforeEdit();
 							setEditing(true);
 							setSaveError(null);
 						}}
@@ -214,6 +298,7 @@ export function DocView({
 					</button>
 				</div>
 			</div>
+			{conflictBanner}
 			<article className="markdown">
 				{doc ? (
 					<ReactMarkdown remarkPlugins={[remarkGfm]}>

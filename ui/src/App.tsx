@@ -1,6 +1,26 @@
-import { useEffect, useState } from "react";
-import { type DocResponse, getDoc, getTree, type TreeNode } from "./api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	checkoutBranch,
+	createBranch,
+	createDoc,
+	type DocResponse,
+	deleteDoc,
+	deleteFolder,
+	getBranches,
+	getDoc,
+	getTree,
+	moveDoc,
+	renameFolder,
+	sync,
+	type TreeNode,
+} from "./api";
 import { DocView } from "./DocView";
+import {
+	type BranchAction,
+	BranchMenu,
+	type FileOp,
+	NewDocButton,
+} from "./Menus";
 import { Sidebar } from "./Sidebar";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -13,11 +33,28 @@ function firstDoc(node: TreeNode): string | null {
 	return null;
 }
 
+function treeHas(node: TreeNode, path: string): boolean {
+	if (!path) return false;
+	return (node.children ?? []).some((c) => c.path === path || treeHas(c, path));
+}
+
 export function App() {
 	const [tree, setTree] = useState<TreeNode | null>(null);
 	const [selected, setSelected] = useState<string | null>(null);
 	const [doc, setDoc] = useState<DocResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
+
+	// M3: branches, sync, file ops.
+	const [branch, setBranch] = useState<string | null>(null);
+	const [dirty, setDirty] = useState(false);
+	const [pendingBranch, setPendingBranch] = useState<BranchAction | null>(null);
+	const [syncing, setSyncing] = useState(false);
+	const [conflict, setConflict] = useState<string | null>(null);
+	const [ledRed, setLedRed] = useState(false);
+
+	// Latest selected/dirty for the stable interval/focus sync callback.
+	const live = useRef({ selected, dirty });
+	live.current = { selected, dirty };
 
 	useEffect(() => {
 		getTree()
@@ -25,6 +62,9 @@ export function App() {
 			.catch((e: unknown) =>
 				setError(e instanceof Error ? e.message : String(e)),
 			);
+		getBranches()
+			.then((r) => setBranch(r.current))
+			.catch(() => {});
 	}, []);
 
 	// Auto-select the first doc once the tree lands.
@@ -59,6 +99,148 @@ export function App() {
 			);
 	};
 
+	// --- sync (M3): ~60s interval, window focus; edit-entry fires from
+	// DocView. A conflict turns the LED red + the doc-pane banner; network
+	// failure turns the LED red quietly — prior state always survives.
+	const runSync = useCallback(async () => {
+		setSyncing(true);
+		try {
+			const result = await sync();
+			if (result.conflict) {
+				setConflict(result.message ?? "sync conflict");
+				setLedRed(true);
+				return;
+			}
+			setConflict(null);
+			setLedRed(false);
+			try {
+				setTree(await getTree());
+			} catch {
+				// keep prior tree
+			}
+			const s = live.current.selected;
+			if (s && !live.current.dirty) {
+				try {
+					const next = await getDoc(s);
+					if (!live.current.dirty) setDoc(next);
+				} catch {
+					// keep prior doc
+				}
+			}
+		} catch {
+			setLedRed(true);
+		} finally {
+			setSyncing(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		const id = setInterval(() => void runSync(), 60_000);
+		const onFocus = () => void runSync();
+		window.addEventListener("focus", onFocus);
+		return () => {
+			clearInterval(id);
+			window.removeEventListener("focus", onFocus);
+		};
+	}, [runSync]);
+
+	// --- branches: switching reloads tree + open doc from the new branch.
+	async function switchTo(action: BranchAction) {
+		try {
+			if (action.kind === "create") await createBranch(action.name);
+			else await checkoutBranch(action.name);
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+			return;
+		}
+		setError(null);
+		setBranch(action.name);
+		try {
+			const t = await getTree();
+			setTree(t);
+			const s = live.current.selected;
+			if (s && treeHas(t, s)) setDoc(await getDoc(s));
+			else setSelected(firstDoc(t));
+		} catch {
+			// keep prior state — quiet
+		}
+	}
+
+	// The branch-switch guard: unsaved edits block the switch with the
+	// save-or-discard banner (DocView), never a silent loss.
+	function requestBranch(action: BranchAction) {
+		if (live.current.dirty) setPendingBranch(action);
+		else void switchTo(action);
+	}
+
+	// --- file ops: one commit each server-side; every op refreshes the tree.
+	async function runFileOp(op: FileOp) {
+		const target =
+			op.kind === "move-doc" || op.kind === "move-folder"
+				? op.from
+				: op.kind === "delete-doc" || op.kind === "delete-folder"
+					? op.path
+					: null;
+		if (
+			target &&
+			live.current.dirty &&
+			(live.current.selected === target ||
+				live.current.selected?.startsWith(`${target}/`))
+		) {
+			setError("save or discard changes to the open document first");
+			return;
+		}
+		try {
+			switch (op.kind) {
+				case "create-doc":
+					await createDoc(op.path);
+					break;
+				case "move-doc":
+					await moveDoc(op.from, op.to);
+					break;
+				case "delete-doc":
+					await deleteDoc(op.path);
+					break;
+				case "move-folder":
+					await renameFolder(op.from, op.to);
+					break;
+				case "delete-folder":
+					await deleteFolder(op.path);
+					break;
+			}
+			setError(null);
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+			return;
+		}
+		try {
+			const t = await getTree();
+			setTree(t);
+			const s = live.current.selected;
+			if (op.kind === "create-doc") setSelected(op.path);
+			else if (op.kind === "move-doc" && s === op.from) setSelected(op.to);
+			else if (op.kind === "move-folder" && s?.startsWith(`${op.from}/`))
+				setSelected(op.to + s.slice(op.from.length));
+			else if (s && !treeHas(t, s)) setSelected(null);
+		} catch {
+			// keep prior state — quiet
+		}
+	}
+
+	// LED — one dot, three truths: green synced, amber unsaved-or-syncing,
+	// red conflict-or-offline (red holds until the next clean sync).
+	const led = ledRed ? "red" : dirty || syncing ? "amber" : "green";
+	const ledLabel =
+		led === "red"
+			? conflict
+				? "Sync conflict"
+				: "Not synced"
+			: led === "amber"
+				? dirty
+					? "Unsaved changes"
+					: "Syncing"
+				: "Saved and synced";
+
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
@@ -67,9 +249,24 @@ export function App() {
 					<div className="side-head">
 						<span className="brand">fragmt</span>
 						<div className="side-head-spacer" />
+						<NewDocButton onFileOp={runFileOp} />
+						<BranchMenu current={branch} onAction={requestBranch} />
+						<span
+							className="led-status"
+							role="status"
+							aria-label={ledLabel}
+							title={ledLabel}
+						>
+							<span className={`led ${led}`} />
+						</span>
 						<ThemeToggle />
 					</div>
-					<Sidebar tree={tree} selected={selected} onSelect={setSelected} />
+					<Sidebar
+						tree={tree}
+						selected={selected}
+						onSelect={setSelected}
+						onFileOp={runFileOp}
+					/>
 					{error && (
 						<p className="label-meta" style={{ padding: "0 16px 16px" }}>
 							{error}
@@ -82,6 +279,17 @@ export function App() {
 						selected={selected}
 						onSaved={setDoc}
 						onReload={reloadSelected}
+						onDirtyChange={setDirty}
+						pendingBranch={pendingBranch?.name ?? null}
+						onPendingBranchCancel={() => setPendingBranch(null)}
+						onPendingBranchGo={() => {
+							const action = pendingBranch;
+							setPendingBranch(null);
+							if (action) void switchTo(action);
+						}}
+						conflict={conflict}
+						onDismissConflict={() => setConflict(null)}
+						onBeforeEdit={() => void runSync()}
 					/>
 				</main>
 			</div>
