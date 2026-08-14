@@ -34,9 +34,16 @@ const LinkIcon = (
  * block). Right-click replaces the browser's native context menu inside the
  * edit area only; Ctrl+V and friends are unaffected.
  */
-export function BubbleToolbar({ editor }: { editor: Editor }) {
+export function BubbleToolbar({
+	editor,
+	onVisibilityChange,
+}: {
+	editor: Editor;
+	onVisibilityChange?: (visible: boolean) => void;
+}) {
 	const [pane, setPane] = useState<Pane>(null);
 	const [forced, setForced] = useState(false);
+	const [visible, setVisible] = useState(false);
 	const forcedRef = useRef(false);
 	const rootRef = useRef<HTMLDivElement>(null);
 
@@ -52,7 +59,13 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
 			setForced(true);
 			setPane(null);
 			editor.chain().focus().setTextSelection(hit.pos).run();
+			// 'show' appends the element with its previous coordinates; the
+			// follow-up 'updatePosition' recomputes from the now-current
+			// selection, so the bubble lands at THIS click, not the last one.
 			editor.view.dispatch(editor.state.tr.setMeta(bubblePluginKey, "show"));
+			editor.view.dispatch(
+				editor.state.tr.setMeta(bubblePluginKey, "updatePosition"),
+			);
 		};
 		const dom = editor.view.dom;
 		dom.addEventListener("contextmenu", onContext);
@@ -80,26 +93,45 @@ export function BubbleToolbar({ editor }: { editor: Editor }) {
 		}
 	}, [editor]);
 
-	// While a right-click bubble is up, Escape closes it — even when focus is
-	// in the editor (capture phase, so PM and the pane's Escape-cancel never
-	// see the key). This is the "forced" leg of the Escape order contract.
+	// Escape while the bubble is visible closes the bubble — never edit mode.
+	// Capture phase, so PM and the pane's Escape handler can't cancel editing
+	// underneath an open surface (the Escape order contract's bubble leg).
 	useEffect(() => {
-		if (!forced) return;
+		if (!visible && !forced) return;
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key !== "Escape") return;
 			event.preventDefault();
 			event.stopImmediatePropagation();
-			hide();
+			if (pane) {
+				setPane(null);
+				return;
+			}
+			if (forcedRef.current) {
+				hide();
+				return;
+			}
+			// Selection/image bubble: clearing the selection hides it.
+			editor.chain().focus().setTextSelection(editor.state.selection.to).run();
 		};
 		window.addEventListener("keydown", onKey, true);
 		return () => window.removeEventListener("keydown", onKey, true);
-	}, [forced, hide]);
+	}, [visible, forced, pane, hide, editor]);
 
 	return (
 		<BubbleMenu
 			editor={editor}
 			pluginKey={bubblePluginKey}
 			shouldShow={({ state }) => shouldShowBubble(state, forcedRef.current)}
+			options={{
+				onShow: () => {
+					setVisible(true);
+					onVisibilityChange?.(true);
+				},
+				onHide: () => {
+					setVisible(false);
+					onVisibilityChange?.(false);
+				},
+			}}
 		>
 			<div
 				ref={rootRef}

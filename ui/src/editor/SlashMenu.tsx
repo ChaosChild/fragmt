@@ -1,5 +1,5 @@
 import type { Editor } from "@tiptap/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { SlashMenuState } from "./slash";
 
 /**
@@ -7,6 +7,10 @@ import type { SlashMenuState } from "./slash";
  * and hands state over via the extension's onState callback; this component
  * renders the filtered list, positions it at the caret, and answers the
  * extension's keydown callback for ↑/↓/Enter/Escape.
+ *
+ * Positioning clamps against the MEASURED menu height (flips above the caret
+ * when there is no room below) and follows scroll/resize — a position:fixed
+ * menu otherwise strands bottom items off-screen while the page scrolls.
  */
 export function SlashMenuView({
 	editor,
@@ -19,6 +23,7 @@ export function SlashMenuView({
 }) {
 	const [selected, setSelected] = useState(0);
 	const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+	const menuRef = useRef<HTMLDivElement>(null);
 	const stateRef = useRef(state);
 	const selectedRef = useRef(0);
 
@@ -29,13 +34,35 @@ export function SlashMenuView({
 		selectedRef.current = selected;
 	}, [selected]);
 
-	useEffect(() => {
-		const coords = editor.view.coordsAtPos(state.range.from);
-		setPos({
-			top: Math.min(coords.bottom + 6, window.innerHeight - 260),
-			left: Math.min(coords.left, window.innerWidth - 290),
-		});
-	}, [editor, state.range.from]);
+	useLayoutEffect(() => {
+		const place = () => {
+			const el = menuRef.current;
+			if (!el) return;
+			const coords = editor.view.coordsAtPos(state.range.from);
+			const height = el.offsetHeight;
+			const width = el.offsetWidth;
+			let top = coords.bottom + 6;
+			if (top + height > window.innerHeight - 8) {
+				top = Math.max(8, coords.top - height - 6); // flip above the caret
+			}
+			const left = Math.max(
+				8,
+				Math.min(coords.left, window.innerWidth - width - 8),
+			);
+			setPos({ top, left });
+		};
+		// The menu renders hidden until first placement, so offsetHeight is
+		// measurable before it becomes visible.
+		place();
+		window.addEventListener("scroll", place, true);
+		window.addEventListener("resize", place);
+		return () => {
+			window.removeEventListener("scroll", place, true);
+			window.removeEventListener("resize", place);
+		};
+		// `state` (not just range.from): every keystroke moves the caret and
+		// can change the filtered list's height — both need re-placement.
+	}, [editor, state]);
 
 	useEffect(() => {
 		registerKeydown((event) => {
@@ -62,9 +89,9 @@ export function SlashMenuView({
 		return () => registerKeydown(() => false);
 	}, [registerKeydown]);
 
-	if (!pos) return null;
 	return (
 		<div
+			ref={menuRef}
 			className="slash-menu"
 			role="menu"
 			aria-label="Insert block"
@@ -72,7 +99,7 @@ export function SlashMenuView({
 			aria-activedescendant={
 				state.items[selected] ? `slash-${state.items[selected].id}` : undefined
 			}
-			style={pos}
+			style={{ ...pos, visibility: pos ? "visible" : "hidden" }}
 		>
 			{state.items.map((item, i) => (
 				<button

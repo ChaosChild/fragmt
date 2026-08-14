@@ -37,6 +37,8 @@ export function DocView({
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
+	const [dirty, setDirty] = useState(false);
+	const [confirmingCancel, setConfirmingCancel] = useState(false);
 	const editorRef = useRef<EditorPaneHandle>(null);
 
 	if (!selected) {
@@ -64,6 +66,8 @@ export function DocView({
 		try {
 			const { hash } = await saveDoc(doc.path, markdown, doc.hash);
 			setEditing(false);
+			setDirty(false);
+			setConfirmingCancel(false);
 			onSaved({ ...doc, markdown, hash });
 		} catch (e) {
 			if (e instanceof SaveError && e.status === 409) {
@@ -76,6 +80,32 @@ export function DocView({
 		}
 	}
 
+	// Cancel gates on unsaved work: the first ask raises the banner (Escape or
+	// the Cancel button alike), confirming discards. A clean buffer just exits.
+	function requestCancel() {
+		if (!dirty) {
+			setEditing(false);
+			setSaveError(null);
+			setConfirmingCancel(false);
+			return;
+		}
+		if (confirmingCancel) {
+			setEditing(false);
+			setSaveError(null);
+			setConfirmingCancel(false);
+			setDirty(false);
+			return;
+		}
+		setConfirmingCancel(true);
+	}
+
+	function discardAndClose() {
+		setEditing(false);
+		setSaveError(null);
+		setConfirmingCancel(false);
+		setDirty(false);
+	}
+
 	if (editing && doc) {
 		return (
 			<div className="editor-pane">
@@ -85,10 +115,7 @@ export function DocView({
 						<button
 							type="button"
 							className="iconbtn subtle"
-							onClick={() => {
-								setEditing(false);
-								setSaveError(null);
-							}}
+							onClick={requestCancel}
 							disabled={saving}
 						>
 							Cancel
@@ -103,6 +130,30 @@ export function DocView({
 						</button>
 					</div>
 				</div>
+				{confirmingCancel && (
+					<div className="conflict-banner" role="alert">
+						<div>
+							<strong>Discard unsaved changes?</strong>
+							Your edits will be lost.
+						</div>
+						<div className="doc-actions">
+							<button
+								type="button"
+								className="iconbtn subtle dismiss"
+								onClick={() => setConfirmingCancel(false)}
+							>
+								Keep editing
+							</button>
+							<button
+								type="button"
+								className="iconbtn"
+								onClick={discardAndClose}
+							>
+								Discard
+							</button>
+						</div>
+					</div>
+				)}
 				{saveError && (
 					<div className="conflict-banner" role="alert">
 						<div>
@@ -127,11 +178,9 @@ export function DocView({
 					ref={editorRef}
 					markdown={doc.markdown}
 					saving={saving}
+					onDirtyChange={setDirty}
 					onSave={() => void handleSave()}
-					onCancel={() => {
-						setEditing(false);
-						setSaveError(null);
-					}}
+					onCancel={requestCancel}
 				/>
 			</div>
 		);

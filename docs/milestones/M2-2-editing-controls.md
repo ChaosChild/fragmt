@@ -49,7 +49,14 @@ Text · Heading 1–3 · Quote · Code block · Bullet list · Numbered list · 
 
 ## Keyboard contract update (DESIGN §8 interaction)
 
-Escape now has an order: **open popover → open slash menu → edit mode**. The first Escape closes whatever surface is open; only a bare Escape cancels editing. Ctrl/Cmd+S still saves from anywhere. All existing Tiptap keymaps (Ctrl+B/I/E, Ctrl+Shift+S, Ctrl+Alt+1–6) and markdown input rules keep working — the surfaces are additive.
+Escape now has an order: **open popover → open slash menu → visible bubble → selection → cancel**. The first Escape closes whatever surface is open (the bubble runs a capture-phase listener whenever it is visible, so it can never cancel edit mode underneath itself); a bare selection collapses first. Canceling with unsaved changes asks first — the calm-banner pattern ("Discard unsaved changes?" / Keep editing / Discard); a second Escape confirms the discard. Ctrl/Cmd+S still saves from anywhere. All existing Tiptap keymaps (Ctrl+B/I/E, Ctrl+Shift+S, Ctrl+Alt+1–6) and markdown input rules keep working — the surfaces are additive.
+
+## Post-review fixes (first dogfood round, 2026-08-14)
+
+1. **Right-click bubble position** — the plugin's `show` meta appends the element with its previous coordinates; the context handler now follows with an `updatePosition` dispatch, so the bubble lands at the current click.
+2. **Escape under an open bubble** — never cancels edit mode (see the order above); previously a forced bubble could let the pane's Escape-cancel through.
+3. **Cancel confirmation** — any cancel path (Escape, Cancel button) with a dirty buffer (any doc-changing transaction since load) raises the discard banner instead of silently dropping work.
+4. **Slash menu viewport fit** — placement clamps against the menu's measured height (flips above the caret when there is no room below) and follows scroll/resize; previously the bottom items could sit off-screen with no way to reach them.
 
 ## Accessibility floor (from DESIGN — never loses a trade-off)
 

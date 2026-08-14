@@ -69,7 +69,8 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - [x] Bubble on text selection / image click / **right-click** (bare cursor): marks + link, turn into (Text, H1–H3, Quote, Code block), table ops (add/delete row & column, toggle header, delete table), image edit/delete
 - [x] Slash menu (`@tiptap/suggestion`): insert headings, quote, code block, lists, task list, divider, 3×3 table with header, image via URL + alt form — ↑↓/Enter/Escape
 - [x] Empty-doc placeholder hint pointing at `/` and right-click
-- [x] Escape order contract: popover → slash menu → selection → edit-cancel
+- [x] Escape order contract: popover → slash menu → bubble → selection → cancel
+- [x] Cancel confirmation: discarding unsaved changes asks first (banner, both Escape and Cancel button)
 - [x] Accessibility floor: ≥32px targets, focus rings, aria labels, keyboard reach
 - [x] `editorExtensions` becomes a factory (slash callbacks optional) — corpus gate still judges the same set
 - [x] Tests: slash item execution, bare-cursor turn-into, comment-mark preservation, bubble predicate (13 new; 64 total)
