@@ -12,12 +12,13 @@
 - HTTP server: Hono
 - License: MIT
 
-Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M5](milestones/M5-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
+Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M5](milestones/M5-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
 
 ## Build status
 
 - **Shipped:** M0 + M1 read-only, plus open-source release prep — all squashed into the initial public commit. `npm ci && typecheck && lint && biome ci && test` green; 32 tests.
 - **Shipped:** M2 round-trip editing — Tiptap editor, save-as-commit through `commitAs`, stale-hash 409 guard, byte-for-byte frontmatter reattach, and the permanent corpus gate (`tests/roundtrip.test.ts`, built on the app's own extension array). 51 tests.
+- **Shipped:** M2-2 editing controls — contextual formatting surfaces only (selection/right-click bubble for marks, turn into, table structure, image edit; `/` slash menu for inserting blocks; empty-doc placeholder hint). Zero persistent chrome; the DESIGN editor clause amended in the same change. Escape order now popover → slash → selection → edit-cancel. 64 tests.
 - **Realized versions:** TypeScript 7.0.2, Biome 2.5.7, Vite 8, React 19, Vitest 4, Node 22, @types/node 26; Tiptap 3.x, tiptap-markdown 0.9.x, happy-dom (M2, per the spike-validated majors).
 - **Deliberate deviations from the stack notes above:**
   - `tsconfig.json` gained `esModuleInterop` — `gray-matter` is CJS; standard fix for default-importing it under `nodenext`.

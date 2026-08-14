@@ -62,7 +62,7 @@ Define these as CSS variables from day one. **Both themes ship in v1**: every co
 
 - **Tree (sidebar):** plain text rows, folder disclosure triangles, current doc highlighted with the accent — no per-doc icons/emoji, no drag handles in v1.
 - **Doc view:** breadcrumb line (small, gray) + typeset content. Edit button top-right. Nothing else in the pane.
-- **Editor (M2):** identical typography to view mode — entering edit mode must not reflow the text. Save / Cancel where Edit was. No floating toolbars in v1; formatting via markdown-native typing (Tiptap input rules).
+- **Editor (M2 + M2-2):** identical typography to view mode — entering edit mode must not reflow the text. Save / Cancel where Edit was. Formatting surfaces are contextual only, never persistent: a selection/right-click bubble (marks, turn into, table structure, image edit) and a `/` slash menu for inserting blocks; an empty-doc placeholder hints at both. Markdown-native typing (Tiptap input rules) and keyboard shortcuts keep working. *(Amended by M2-2, which reversed the original "no floating toolbars in v1" decision after dogfooding — see milestones/M2-2-editing-controls.md.)*
 - **Branch dropdown (M3):** small control in the top bar, reads as metadata ("on main"), not a headline feature.
 - **Comments (M4):** invisible until text is selected (selection → one small affordance) or a thread is opened; threads in the right margin, resolved hidden by default. Comment highlights in read mode: barely-there tint, never boxes.
 
