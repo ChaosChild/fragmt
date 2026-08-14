@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { type DocResponse, SaveError, saveDoc } from "./api";
@@ -40,6 +40,15 @@ export function DocView({
 	const [dirty, setDirty] = useState(false);
 	const [confirmingCancel, setConfirmingCancel] = useState(false);
 	const editorRef = useRef<EditorPaneHandle>(null);
+	const paneRef = useRef<HTMLDivElement>(null);
+
+	// The confirm banner renders at the top of the pane — bring it into view
+	// when it appears, otherwise a mid-document Esc raises it unseen.
+	useEffect(() => {
+		if (confirmingCancel) {
+			paneRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+		}
+	}, [confirmingCancel]);
 
 	if (!selected) {
 		return (
@@ -108,7 +117,7 @@ export function DocView({
 
 	if (editing && doc) {
 		return (
-			<div className="editor-pane">
+			<div className="editor-pane" ref={paneRef}>
 				<div className="doc-bar">
 					{breadcrumb}
 					<div className="doc-actions">
