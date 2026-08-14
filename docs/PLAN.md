@@ -19,6 +19,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - **Shipped:** M0 + M1 read-only, plus open-source release prep — all squashed into the initial public commit. `npm ci && typecheck && lint && biome ci && test` green; 32 tests.
 - **Shipped:** M2 round-trip editing — Tiptap editor, save-as-commit through `commitAs`, stale-hash 409 guard, byte-for-byte frontmatter reattach, and the permanent corpus gate (`tests/roundtrip.test.ts`, built on the app's own extension array). 51 tests.
 - **Shipped:** M2-2 editing controls — contextual formatting surfaces only (selection/right-click bubble for marks, turn into, table structure, image edit; `/` slash menu for inserting blocks; empty-doc placeholder hint). Zero persistent chrome; the DESIGN editor clause amended in the same change. Escape order now popover → slash → selection → edit-cancel. 64 tests.
+- **Shipped:** M3 files & branches — full doc/folder lifecycle (one `commitAs` commit per op, R100 renames via fs mutations because `git mv`/`git rm` break the seam's unconditional `git add`), branch commands + `sync()` (pull --rebase + push, conflict aborts the rebase and leaves HEAD untouched; no-remote/no-upstream are no-ops), the HTTP surface for all of it, and the UI: branch dropdown with a dirty-buffer save-or-discard guard, sync LED + three triggers, file ops in fixed places. 91 tests.
 - **Realized versions:** TypeScript 7.0.2, Biome 2.5.7, Vite 8, React 19, Vitest 4, Node 22, @types/node 26; Tiptap 3.x, tiptap-markdown 0.9.x, happy-dom (M2, per the spike-validated majors).
 - **Deliberate deviations from the stack notes above:**
   - `tsconfig.json` gained `esModuleInterop` — `gray-matter` is CJS; standard fix for default-importing it under `nodenext`.
@@ -79,13 +80,13 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 **Goal:** full doc/folder lifecycle and branch-based drafting. **Proves:** the git layer handles real editing workflows, not just single-file saves.
 
-- [ ] Create/rename/move/delete docs (each op = one commit via `commitAs`)
-- [ ] Create/rename/move/delete folders (same)
-- [ ] Branch dropdown: switch branches
-- [ ] Branch dropdown: create branch
-- [ ] Push/pull commands
-- [ ] `sync()` = `pull --rebase` + push, triggered by: interval, window focus, pre-edit
-- [ ] Conflict handling: abort + surface in UI (no merge UI)
+- [x] Create/rename/move/delete docs (each op = one commit via `commitAs`)
+- [x] Create/rename/move/delete folders (same)
+- [x] Branch dropdown: switch branches
+- [x] Branch dropdown: create branch
+- [x] Push/pull commands
+- [x] `sync()` = `pull --rebase` + push, triggered by: interval, window focus, pre-edit
+- [x] Conflict handling: abort + surface in UI (no merge UI)
 
 ## M4 — Comments
 
