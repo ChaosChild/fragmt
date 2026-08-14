@@ -218,6 +218,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full loop and conventions.
 - [Architecture](docs/ARCHITECTURE.md) — storage model, comment anchoring, git layer
 - [Design principles](docs/DESIGN.md) — UI tokens, reading column, sidebar spec
 - [v1 build plan](docs/PLAN.md) — milestones, risks, and what was cut
+- [Backlog](docs/BACKLOG.md) — deferred issues and enhancements from dogfooding
 - [Milestone specs](docs/milestones/) — implementation-exact, M0 through M5
 - [Editor spike](docs/SPIKE.md) — markdown round-trip fidelity; why Tiptap won
 
