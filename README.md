@@ -60,6 +60,7 @@ markdown and its full git history.
 | M0 — environment prep | shipped |
 | M1 — read-only (init, serve, tree + doc API, UI shell) | shipped |
 | M2 — round-trip editing (Tiptap, save = commit) | shipped |
+| M2-2 — editing controls (bubble, slash, right-click) | shipped |
 | M3 — files & branches | specced |
 | M4 — inline comments | specced |
 | M5 — dogfood hardening | specced |
@@ -67,7 +68,9 @@ markdown and its full git history.
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
 WYSIWYG editor, and save — each save is a git commit under your local git
 identity, with frontmatter preserved byte-for-byte and a stale-base-hash guard
-against concurrent edits. v1 is done when the author writes this project's own
+against concurrent edits. Formatting is mouse-reachable — a selection or
+right-click bubble for headings, quotes, links, and table structure, a `/`
+menu for inserting blocks and images — no markdown knowledge required. v1 is done when the author writes this project's own
 docs in the tool daily instead of in a text editor. Full detail, including
 what was deliberately cut, is in the [build plan](docs/PLAN.md).
 
@@ -215,6 +218,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full loop and conventions.
 - [Architecture](docs/ARCHITECTURE.md) — storage model, comment anchoring, git layer
 - [Design principles](docs/DESIGN.md) — UI tokens, reading column, sidebar spec
 - [v1 build plan](docs/PLAN.md) — milestones, risks, and what was cut
+- [Backlog](docs/BACKLOG.md) — deferred issues and enhancements from dogfooding
 - [Milestone specs](docs/milestones/) — implementation-exact, M0 through M5
 - [Editor spike](docs/SPIKE.md) — markdown round-trip fidelity; why Tiptap won
 

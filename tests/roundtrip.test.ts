@@ -38,7 +38,7 @@ const corpusBody = fmMatch ? corpusRaw.slice(fmMatch[0].length) : corpusRaw;
 let editor: Editor;
 
 beforeEach(() => {
-	editor = new Editor({ extensions: editorExtensions, content: "" });
+	editor = new Editor({ extensions: editorExtensions(), content: "" });
 	editor.commands.setContent(corpusBody);
 });
 

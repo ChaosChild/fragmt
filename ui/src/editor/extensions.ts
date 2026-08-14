@@ -12,8 +12,17 @@ import {
 	TableHeader,
 	TableRow,
 } from "@tiptap/extension-table";
+import { Placeholder } from "@tiptap/extensions/placeholder";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown, type MarkdownStorage } from "tiptap-markdown";
+// "./slash.js" (not "./slash"): this file is typechecked by BOTH configs —
+// the root nodenext program reaches it via tests/roundtrip.test.ts.
+import {
+	SlashCommands,
+	type SlashKeydownHandler,
+	type SlashRenderer,
+	slashItems,
+} from "./slash.js";
 
 // tiptap-markdown attaches `storage.markdown` but doesn't augment the core
 // Storage interface itself — do it here so every consumer is typed.
@@ -82,19 +91,33 @@ export const TightTaskList = Extension.create({
 
 /**
  * The editor's extension set — single source of truth. The React editor AND
- * tests/roundtrip.test.ts both build from this exact array, so any change to
- * the editor config is judged by the permanent corpus gate.
+ * tests/roundtrip.test.ts both build from this factory, so any change to the
+ * editor config is judged by the permanent corpus gate.
+ *
+ * The optional callbacks wire the slash menu's UI (state/keydown/image handoff)
+ * without making the extension set React-bound — headless consumers omit them.
  */
-export const editorExtensions: Extensions = [
-	StarterKit,
-	CommentMark,
-	TaskList,
-	TaskItem,
-	Table,
-	TableRow,
-	TableCell,
-	TableHeader,
-	Image,
-	TightTaskList,
-	Markdown.configure({ html: true }),
-];
+export function editorExtensions(slash?: {
+	onState?: SlashRenderer;
+	onKeyDown?: SlashKeydownHandler;
+	onImage?: (insertAt: number) => void;
+}): Extensions {
+	return [
+		StarterKit,
+		CommentMark,
+		TaskList,
+		TaskItem,
+		Table,
+		TableRow,
+		TableCell,
+		TableHeader,
+		Image,
+		TightTaskList,
+		Placeholder.configure({
+			placeholder: 'Type "/" for blocks · right-click to format',
+			showOnlyCurrent: true,
+		}),
+		SlashCommands.configure({ items: slashItems, ...slash }),
+		Markdown.configure({ html: true }),
+	];
+}
