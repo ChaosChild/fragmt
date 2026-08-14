@@ -40,14 +40,17 @@ export interface Doc {
 }
 
 /**
- * Resolve a docsRoot-relative path and enforce it stays under docsRoot and ends
- * with .md. Shared by readDoc (M1) and writeDoc (M2). Trust boundary — the
- * server maps violations to 400.
+ * Resolve a docsRoot-relative path and enforce it stays under docsRoot and
+ * (for docs) ends with .md. Shared by readDoc (M1), writeDoc (M2), and the
+ * files.ts ops (M3). Trust boundary — the server maps violations to 400.
+ * Folder ops pass kind "folder" to allow a path without the .md extension;
+ * the traversal rules are identical for both kinds.
  */
 export function resolveDocPath(
 	repoRoot: string,
 	docsRoot: string,
 	docPath: string,
+	kind: "doc" | "folder" = "doc",
 ): string {
 	const docsAbs = resolve(repoRoot, docsRoot);
 	const target = resolve(docsAbs, docPath);
@@ -56,7 +59,7 @@ export function resolveDocPath(
 	if (rel === "" || firstSegment === ".." || isAbsolute(rel)) {
 		throw new DocPathError(`invalid doc path: ${docPath}`);
 	}
-	if (!target.toLowerCase().endsWith(".md")) {
+	if (kind === "doc" && !target.toLowerCase().endsWith(".md")) {
 		throw new DocPathError(`invalid doc path: ${docPath}`);
 	}
 	return target;
