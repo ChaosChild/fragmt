@@ -23,3 +23,6 @@ Thumbs.db
 .lavish/
 .od-skills/
 .claude/settings.local.json
+
+# Build logs
+build-logs

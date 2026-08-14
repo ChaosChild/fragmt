@@ -745,14 +745,18 @@ body {
 .markdown {
 	font-family: var(--font-serif);
 	font-optical-sizing: auto;
-	/* Defect 1 — Tiptap injects `white-space: break-spaces; word-wrap:
-	   break-word` on the ProseMirror div (node_modules/@tiptap/core/dist/
-	   index.js, `var style =`). `break-spaces` breaks lines at spaces that
-	   `normal` never would, so words shifted down a line in edit mode. Pin
-	   the same values here: both modes then break at identical points.
-	   (The injection also lists a `pre-wrap` fallback; every supported
-	   browser has break-spaces, so only it is effective — and pinned.) */
-	white-space: break-spaces;
+	/* Tiptap injects `white-space: break-spaces; word-wrap: break-word`
+	   on the ProseMirror div (node_modules/@tiptap/core/dist/index.js,
+	   `var style =`). Only `word-wrap: break-word` is mirrored here — long
+	   words/URLs break at the same point in both modes, with no downside.
+	   `white-space: break-spaces` is deliberately NOT mirrored:
+	   react-markdown emits newline text nodes between block siblings, and
+	   `break-spaces` preserves each one as a blank line (~one line-height
+	   of stray space between every paragraph, heading, and list — read
+	   mode read roughly 2× looser than edit). Tiptap's DOM carries no
+	   inter-block whitespace, so its injected `break-spaces` is harmless
+	   there; read mode stays on the inherited `normal`, the whitespace
+	   collapses, and the vertical rhythm matches edit mode exactly. */
 	word-wrap: break-word;
 	/* Same injection disables ligatures (`font-variant-ligatures: none;
 	   font-feature-settings: "liga" 0`). Newsreader ships ligatures; they
