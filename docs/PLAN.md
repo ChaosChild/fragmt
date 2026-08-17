@@ -93,7 +93,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 **Goal:** inline self-notes anchored to text, versioned alongside docs. **Proves:** the mark + sidecar design from ARCHITECTURE.md works end-to-end.
 
-- [x] <span data-c="99ae9594-b26e-43a9-a8e9-74e8f6cd598d">Highlight-to-comment UI (selection → create thread)</span>
+- [x] <span data-c="99ae9594-b26e-43a9-a8e9-74e8f6cd598d">Highlight-to-comment UI (selection → create a comment thread)</span>
 - [x] Sidecar storage: `.docs/comments/<doc-path>.json`, keyed by mark id
 - [x] Quote snapshot captured at comment creation
 - [x] Resolve / delete comment
