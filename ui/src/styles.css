@@ -1654,3 +1654,123 @@ body {
 	content: "";
 	pointer-events: none;
 }
+
+/* ── M3: branches, file ops, sync LED ─────────────────────────── */
+.branch-dd {
+	min-height: 32px; /* a11y floor: ≥32px hit targets (§9) */
+}
+/* Tree row = select target + always-visible kebab (never hover-only, §5) */
+.tree-row {
+	display: flex;
+	align-items: center;
+}
+.tree-row .doc-card,
+.tree-row .folder-row {
+	flex: 1;
+	min-width: 0;
+}
+.tree-row .folder-row {
+	margin-top: 0;
+}
+.folder-group > .tree-row {
+	margin-top: var(--space-2);
+}
+.tree-row .menu-wrap,
+.side-head .menu-wrap {
+	flex-shrink: 0;
+}
+/* Visible-but-subtle square icon button (new doc, row kebabs) — 32px target */
+.tool-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	flex-shrink: 0;
+	border: none;
+	background: none;
+	color: var(--muted);
+	cursor: pointer;
+	border-radius: var(--radius);
+	transition: color var(--motion-fast) var(--ease-standard);
+}
+.tool-btn:hover {
+	color: var(--accent);
+}
+.tool-btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.tool-btn svg {
+	width: 15px;
+	height: 15px;
+}
+/* Fixed glass menu (branch list, row actions, new-doc form) — rendered
+   through a portal to body, so the sidebar's backdrop-filter (a containing
+   block for fixed descendants) can neither clip nor contain it. */
+.menu-popover {
+	position: fixed;
+	z-index: 70;
+	max-width: min(300px, calc(100vw - 24px));
+	padding: 5px;
+	display: flex;
+	flex-direction: column;
+	border-radius: 8px;
+	background: var(--glass-bg-strong);
+	border: 1px solid var(--glass-border);
+	box-shadow: var(--glass-shadow);
+	backdrop-filter: blur(6px);
+}
+.menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-height: 32px;
+	padding: 4px 9px;
+	border: none;
+	background: transparent;
+	border-radius: 5px;
+	font-family: var(--font-body);
+	font-size: 13px;
+	color: var(--fg);
+	cursor: pointer;
+	text-align: left;
+}
+.menu-item:hover,
+.menu-item[aria-current="true"] {
+	background: var(--accent-tint);
+	color: var(--accent);
+}
+.menu-item.danger {
+	color: var(--danger);
+}
+.menu-item.danger:hover {
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+	color: var(--danger);
+}
+.menu-item:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.menu-empty {
+	padding: 8px 9px;
+	font-size: 12px;
+	color: var(--muted);
+}
+.menu-note {
+	font-size: 13px;
+	color: var(--fg);
+	margin: 4px 0 0;
+}
+.menu-note strong {
+	font-weight: 600;
+}
+.iconbtn.danger {
+	color: var(--danger);
+	border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+.iconbtn.danger:hover {
+	color: var(--danger);
+	border-color: var(--danger);
+}

@@ -1,5 +1,6 @@
 import { type ReactNode, useState } from "react";
 import type { TreeNode } from "./api";
+import { type FileOp, RowMenu } from "./Menus";
 
 function countDocs(node: TreeNode): number {
 	let n = 0;
@@ -19,6 +20,7 @@ interface NodesProps {
 	nodes: TreeNode[];
 	selected: string | null;
 	onSelect: (path: string) => void;
+	onFileOp: (op: FileOp) => void;
 	collapsed: Set<string>;
 	toggle: (path: string) => void;
 }
@@ -27,6 +29,7 @@ function renderNodes({
 	nodes,
 	selected,
 	onSelect,
+	onFileOp,
 	collapsed,
 	toggle,
 }: NodesProps): ReactNode[] {
@@ -35,22 +38,31 @@ function renderNodes({
 			const isCollapsed = collapsed.has(node.path);
 			return (
 				<li className="folder-group" key={node.path}>
-					<button
-						type="button"
-						className="folder-row"
-						aria-expanded={!isCollapsed}
-						onClick={() => toggle(node.path)}
-					>
-						<span className="disclosure">{Chevron}</span>
-						{node.name}
-						<span className="count">{countDocs(node)}</span>
-					</button>
+					<div className="tree-row">
+						<button
+							type="button"
+							className="folder-row"
+							aria-expanded={!isCollapsed}
+							onClick={() => toggle(node.path)}
+						>
+							<span className="disclosure">{Chevron}</span>
+							{node.name}
+							<span className="count">{countDocs(node)}</span>
+						</button>
+						<RowMenu
+							kind="folder"
+							path={node.path}
+							name={node.name}
+							onFileOp={onFileOp}
+						/>
+					</div>
 					{!isCollapsed && (
 						<ul className="folder-children">
 							{renderNodes({
 								nodes: node.children ?? [],
 								selected,
 								onSelect,
+								onFileOp,
 								collapsed,
 								toggle,
 							})}
@@ -61,15 +73,23 @@ function renderNodes({
 		}
 		return (
 			<li key={node.path}>
-				<button
-					type="button"
-					className={`doc-card${node.path === selected ? " active" : ""}`}
-					onClick={() => onSelect(node.path)}
-				>
-					<span className="dc-top">
-						<span className="dc-title">{node.name}</span>
-					</span>
-				</button>
+				<div className="tree-row">
+					<button
+						type="button"
+						className={`doc-card${node.path === selected ? " active" : ""}`}
+						onClick={() => onSelect(node.path)}
+					>
+						<span className="dc-top">
+							<span className="dc-title">{node.name}</span>
+						</span>
+					</button>
+					<RowMenu
+						kind="doc"
+						path={node.path}
+						name={node.name}
+						onFileOp={onFileOp}
+					/>
+				</div>
 			</li>
 		);
 	});
@@ -79,10 +99,12 @@ export function Sidebar({
 	tree,
 	selected,
 	onSelect,
+	onFileOp,
 }: {
 	tree: TreeNode | null;
 	selected: string | null;
 	onSelect: (path: string) => void;
+	onFileOp: (op: FileOp) => void;
 }) {
 	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 	const toggle = (path: string) =>
@@ -100,6 +122,7 @@ export function Sidebar({
 				nodes: tree.children ?? [],
 				selected,
 				onSelect,
+				onFileOp,
 				collapsed,
 				toggle,
 			})}

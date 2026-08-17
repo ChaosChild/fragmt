@@ -34,3 +34,34 @@ Notes for whoever specs it:
   traversal guard in `resolveDocPath` is the safety net.
 - Decide and spec: anchor fragments (`#heading`) within the same doc; links
   to non-markdown files in the repo (open raw? download?); links to folders.
+
+## Sidebar chrome
+
+### Navbar / tree-row design pass (2026-08-17, M3 dogfooding)
+
+The M3 additions to the sidebar work but read as bolted-on chrome; the head
+and the rows need a rethink before v1:
+
+- **The branch dropdown crowds the sidebar head.** A long branch name pushes
+  the dark/light toggle out of view and the dropdown itself clips at the right
+  edge — the head has no width budget for brand + new-doc + branch + sync LED
+  + theme in one row.
+- **The new-document "+" button sits awkwardly** in the head — placement and
+  visual weight feel wrong rather than merely new.
+- **The per-row "..." action menu renders on every doc/folder row** — that
+  much visible affordance for an occasional action is noise, and it fights the
+  calm-reading-room premise (DESIGN §1).
+
+Notes for whoever specs it:
+
+- DESIGN §5 permits at most one hover-revealed affordance per region and
+  forbids hover-ONLY functionality: the kebab could be revealed on row
+  hover/focus while the same actions stay reachable from a fixed place (e.g.
+  the doc bar for the open doc) — rows must keep ≥32px targets and full
+  keyboard reach either way.
+- The head needs a layout decision, not a patch: truncate branch names
+  (ellipsis + `title`), consider a two-row head, or move the branch control
+  to the doc bar / top bar — `docs/app.html` (the v1-final mock) is the
+  reference for intended placement.
+- Whatever lands, the anti-pattern list still holds: no toast stacks, no
+  nested hover menus, nothing important reachable only by hovering.

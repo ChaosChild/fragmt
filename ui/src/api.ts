@@ -65,3 +65,91 @@ export async function saveDoc(
 	}
 	return (await res.json()) as SaveResponse;
 }
+
+// --- M3: file lifecycle, branches, sync ----------------------------------
+
+export interface BranchesResponse {
+	current: string;
+	branches: string[];
+}
+
+/** Mirror of the core SyncResult. */
+export interface SyncResult {
+	conflict: boolean;
+	message?: string;
+}
+
+/** Fetch for the M3 routes; `{ error }` bodies become the message. */
+async function request<T>(url: string, init?: RequestInit): Promise<T> {
+	const res = await fetch(url, init);
+	if (!res.ok) {
+		let message = `request failed (${res.status})`;
+		try {
+			const body = (await res.json()) as { error?: string };
+			if (body.error) message = body.error;
+		} catch {
+			// non-JSON error body — keep the generic message
+		}
+		throw new Error(message);
+	}
+	return (await res.json()) as T;
+}
+
+const JSON_HEADERS = { "content-type": "application/json" };
+
+export const createDoc = (path: string, body = "") =>
+	request<{ sha: string }>("/api/docs", {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ path, body }),
+	});
+
+export const moveDoc = (from: string, to: string) =>
+	request<{ sha: string }>(`/api/docs/${encodeURI(from)}`, {
+		method: "PATCH",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ to }),
+	});
+
+export const deleteDoc = (path: string) =>
+	request<{ sha: string }>(`/api/docs/${encodeURI(path)}`, {
+		method: "DELETE",
+	});
+
+export const createFolder = (path: string) =>
+	request<{ sha: string }>("/api/folders", {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ path }),
+	});
+
+export const renameFolder = (from: string, to: string) =>
+	request<{ sha: string }>(`/api/folders/${encodeURI(from)}`, {
+		method: "PATCH",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ to }),
+	});
+
+export const deleteFolder = (path: string) =>
+	request<{ sha: string }>(`/api/folders/${encodeURI(path)}`, {
+		method: "DELETE",
+	});
+
+export const getBranches = () => request<BranchesResponse>("/api/branches");
+
+/** Creates `name` — the server also checks it out. */
+export const createBranch = (name: string) =>
+	request<{ current: string }>("/api/branches", {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ name }),
+	});
+
+export const checkoutBranch = (name: string) =>
+	request<{ current: string }>("/api/checkout", {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ name }),
+	});
+
+export const sync = () => request<SyncResult>("/api/sync", { method: "POST" });
