@@ -14,7 +14,11 @@ import {
 } from "@tiptap/extension-table";
 import { Placeholder } from "@tiptap/extensions/placeholder";
 import StarterKit from "@tiptap/starter-kit";
-import { Markdown, type MarkdownStorage } from "tiptap-markdown";
+import {
+	Markdown,
+	type MarkdownMarkSpec,
+	type MarkdownStorage,
+} from "tiptap-markdown";
 // "./slash.js" (not "./slash"): this file is typechecked by BOTH configs —
 // the root nodenext program reaches it via tests/roundtrip.test.ts.
 import {
@@ -55,8 +59,28 @@ export const CommentMark = Mark.create({
 		return [{ tag: "span[data-c]" }];
 	},
 
+	// The DOM render carries .comment-highlight (read-mode visibility, M4).
+	// The markdown tags are pinned EXPLICITLY because tiptap-markdown's
+	// fallback for unconfigured marks serializes through renderHTML — the
+	// class would leak into the saved file and break the corpus gate.
+	addStorage(): { markdown: MarkdownMarkSpec } {
+		return {
+			markdown: {
+				serialize: {
+					open: (_state, mark) =>
+						mark.attrs.dataC ? `<span data-c="${mark.attrs.dataC}">` : "",
+					close: (_state, mark) => (mark.attrs.dataC ? "</span>" : ""),
+				},
+			},
+		};
+	},
+
 	renderHTML({ HTMLAttributes }) {
-		return ["span", mergeAttributes(HTMLAttributes), 0];
+		return [
+			"span",
+			mergeAttributes({ class: "comment-highlight" }, HTMLAttributes),
+			0,
+		];
 	},
 });
 

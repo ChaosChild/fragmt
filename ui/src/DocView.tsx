@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { type DocResponse, SaveError, saveDoc } from "./api";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 
@@ -20,8 +18,9 @@ const PencilIcon = (
 
 /**
  * The doc pane: reading mode by default (DESIGN §3), one explicit Edit action
- * swaps to Tiptap. Save commits via PUT; a 409 shows a non-destructive banner
- * and keeps the user's buffer (M2 spec).
+ * flips the SAME mounted Tiptap editor to editable (M4 review decision 3 —
+ * one rendering path, no reflow between modes). Save commits via PUT; a 409
+ * shows a non-destructive banner and keeps the user's buffer (M2 spec).
  */
 export function DocView({
 	doc,
@@ -61,6 +60,9 @@ export function DocView({
 		onDirtyChange(d);
 	};
 	const [confirmingCancel, setConfirmingCancel] = useState(false);
+	// Discard must drop the edited buffer: the editor stays mounted across
+	// the mode flip, so bumping the key remounts it fresh from doc.markdown.
+	const [resetCount, setResetCount] = useState(0);
 	const editorRef = useRef<EditorPaneHandle>(null);
 	const paneRef = useRef<HTMLDivElement>(null);
 
@@ -152,6 +154,7 @@ export function DocView({
 		setSaveError(null);
 		setConfirmingCancel(false);
 		setDirty(false);
+		setResetCount((c) => c + 1);
 	}
 
 	// A blocked branch switch: same save-or-discard shape as requestCancel,
@@ -196,116 +199,106 @@ export function DocView({
 		</div>
 	);
 
-	if (editing && doc) {
-		return (
-			<div className="editor-pane" ref={paneRef}>
-				<div className="doc-bar">
-					{breadcrumb}
+	// One rendering path (M4 review decision 3): the editor is mounted in
+	// BOTH modes — read is `editable: false` on the same instance, Edit/Save/
+	// Cancel are mode flips with no remount (only a discard bumps the key to
+	// drop the buffer). The pane classes share their layout rule; the editor
+	// carries the `markdown` typography class, so the document reads
+	// identically in both modes (M2 pixel parity).
+	return (
+		<div className={editing ? "editor-pane" : "doc-pane"} ref={paneRef}>
+			<div className="doc-bar">
+				{breadcrumb}
+				<div className="doc-actions">
+					{editing ? (
+						<>
+							<button
+								type="button"
+								className="iconbtn subtle"
+								onClick={requestCancel}
+								disabled={saving}
+							>
+								Cancel
+							</button>
+							<button
+								type="button"
+								className="iconbtn primary"
+								onClick={() => void handleSave()}
+								disabled={saving}
+							>
+								{saving ? "Saving…" : "Save"}
+							</button>
+						</>
+					) : (
+						<button
+							type="button"
+							className="iconbtn"
+							onClick={() => {
+								onBeforeEdit();
+								setEditing(true);
+								setSaveError(null);
+							}}
+							disabled={!doc}
+						>
+							{PencilIcon}
+							Edit
+						</button>
+					)}
+				</div>
+			</div>
+			{conflictBanner}
+			{pendingBanner}
+			{confirmingCancel && (
+				<div className="conflict-banner" role="alert">
+					<div>
+						<strong>Discard unsaved changes?</strong>
+						Your edits will be lost.
+					</div>
 					<div className="doc-actions">
 						<button
 							type="button"
-							className="iconbtn subtle"
-							onClick={requestCancel}
-							disabled={saving}
+							className="iconbtn subtle dismiss"
+							onClick={() => setConfirmingCancel(false)}
 						>
-							Cancel
+							Keep editing
 						</button>
-						<button
-							type="button"
-							className="iconbtn primary"
-							onClick={() => void handleSave()}
-							disabled={saving}
-						>
-							{saving ? "Saving…" : "Save"}
+						<button type="button" className="iconbtn" onClick={discardAndClose}>
+							Discard
 						</button>
 					</div>
 				</div>
-				{conflictBanner}
-				{pendingBanner}
-				{confirmingCancel && (
-					<div className="conflict-banner" role="alert">
-						<div>
-							<strong>Discard unsaved changes?</strong>
-							Your edits will be lost.
-						</div>
-						<div className="doc-actions">
-							<button
-								type="button"
-								className="iconbtn subtle dismiss"
-								onClick={() => setConfirmingCancel(false)}
-							>
-								Keep editing
-							</button>
-							<button
-								type="button"
-								className="iconbtn"
-								onClick={discardAndClose}
-							>
-								Discard
-							</button>
-						</div>
+			)}
+			{saveError && (
+				<div className="conflict-banner" role="alert">
+					<div>
+						<strong>Save failed</strong>
+						{saveError}
 					</div>
-				)}
-				{saveError && (
-					<div className="conflict-banner" role="alert">
-						<div>
-							<strong>Save failed</strong>
-							{saveError}
-						</div>
-						<button
-							type="button"
-							className="iconbtn subtle dismiss"
-							onClick={() => {
-								setEditing(false);
-								setSaveError(null);
-								onReload();
-							}}
-						>
-							Reload
-						</button>
-					</div>
-				)}
+					<button
+						type="button"
+						className="iconbtn subtle dismiss"
+						onClick={() => {
+							setEditing(false);
+							setSaveError(null);
+							onReload();
+						}}
+					>
+						Reload
+					</button>
+				</div>
+			)}
+			{doc ? (
 				<EditorPane
-					key={doc.path}
+					key={`${doc.path}#${resetCount}`}
 					ref={editorRef}
 					markdown={doc.markdown}
+					editable={editing}
 					saving={saving}
 					onDirtyChange={setDirty}
 					onSave={() => void handleSave()}
 					onCancel={requestCancel}
 				/>
-			</div>
-		);
-	}
-
-	return (
-		<div className="doc-pane">
-			<div className="doc-bar">
-				{breadcrumb}
-				<div className="doc-actions">
-					<button
-						type="button"
-						className="iconbtn"
-						onClick={() => {
-							onBeforeEdit();
-							setEditing(true);
-							setSaveError(null);
-						}}
-						disabled={!doc}
-					>
-						{PencilIcon}
-						Edit
-					</button>
-				</div>
-			</div>
-			{conflictBanner}
-			<article className="markdown">
-				{doc ? (
-					<ReactMarkdown remarkPlugins={[remarkGfm]}>
-						{doc.markdown}
-					</ReactMarkdown>
-				) : null}
-			</article>
+			) : null}
 		</div>
 	);
 }
