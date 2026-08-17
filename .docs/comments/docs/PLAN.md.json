@@ -1,0 +1,18 @@
+{
+	"comments": {
+		"99ae9594-b26e-43a9-a8e9-74e8f6cd598d": {
+			"id": "99ae9594-b26e-43a9-a8e9-74e8f6cd598d",
+			"quote": "Highlight-to-comment UI (selection → create thread)",
+			"author": "Andrei Migatchev",
+			"createdAt": "2026-08-17T11:57:31.912Z",
+			"resolved": false,
+			"replies": [
+				{
+					"author": "Andrei Migatchev",
+					"body": "Testing the new comments to see how well they work from read mode.",
+					"at": "2026-08-17T11:57:31.912Z"
+				}
+			]
+		}
+	}
+}
