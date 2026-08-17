@@ -1,3 +1,4 @@
+export * from "./comments.js";
 export * from "./commit.js";
 export * from "./config.js";
 export * from "./docs.js";
