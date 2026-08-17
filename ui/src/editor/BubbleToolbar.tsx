@@ -2,43 +2,38 @@ import type { ChainedCommands, Editor } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import { useEditorState } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
+import { Link, MessageSquarePlus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { shouldShowBubble } from "./bubble.js";
 import { ImageForm } from "./ImageForm";
 
-type Pane = null | "turn" | "link" | "image";
+type Pane = null | "turn" | "link" | "image" | "comment";
 
 // The right-click (forced) lifecycle drives the bubble plugin via meta
 // commands on this key: the plugin's update() ignores no-op transactions, so
 // a right-click at the current caret would never re-evaluate shouldShow.
 const bubblePluginKey = new PluginKey("fragmtFormattingBubble");
 
-const LinkIcon = (
-	<svg
-		aria-hidden="true"
-		viewBox="0 0 24 24"
-		fill="none"
-		stroke="currentColor"
-		strokeWidth={2}
-		strokeLinecap="round"
-		strokeLinejoin="round"
-	>
-		<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-		<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-	</svg>
-);
+const LinkIcon = <Link aria-hidden="true" />;
 
 /**
- * The contextual formatting surface (M2-2). Selection, image click, or
- * right-click (no selection needed — turn-into then applies to the cursor's
- * block). Right-click replaces the browser's native context menu inside the
- * edit area only; Ctrl+V and friends are unaffected.
+ * The contextual surface (M2-2 formatting, M4 comment). Selection or image
+ * click; right-click (no selection needed — turn-into then applies to the
+ * cursor's block) stays edit-only. Read mode mounts the SAME bubble with only
+ * the Comment action (M4 review decision 1) — the anchoring flow runs on the
+ * non-editable instance and never flips the mode. Right-click replaces the
+ * browser's native context menu inside the edit area only; Ctrl+V and
+ * friends are unaffected.
  */
 export function BubbleToolbar({
 	editor,
+	editable,
+	onComment,
 	onVisibilityChange,
 }: {
 	editor: Editor;
+	editable: boolean;
+	onComment: (id: string, quote: string, body: string) => void;
 	onVisibilityChange?: (visible: boolean) => void;
 }) {
 	const [pane, setPane] = useState<Pane>(null);
@@ -48,6 +43,9 @@ export function BubbleToolbar({
 	const rootRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
+		// The right-click hijack is edit-only (M2-2); read mode's bubble is
+		// selection-driven and comment-only.
+		if (!editable) return;
 		const onContext = (event: MouseEvent) => {
 			event.preventDefault();
 			const hit = editor.view.posAtCoords({
@@ -70,7 +68,7 @@ export function BubbleToolbar({
 		const dom = editor.view.dom;
 		dom.addEventListener("contextmenu", onContext);
 		return () => dom.removeEventListener("contextmenu", onContext);
-	}, [editor]);
+	}, [editor, editable]);
 
 	// A click outside the bubble ends a forced (right-click) session.
 	useEffect(() => {
@@ -137,7 +135,7 @@ export function BubbleToolbar({
 				ref={rootRef}
 				className="edit-bubble"
 				role="menu"
-				aria-label="Formatting"
+				aria-label={editable ? "Formatting" : "Comment"}
 				onKeyDown={(e) => {
 					if (e.key !== "Escape") return;
 					e.stopPropagation();
@@ -152,7 +150,14 @@ export function BubbleToolbar({
 							.run();
 				}}
 			>
-				<BubbleBody editor={editor} pane={pane} setPane={setPane} hide={hide} />
+				<BubbleBody
+					editor={editor}
+					editable={editable}
+					onComment={onComment}
+					pane={pane}
+					setPane={setPane}
+					hide={hide}
+				/>
 			</div>
 		</BubbleMenu>
 	);
@@ -160,11 +165,15 @@ export function BubbleToolbar({
 
 function BubbleBody({
 	editor,
+	editable,
+	onComment,
 	pane,
 	setPane,
 	hide,
 }: {
 	editor: Editor;
+	editable: boolean;
+	onComment: (id: string, quote: string, body: string) => void;
 	pane: Pane;
 	setPane: (p: Pane) => void;
 	hide: () => void;
@@ -188,14 +197,24 @@ function BubbleBody({
 			image: e.isActive("image"),
 			imgSrc: (e.getAttributes("image").src as string | undefined) ?? "",
 			imgAlt: (e.getAttributes("image").alt as string | undefined) ?? "",
+			hasSelection: !e.state.selection.empty,
 		}),
 	});
 
 	// Every action restores editor focus (buttons steal it) and closes the
 	// surface; popover panes stay open until submitted or cancelled.
 	const linkInputRef = useRef<HTMLInputElement>(null);
+	const commentRef = useRef<HTMLTextAreaElement>(null);
+	// The composer's anchor: the selection captured when the pane opened —
+	// focusing the textarea must not be able to move what a comment marks.
+	const [anchor, setAnchor] = useState<{
+		from: number;
+		to: number;
+		quote: string;
+	} | null>(null);
 	useEffect(() => {
 		if (pane === "link") linkInputRef.current?.focus();
+		if (pane === "comment") commentRef.current?.focus();
 	}, [pane]);
 	const run = (fn: (chain: ChainedCommands) => unknown) => {
 		fn(editor.chain().focus());
@@ -243,38 +262,95 @@ function BubbleBody({
 		</button>
 	);
 
+	// The comment action (M4 review decision 1): opens the composer on the
+	// selection captured at click — the mark and the quote snapshot both come
+	// from that stored range, so focusing the textarea cannot drift them.
+	// Hidden without a selection: a forced (right-click) bubble can sit on a
+	// bare caret, and there is nothing to anchor there.
+	const commentButton = s.hasSelection && (
+		<button
+			type="button"
+			className="bubble-btn"
+			aria-label="Comment"
+			aria-expanded={pane === "comment"}
+			onMouseDown={(e) => e.preventDefault()}
+			onClick={() => {
+				if (pane === "comment") {
+					setPane(null);
+					return;
+				}
+				const { from, to } = editor.state.selection;
+				setAnchor({
+					from,
+					to,
+					quote: editor.state.doc.textBetween(from, to, " "),
+				});
+				setPane("comment");
+			}}
+		>
+			<MessageSquarePlus aria-hidden="true" />
+		</button>
+	);
+
+	// Anchoring (M4 spec's contract): apply the mark locally with a fresh
+	// UUID, then hand the persistence of BOTH ends to DocView (doc first,
+	// sidecar second — its business). Commands dispatch through
+	// view.dispatch, which is NOT gated by editable (read-mode setContent
+	// already relies on that), so the same chain works in both modes — the
+	// mode never flips. Collapsing to the range end hides the bubble.
+	const submitComment = () => {
+		const body = commentRef.current?.value.trim();
+		if (!body || !anchor?.quote) return;
+		const id = crypto.randomUUID();
+		editor
+			.chain()
+			.focus()
+			.setTextSelection({ from: anchor.from, to: anchor.to })
+			.setMark("comment", { dataC: id })
+			.setTextSelection(anchor.to)
+			.run();
+		setPane(null);
+		onComment(id, anchor.quote, body);
+	};
+
 	return (
 		<>
 			<div className="bubble-row">
-				{btn("Bold", () => run((c) => c.toggleBold().run()), s.bold)}
-				{btn("Italic", () => run((c) => c.toggleItalic().run()), s.italic)}
-				{btn("Strike", () => run((c) => c.toggleStrike().run()), s.strike)}
-				{btn("Code", () => run((c) => c.toggleCode().run()), s.code)}
-				<span className="bubble-sep" />
-				<button
-					type="button"
-					className="bubble-btn"
-					aria-label="Link"
-					aria-pressed={s.link || undefined}
-					aria-expanded={pane === "link"}
-					onMouseDown={(e) => e.preventDefault()}
-					onClick={() => setPane(pane === "link" ? null : "link")}
-				>
-					{LinkIcon}
-				</button>
-				<button
-					type="button"
-					className="bubble-btn"
-					aria-label="Turn into"
-					aria-expanded={pane === "turn"}
-					onMouseDown={(e) => e.preventDefault()}
-					onClick={() => setPane(pane === "turn" ? null : "turn")}
-				>
-					Aa ▾
-				</button>
+				{editable && (
+					<>
+						{btn("Bold", () => run((c) => c.toggleBold().run()), s.bold)}
+						{btn("Italic", () => run((c) => c.toggleItalic().run()), s.italic)}
+						{btn("Strike", () => run((c) => c.toggleStrike().run()), s.strike)}
+						{btn("Code", () => run((c) => c.toggleCode().run()), s.code)}
+						<span className="bubble-sep" />
+						<button
+							type="button"
+							className="bubble-btn"
+							aria-label="Link"
+							aria-pressed={s.link || undefined}
+							aria-expanded={pane === "link"}
+							onMouseDown={(e) => e.preventDefault()}
+							onClick={() => setPane(pane === "link" ? null : "link")}
+						>
+							{LinkIcon}
+						</button>
+						<button
+							type="button"
+							className="bubble-btn"
+							aria-label="Turn into"
+							aria-expanded={pane === "turn"}
+							onMouseDown={(e) => e.preventDefault()}
+							onClick={() => setPane(pane === "turn" ? null : "turn")}
+						>
+							Aa ▾
+						</button>
+						<span className="bubble-sep" />
+					</>
+				)}
+				{commentButton}
 			</div>
 
-			{pane === "link" && (
+			{editable && pane === "link" && (
 				<form
 					className="popover-form"
 					onSubmit={(e) => {
@@ -311,7 +387,7 @@ function BubbleBody({
 				</form>
 			)}
 
-			{pane === "turn" && (
+			{editable && pane === "turn" && (
 				<div className="bubble-list">
 					{item("Text", s.text, (c) => c.setParagraph().run())}
 					{item(
@@ -342,7 +418,7 @@ function BubbleBody({
 				</div>
 			)}
 
-			{s.image && pane === null && (
+			{editable && s.image && pane === null && (
 				<>
 					<div className="bubble-label">Image</div>
 					<div className="bubble-list">
@@ -366,7 +442,7 @@ function BubbleBody({
 				</>
 			)}
 
-			{s.image && pane === "image" && (
+			{editable && s.image && pane === "image" && (
 				<ImageForm
 					initial={{ src: s.imgSrc, alt: s.imgAlt }}
 					submitLabel="Apply"
@@ -379,7 +455,7 @@ function BubbleBody({
 				/>
 			)}
 
-			{s.inTable && pane === null && (
+			{editable && s.inTable && pane === null && (
 				<>
 					<div className="bubble-label">Table</div>
 					<div className="bubble-list">
@@ -398,6 +474,39 @@ function BubbleBody({
 						)}
 					</div>
 				</>
+			)}
+
+			{pane === "comment" && anchor && (
+				<form
+					className="popover-form"
+					onSubmit={(e) => {
+						e.preventDefault();
+						submitComment();
+					}}
+				>
+					<p className="comment-quote">{anchor.quote}</p>
+					<label htmlFor="comment-body">Comment</label>
+					<textarea
+						id="comment-body"
+						ref={commentRef}
+						rows={3}
+						placeholder="Leave a note…"
+						required
+					/>
+					<div className="popover-actions">
+						<button
+							type="button"
+							className="iconbtn subtle"
+							onMouseDown={(e) => e.preventDefault()}
+							onClick={() => setPane(null)}
+						>
+							Cancel
+						</button>
+						<button type="submit" className="iconbtn primary">
+							Comment
+						</button>
+					</div>
+				</form>
 			)}
 		</>
 	);

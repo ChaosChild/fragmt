@@ -1,26 +1,21 @@
+import { MessageSquare, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { type DocResponse, SaveError, saveDoc } from "./api";
+import {
+	addComment,
+	type DocResponse,
+	getComments,
+	SaveError,
+	saveDoc,
+} from "./api";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
-
-const PencilIcon = (
-	<svg
-		aria-hidden="true"
-		viewBox="0 0 24 24"
-		fill="none"
-		stroke="currentColor"
-		strokeWidth={2}
-		strokeLinecap="round"
-		strokeLinejoin="round"
-	>
-		<path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-	</svg>
-);
 
 /**
  * The doc pane: reading mode by default (DESIGN §3), one explicit Edit action
  * flips the SAME mounted Tiptap editor to editable (M4 review decision 3 —
  * one rendering path, no reflow between modes). Save commits via PUT; a 409
  * shows a non-destructive banner and keeps the user's buffer (M2 spec).
+ * Comment anchoring (M4) reuses the same PUT seam — doc first, sidecar
+ * second — without ever flipping the mode.
  */
 export function DocView({
 	doc,
@@ -28,6 +23,7 @@ export function DocView({
 	onSaved,
 	onReload,
 	onDirtyChange,
+	onOpenComments,
 	pendingBranch,
 	onPendingBranchCancel,
 	onPendingBranchGo,
@@ -40,6 +36,8 @@ export function DocView({
 	onSaved: (doc: DocResponse) => void;
 	onReload: () => void;
 	onDirtyChange: (dirty: boolean) => void;
+	/** Placeholder until the comments rail (M4-5) attaches here. */
+	onOpenComments?: () => void;
 	/** A branch switch waiting on the save-or-discard choice (M3). */
 	pendingBranch: string | null;
 	onPendingBranchCancel: () => void;
@@ -60,6 +58,23 @@ export function DocView({
 		onDirtyChange(d);
 	};
 	const [confirmingCancel, setConfirmingCancel] = useState(false);
+	const [commentCount, setCommentCount] = useState(0);
+	// The doc-bar badge count (M4): GET the sidecar on doc load; a failure is
+	// quiet — zero hides the button.
+	const docPath = doc?.path;
+	useEffect(() => {
+		setCommentCount(0);
+		if (!docPath) return;
+		let live = true;
+		getComments(docPath)
+			.then((file) => {
+				if (live) setCommentCount(Object.keys(file.comments).length);
+			})
+			.catch(() => {});
+		return () => {
+			live = false;
+		};
+	}, [docPath]);
 	// Discard must drop the edited buffer: the editor stays mounted across
 	// the mode flip, so bumping the key remounts it fresh from doc.markdown.
 	const [resetCount, setResetCount] = useState(0);
@@ -109,16 +124,17 @@ export function DocView({
 		</nav>
 	);
 
-	async function handleSave(): Promise<boolean> {
+	// The one PUT seam both save paths share (M2): sends the buffer with
+	// DocView's base hash; on success the doc state/hash refresh through
+	// onSaved (App.setDoc → same-content setContent → dirty resets), so the
+	// next save doesn't 409 itself.
+	async function persist(markdown: string): Promise<boolean> {
 		if (!doc || saving) return false;
-		const markdown = editorRef.current?.getMarkdown() ?? "";
 		setSaving(true);
 		setSaveError(null);
 		try {
 			const { hash } = await saveDoc(doc.path, markdown, doc.hash);
-			setEditing(false);
 			setDirty(false);
-			setConfirmingCancel(false);
 			onSaved({ ...doc, markdown, hash });
 			return true;
 		} catch (e) {
@@ -130,6 +146,33 @@ export function DocView({
 			return false;
 		} finally {
 			setSaving(false);
+		}
+	}
+
+	async function handleSave(): Promise<boolean> {
+		const ok = await persist(editorRef.current?.getMarkdown() ?? "");
+		if (ok) {
+			setEditing(false);
+			setConfirmingCancel(false);
+		}
+		return ok;
+	}
+
+	// Comment anchoring (M4 spec's contract): the mark is already applied
+	// locally by the composer; here the doc saves FIRST, then the sidecar
+	// thread posts. A failed doc save (the existing banner above) leaves the
+	// sidecar untouched. The mode is never flipped — commenting from read
+	// mode stays in read mode.
+	async function handleComment(id: string, quote: string, body: string) {
+		if (!doc) return;
+		if (!(await persist(editorRef.current?.getMarkdown() ?? ""))) return;
+		try {
+			await addComment(doc.path, { id, quote, body });
+			setCommentCount((n) => n + 1);
+		} catch (e) {
+			// Doc saved (mark included) but no thread — the error banner shows
+			// it; orphan reconcile (M4-5) is the recovery story.
+			setSaveError(e instanceof Error ? e.message : String(e));
 		}
 	}
 
@@ -230,19 +273,33 @@ export function DocView({
 							</button>
 						</>
 					) : (
-						<button
-							type="button"
-							className="iconbtn"
-							onClick={() => {
-								onBeforeEdit();
-								setEditing(true);
-								setSaveError(null);
-							}}
-							disabled={!doc}
-						>
-							{PencilIcon}
-							Edit
-						</button>
+						<>
+							<button
+								type="button"
+								className="iconbtn"
+								onClick={() => {
+									onBeforeEdit();
+									setEditing(true);
+									setSaveError(null);
+								}}
+								disabled={!doc}
+							>
+								<Pencil aria-hidden="true" />
+								Edit
+							</button>
+							{commentCount > 0 && (
+								<button
+									type="button"
+									className="iconbtn comments-btn"
+									aria-label={`Comments (${commentCount})`}
+									onClick={onOpenComments}
+								>
+									<MessageSquare aria-hidden="true" />
+									<span className="label">Comments</span>
+									<span className="badge">{commentCount}</span>
+								</button>
+							)}
+						</>
 					)}
 				</div>
 			</div>
@@ -297,6 +354,7 @@ export function DocView({
 					onDirtyChange={setDirty}
 					onSave={() => void handleSave()}
 					onCancel={requestCancel}
+					onComment={(id, quote, body) => void handleComment(id, quote, body)}
 				/>
 			) : null}
 		</div>

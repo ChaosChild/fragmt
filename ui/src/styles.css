@@ -1619,6 +1619,23 @@ body {
 	border-color: var(--accent);
 	box-shadow: var(--focus-ring);
 }
+/* Comment composer (M4) — the input treatment on a body-font textarea */
+.popover-form textarea {
+	font-family: var(--font-body);
+	font-size: 13px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 7px 8px;
+	background: var(--surface);
+	color: var(--fg);
+	min-width: 0;
+	resize: vertical;
+}
+.popover-form textarea:focus-visible {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: var(--focus-ring);
+}
 .popover-form .popover-actions {
 	display: flex;
 	justify-content: flex-end;

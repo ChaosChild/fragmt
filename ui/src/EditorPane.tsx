@@ -25,14 +25,17 @@ export interface EditorPaneHandle {
  * (keyed by path), loads the body through tiptap-markdown's setContent, and
  * hands the serialized markdown back via `onSave`. Esc cancels, Ctrl/Cmd+S
  * saves (DESIGN §8). M2-2 adds the contextual formatting surfaces:
- * selection/right-click bubble, slash menu, and the image popover — all
- * edit-mode only.
+ * right-click bubble, slash menu, and the image popover — edit-mode only.
+ * M4 mounts the bubble in BOTH modes: read mode carries only the comment
+ * action, whose anchoring flow (`onComment`) runs on the non-editable
+ * instance without ever flipping the mode (review decision 3).
  */
 export function EditorPane({
 	markdown,
 	editable,
 	onSave,
 	onCancel,
+	onComment,
 	saving,
 	onDirtyChange,
 	ref,
@@ -41,6 +44,7 @@ export function EditorPane({
 	editable: boolean;
 	onSave: (markdown: string) => void;
 	onCancel: () => void;
+	onComment: (id: string, quote: string, body: string) => void;
 	saving: boolean;
 	onDirtyChange?: (dirty: boolean) => void;
 	ref?: Ref<EditorPaneHandle>;
@@ -151,9 +155,12 @@ export function EditorPane({
 					}
 				}}
 			/>
-			{editable && (
-				<BubbleToolbar editor={editor} onVisibilityChange={setBubbleOpen} />
-			)}
+			<BubbleToolbar
+				editor={editor}
+				editable={editable}
+				onComment={onComment}
+				onVisibilityChange={setBubbleOpen}
+			/>
 			{editable && slashState && (
 				// Keyed by query: a new filter remounts the menu, resetting the
 				// highlight to the first item.

@@ -153,3 +153,21 @@ export const checkoutBranch = (name: string) =>
 	});
 
 export const sync = () => request<SyncResult>("/api/sync", { method: "POST" });
+
+// --- M4: comments ---------------------------------------------------------
+
+/** Sidecar shape — only the count is consumed until the rail (M4-5). */
+export const getComments = (path: string) =>
+	request<{ comments: Record<string, unknown> }>(
+		`/api/docs/${encodeURI(path)}/comments`,
+	);
+
+export const addComment = (
+	path: string,
+	thread: { id: string; quote: string; body: string },
+) =>
+	request<{ sha: string }>(`/api/docs/${encodeURI(path)}/comments`, {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify(thread),
+	});
