@@ -1,12 +1,6 @@
 import { MessageSquare, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import {
-	addComment,
-	type DocResponse,
-	getComments,
-	SaveError,
-	saveDoc,
-} from "./api";
+import { addComment, type DocResponse, SaveError, saveDoc } from "./api";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 
 /**
@@ -15,7 +9,9 @@ import { EditorPane, type EditorPaneHandle } from "./EditorPane";
  * one rendering path, no reflow between modes). Save commits via PUT; a 409
  * shows a non-destructive banner and keeps the user's buffer (M2 spec).
  * Comment anchoring (M4) reuses the same PUT seam — doc first, sidecar
- * second — without ever flipping the mode.
+ * second — without ever flipping the mode. The rail lives in App; DocView
+ * keeps only the doc-bar badge (fed from App's sidecar state) and forwards
+ * highlight-span clicks to it.
  */
 export function DocView({
 	doc,
@@ -23,7 +19,10 @@ export function DocView({
 	onSaved,
 	onReload,
 	onDirtyChange,
+	commentCount,
 	onOpenComments,
+	onCommentsChanged,
+	onSpanClick,
 	pendingBranch,
 	onPendingBranchCancel,
 	onPendingBranchGo,
@@ -36,8 +35,14 @@ export function DocView({
 	onSaved: (doc: DocResponse) => void;
 	onReload: () => void;
 	onDirtyChange: (dirty: boolean) => void;
-	/** Placeholder until the comments rail (M4-5) attaches here. */
-	onOpenComments?: () => void;
+	/** Live thread count (App owns the sidecar state) — 0 hides the button. */
+	commentCount: number;
+	/** Opens/scrolls the comments rail (App); the mobile sheet's entry point. */
+	onOpenComments: () => void;
+	/** Bumps App's sidecar refetch after a successful create. */
+	onCommentsChanged: () => void;
+	/** A comment highlight was activated in the doc — jump the rail to it. */
+	onSpanClick: (id: string) => void;
 	/** A branch switch waiting on the save-or-discard choice (M3). */
 	pendingBranch: string | null;
 	onPendingBranchCancel: () => void;
@@ -58,23 +63,6 @@ export function DocView({
 		onDirtyChange(d);
 	};
 	const [confirmingCancel, setConfirmingCancel] = useState(false);
-	const [commentCount, setCommentCount] = useState(0);
-	// The doc-bar badge count (M4): GET the sidecar on doc load; a failure is
-	// quiet — zero hides the button.
-	const docPath = doc?.path;
-	useEffect(() => {
-		setCommentCount(0);
-		if (!docPath) return;
-		let live = true;
-		getComments(docPath)
-			.then((file) => {
-				if (live) setCommentCount(Object.keys(file.comments).length);
-			})
-			.catch(() => {});
-		return () => {
-			live = false;
-		};
-	}, [docPath]);
 	// Discard must drop the edited buffer: the editor stays mounted across
 	// the mode flip, so bumping the key remounts it fresh from doc.markdown.
 	const [resetCount, setResetCount] = useState(0);
@@ -168,10 +156,10 @@ export function DocView({
 		if (!(await persist(editorRef.current?.getMarkdown() ?? ""))) return;
 		try {
 			await addComment(doc.path, { id, quote, body });
-			setCommentCount((n) => n + 1);
+			onCommentsChanged();
 		} catch (e) {
 			// Doc saved (mark included) but no thread — the error banner shows
-			// it; orphan reconcile (M4-5) is the recovery story.
+			// it; the orphan reconcile in the rail is the recovery story.
 			setSaveError(e instanceof Error ? e.message : String(e));
 		}
 	}
@@ -355,6 +343,7 @@ export function DocView({
 					onSave={() => void handleSave()}
 					onCancel={requestCancel}
 					onComment={(id, quote, body) => void handleComment(id, quote, body)}
+					onSpanClick={onSpanClick}
 				/>
 			) : null}
 		</div>

@@ -1,19 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+	type CommentFile,
+	type CommentThread,
 	checkoutBranch,
 	createBranch,
 	createDoc,
 	type DocResponse,
+	deleteComment,
 	deleteDoc,
 	deleteFolder,
 	getBranches,
+	getComments,
 	getDoc,
 	getTree,
 	moveDoc,
+	patchComment,
 	renameFolder,
 	sync,
 	type TreeNode,
 } from "./api";
+import { CommentsRail } from "./CommentsRail";
 import { DocView } from "./DocView";
 import {
 	type BranchAction,
@@ -22,7 +28,6 @@ import {
 	NewDocButton,
 } from "./Menus";
 import { Sidebar } from "./Sidebar";
-import { ThemeToggle } from "./ThemeToggle";
 
 function firstDoc(node: TreeNode): string | null {
 	for (const child of node.children ?? []) {
@@ -51,6 +56,19 @@ export function App() {
 	const [syncing, setSyncing] = useState(false);
 	const [conflict, setConflict] = useState<string | null>(null);
 	const [ledRed, setLedRed] = useState(false);
+
+	// --- comments (M4-5): App owns the sidecar state — the rail, the doc-bar
+	// badge, and DocView's create-notification all read from this one fetch;
+	// every mutation re-runs it through refreshComments.
+	const [commentFile, setCommentFile] = useState<CommentFile>({
+		comments: {},
+	});
+	const [railOpen, setRailOpen] = useState(false);
+	const [railError, setRailError] = useState<string | null>(null);
+	// Doc→rail jump target; `n` re-arms repeated clicks on the same span.
+	const [spanFocus, setSpanFocus] = useState<{ id: string; n: number } | null>(
+		null,
+	);
 
 	// Latest selected/dirty for the stable interval/focus sync callback.
 	const live = useRef({ selected, dirty });
@@ -98,6 +116,92 @@ export function App() {
 				setError(e instanceof Error ? e.message : String(e)),
 			);
 	};
+
+	// The sidecar fetch on doc open. A failure is quiet (the rail shows empty;
+	// the next action retries).
+	useEffect(() => {
+		setRailError(null);
+		if (!selected) {
+			setCommentFile({ comments: {} });
+			return;
+		}
+		let cancelled = false;
+		getComments(selected)
+			.then((file) => {
+				if (!cancelled) setCommentFile(file);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, [selected]);
+
+	// Post-mutation refetch — reads the live selection through the same ref
+	// the sync callback uses (mutations can't race a doc switch mid-await).
+	const refreshComments = () => {
+		const path = live.current.selected;
+		if (!path) return;
+		getComments(path)
+			.then(setCommentFile)
+			.catch(() => {});
+	};
+
+	const threads: CommentThread[] = Object.values(commentFile.comments);
+	// The orphan rule, client-side: core's reconcileThreads check replicated
+	// against the RENDERED doc's markdown (doc.markdown is the exact string
+	// the editor renders from and is refreshed on every save). Smaller than
+	// enumerating live ids through the editor's state. While the doc is still
+	// loading, assume live — no orphan flash on mount. Edits that delete a
+	// span show as live until the next save, the spec's accepted degradation.
+	const liveIds = new Set(
+		doc
+			? threads
+					.filter((t) => doc.markdown.includes(`data-c="${t.id}"`))
+					.map((t) => t.id)
+			: threads.map((t) => t.id),
+	);
+
+	async function railReply(id: string, body: string): Promise<boolean> {
+		if (!selected) return false;
+		try {
+			await patchComment(selected, id, { reply: body });
+		} catch (e) {
+			setRailError(e instanceof Error ? e.message : String(e));
+			return false;
+		}
+		setRailError(null);
+		refreshComments();
+		return true;
+	}
+
+	async function railResolve(id: string) {
+		if (!selected) return;
+		try {
+			await patchComment(selected, id, { resolved: true });
+		} catch (e) {
+			setRailError(e instanceof Error ? e.message : String(e));
+			return;
+		}
+		setRailError(null);
+		refreshComments();
+	}
+
+	// Delete removes the sidecar entry now; the span itself disappears on the
+	// doc's next save (spec) — so simply refetch both. The doc refetch is
+	// skipped while the buffer is dirty (it would drop unsaved edits).
+	async function railDelete(id: string) {
+		if (!selected) return;
+		if (!window.confirm("Delete this comment thread?")) return;
+		try {
+			await deleteComment(selected, id);
+		} catch (e) {
+			setRailError(e instanceof Error ? e.message : String(e));
+			return;
+		}
+		setRailError(null);
+		refreshComments();
+		if (!live.current.dirty) reloadSelected();
+	}
 
 	// --- sync (M3): ~60s interval, window focus; edit-entry fires from
 	// DocView. A conflict turns the LED red + the doc-pane banner; network
@@ -251,15 +355,6 @@ export function App() {
 						<div className="side-head-spacer" />
 						<NewDocButton onFileOp={runFileOp} />
 						<BranchMenu current={branch} onAction={requestBranch} />
-						<span
-							className="led-status"
-							role="status"
-							aria-label={ledLabel}
-							title={ledLabel}
-						>
-							<span className={`led ${led}`} />
-						</span>
-						<ThemeToggle />
 					</div>
 					<Sidebar
 						tree={tree}
@@ -280,6 +375,13 @@ export function App() {
 						onSaved={setDoc}
 						onReload={reloadSelected}
 						onDirtyChange={setDirty}
+						commentCount={threads.length}
+						onOpenComments={() => setRailOpen(true)}
+						onCommentsChanged={refreshComments}
+						onSpanClick={(id) => {
+							setRailOpen(true);
+							setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
+						}}
 						pendingBranch={pendingBranch?.name ?? null}
 						onPendingBranchCancel={() => setPendingBranch(null)}
 						onPendingBranchGo={() => {
@@ -292,6 +394,23 @@ export function App() {
 						onBeforeEdit={() => void runSync()}
 					/>
 				</main>
+				{/* The rail is a layout sibling of <main> (right margin column);
+				    the head carries the app's sync LED + theme (review decision 2). */}
+				{selected && (
+					<CommentsRail
+						threads={threads}
+						liveIds={liveIds}
+						led={led}
+						ledLabel={ledLabel}
+						open={railOpen}
+						onClose={() => setRailOpen(false)}
+						focus={spanFocus}
+						onReply={(id, body) => railReply(id, body)}
+						onResolve={(id) => void railResolve(id)}
+						onDelete={(id) => void railDelete(id)}
+						error={railError}
+					/>
+				)}
 			</div>
 		</>
 	);

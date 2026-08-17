@@ -36,6 +36,7 @@ export function EditorPane({
 	onSave,
 	onCancel,
 	onComment,
+	onSpanClick,
 	saving,
 	onDirtyChange,
 	ref,
@@ -45,6 +46,8 @@ export function EditorPane({
 	onSave: (markdown: string) => void;
 	onCancel: () => void;
 	onComment: (id: string, quote: string, body: string) => void;
+	/** A comment highlight (span[data-c]) was activated — jump the rail to it. */
+	onSpanClick: (id: string) => void;
 	saving: boolean;
 	onDirtyChange?: (dirty: boolean) => void;
 	ref?: Ref<EditorPaneHandle>;
@@ -125,11 +128,29 @@ export function EditorPane({
 				editor={editor}
 				className="edit-area"
 				aria-label="Document editor"
+				// Highlight jumps (M4-5), delegated over the editor DOM — edit
+				// mode is excluded (clicks are selection there), and a drag
+				// selection landing on a span doesn't jump: read-mode commenting
+				// on already-marked text must keep working.
+				onClick={(e) => {
+					if (editable || !window.getSelection()?.isCollapsed) return;
+					const span = (e.target as HTMLElement).closest("[data-c]");
+					if (span) onSpanClick(span.getAttribute("data-c") ?? "");
+				}}
 				onKeyDown={(e) => {
 					// Read mode owns no edit-session keys — Esc just clears
 					// the selection (PM's own handling), Ctrl+S would save a
-					// buffer the user cannot see they are editing.
-					if (!editable) return;
+					// buffer the user cannot see they are editing. Enter/Space
+					// on a focused highlight (the mark carries tabindex) jumps
+					// to its thread instead.
+					if (!editable) {
+						const span = (e.target as HTMLElement).closest("[data-c]");
+						if (span && (e.key === "Enter" || e.key === " ")) {
+							e.preventDefault();
+							onSpanClick(span.getAttribute("data-c") ?? "");
+						}
+						return;
+					}
 					// Escape order (M2-2): popover → slash menu → bubble →
 					// selection → edit-cancel-with-confirm. Each surface
 					// dismisses itself first; the bubble runs a capture-phase

@@ -76,9 +76,22 @@ export const CommentMark = Mark.create({
 	},
 
 	renderHTML({ HTMLAttributes }) {
+		// tabindex/role make the read-mode highlight a keyboard-reachable
+		// jump-to-thread control (app.html's reference markup) — the staged
+		// .comment-highlight:focus-visible ring exists for exactly this.
+		// ponytail: attrs stay on in edit mode too (renderHTML has no mode
+		// context); tab stops inside the editable are the accepted ceiling.
 		return [
 			"span",
-			mergeAttributes({ class: "comment-highlight" }, HTMLAttributes),
+			mergeAttributes(
+				{
+					class: "comment-highlight",
+					tabindex: "0",
+					role: "button",
+					title: "View comment",
+				},
+				HTMLAttributes,
+			),
 			0,
 		];
 	},

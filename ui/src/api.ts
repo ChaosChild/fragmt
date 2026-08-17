@@ -156,11 +156,29 @@ export const sync = () => request<SyncResult>("/api/sync", { method: "POST" });
 
 // --- M4: comments ---------------------------------------------------------
 
-/** Sidecar shape — only the count is consumed until the rail (M4-5). */
+/** Mirror of the core sidecar types (src/core/comments.ts). */
+export interface CommentReply {
+	author: string;
+	body: string;
+	/** ISO. */
+	at: string;
+}
+export interface CommentThread {
+	/** == the data-c span id in the doc body. */
+	id: string;
+	/** Snapshot of the marked text, captured once at creation. */
+	quote: string;
+	author: string;
+	/** ISO. */
+	createdAt: string;
+	resolved: boolean;
+	/** The opening comment is replies[0]; later replies append. */
+	replies: CommentReply[];
+}
+export type CommentFile = { comments: Record<string, CommentThread> };
+
 export const getComments = (path: string) =>
-	request<{ comments: Record<string, unknown> }>(
-		`/api/docs/${encodeURI(path)}/comments`,
-	);
+	request<CommentFile>(`/api/docs/${encodeURI(path)}/comments`);
 
 export const addComment = (
 	path: string,
@@ -171,3 +189,24 @@ export const addComment = (
 		headers: JSON_HEADERS,
 		body: JSON.stringify(thread),
 	});
+
+/** One action per call (the server's PATCH shape): reply appends, resolved:true resolves. */
+export const patchComment = (
+	path: string,
+	id: string,
+	body: { resolved?: boolean; reply?: string },
+) =>
+	request<{ sha: string }>(
+		`/api/docs/${encodeURI(path)}/comments/${encodeURIComponent(id)}`,
+		{
+			method: "PATCH",
+			headers: JSON_HEADERS,
+			body: JSON.stringify(body),
+		},
+	);
+
+export const deleteComment = (path: string, id: string) =>
+	request<{ sha: string }>(
+		`/api/docs/${encodeURI(path)}/comments/${encodeURIComponent(id)}`,
+		{ method: "DELETE" },
+	);

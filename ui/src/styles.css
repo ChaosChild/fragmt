@@ -1202,6 +1202,79 @@ body {
 	font-family: var(--font-mono);
 	letter-spacing: 0.02em;
 }
+/* ── M4-5 rail interactivity: the staged rules above cover the static card;
+	   these add what rendering it as live controls needs. ── */
+/* The live quote is a real <button> (jump-to-doc) — UA resets on top of the
+   staged rule; the orphan quote stays a plain div. */
+.comment-quote {
+	display: block;
+	width: 100%;
+	background: none;
+	border-top: none;
+	border-right: none;
+	border-bottom: none;
+	text-align: left;
+	cursor: pointer;
+}
+.comment-quote:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* Action buttons carry lucide icons and the a11y floor (§9: ≥32px, ring). */
+.comment-actions button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-height: 32px;
+}
+.comment-actions button svg {
+	width: 12px;
+	height: 12px;
+}
+.comment-actions button.danger {
+	color: var(--danger);
+}
+.comment-actions button.danger:hover {
+	text-decoration-color: var(--danger);
+}
+.comment-actions button:focus-visible,
+.show-resolved:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* Replies after the opening comment — a quieter indent. */
+.comment-reply {
+	margin: var(--space-3) 0 0 var(--space-3);
+	padding-left: var(--space-3);
+	border-left: 1px solid var(--border-soft);
+}
+/* The sync-indicator text follows its LED (staged rule pins success only). */
+.sync-indicator.warn {
+	color: var(--warn);
+}
+.sync-indicator.err {
+	color: var(--danger);
+}
+/* "Show resolved (N)" — label-meta supplies the font/color. */
+.show-resolved {
+	display: block;
+	border: none;
+	background: none;
+	cursor: pointer;
+	min-height: 32px;
+	text-align: left;
+	padding: 0 0 var(--space-3) var(--space-1);
+}
+.show-resolved:hover {
+	color: var(--accent);
+}
+/* A failed reply/resolve/delete — shown at the top of the rail body. */
+.rail-error {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--danger);
+	padding: 0 var(--space-1) var(--space-3);
+}
 
 /* ═══ TOP BAR — mobile / tablet only ═══════════════════════════ */
 .topbar {
