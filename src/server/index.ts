@@ -4,6 +4,8 @@ import { getRequestListener } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono } from "hono";
 import {
+	addReply,
+	addThread,
 	checkoutBranch,
 	createBranch,
 	createDoc,
@@ -13,6 +15,7 @@ import {
 	DocPathError,
 	deleteDoc,
 	deleteFolder,
+	deleteThread,
 	docHash,
 	GitError,
 	GitIdentityError,
@@ -20,10 +23,14 @@ import {
 	listTree,
 	moveDoc,
 	PathExistsError,
+	readComments,
 	readDoc,
 	renameFolder,
+	resolveThread,
 	StaleDocError,
 	sync,
+	ThreadNotFoundError,
+	writeComments,
 	writeDoc,
 } from "../core/index.js";
 
@@ -43,6 +50,117 @@ export function createApp(ctx: ServerContext): Hono {
 	const app = new Hono();
 
 	app.get("/api/tree", (c) => c.json(listTree(ctx.repoRoot, ctx.docsRoot)));
+
+	// --- M4: comment sidecar -------------------------------------------------
+	// Hono's `*` spans slashes only at the END of a pattern, so a nested
+	// docPath (`notes/n.md/comments`) is invisible to `/api/docs/*/comments`.
+	// Instead this middleware — registered BEFORE the /api/docs/* routes, so
+	// comments tails win and everything else falls through via next() — splits
+	// the trailing-wildcard tail itself: `<docPath>/comments[/<id>]`, the
+	// suffix stripped from the END (a docPath may itself contain "/comments").
+	// The id is opaque: never path-resolved, just a non-empty slash-free string.
+
+	app.use(`${DOCS_PREFIX}*`, async (c, next) => {
+		const tail = tailPath(c, DOCS_PREFIX);
+		if (tail === undefined) return next(); // let the doc routes reject it
+		try {
+			if (tail.endsWith("/comments")) {
+				const docPath = tail.slice(0, -"/comments".length);
+				if (docPath === "") return c.json({ error: "invalid doc path" }, 400);
+				if (c.req.method === "GET")
+					return c.json(await readComments(ctx.repoRoot, docPath));
+				if (c.req.method === "POST") {
+					const body = await jsonBody(c);
+					if (body === null)
+						return c.json({ error: "invalid request body" }, 400);
+					// The id later appears as a path segment — empty or slash-bearing
+					// ids could never be addressed by PATCH/DELETE.
+					if (
+						typeof body.id !== "string" ||
+						body.id === "" ||
+						body.id.includes("/")
+					)
+						return c.json(
+							{ error: "id must be a non-empty string without slashes" },
+							400,
+						);
+					if (typeof body.quote !== "string" || typeof body.body !== "string")
+						return c.json({ error: "quote and body are required" }, 400);
+					const { sha } = await addThread(
+						ctx.repoRoot,
+						docPath,
+						body.id,
+						body.quote,
+						body.body,
+					);
+					return c.json({ sha });
+				}
+			} else {
+				const cut = tail.lastIndexOf("/comments/");
+				if (cut !== -1) {
+					const docPath = tail.slice(0, cut);
+					const id = tail.slice(cut + "/comments/".length);
+					if (docPath === "") return c.json({ error: "invalid doc path" }, 400);
+					if (id === "" || id.includes("/"))
+						return c.json(
+							{ error: "thread id must be non-empty without slashes" },
+							400,
+						);
+					if (c.req.method === "DELETE") {
+						const { sha } = await deleteThread(ctx.repoRoot, docPath, id);
+						return c.json({ sha });
+					}
+					if (c.req.method === "PATCH") {
+						const body = await jsonBody(c);
+						if (body === null)
+							return c.json({ error: "invalid request body" }, 400);
+						// Exactly one action per call (spec's shape).
+						const picked = (["resolved", "body", "reply"] as const).filter(
+							(k) => body[k] !== undefined,
+						);
+						if (picked.length !== 1)
+							return c.json(
+								{
+									error: "exactly one of resolved, body, or reply is required",
+								},
+								400,
+							);
+						if (picked[0] === "resolved") {
+							// Unresolve arrives in v1.x; anything but literal true is a reject.
+							if (body.resolved !== true)
+								return c.json(
+									{
+										error:
+											"resolved can only be true (unresolve arrives in v1.x)",
+									},
+									400,
+								);
+							const { sha } = await resolveThread(ctx.repoRoot, docPath, id);
+							return c.json({ sha });
+						}
+						const text = body[picked[0]];
+						if (typeof text !== "string")
+							return c.json({ error: `${picked[0]} must be a string` }, 400);
+						if (picked[0] === "reply") {
+							const { sha } = await addReply(ctx.repoRoot, docPath, id, text);
+							return c.json({ sha });
+						}
+						// `body` edits the opening comment (replies[0]) through the
+						// exported read-modify-write seam — the core has no edit helper.
+						const file = await readComments(ctx.repoRoot, docPath);
+						const thread = file.comments[id];
+						if (!thread) throw new ThreadNotFoundError(id);
+						thread.replies[0].body = text;
+						const { sha } = await writeComments(ctx.repoRoot, docPath, file);
+						return c.json({ sha });
+					}
+				}
+			}
+		} catch (e) {
+			return respondFileError(c, e);
+		}
+		return next();
+	});
 
 	app.get("/api/docs/*", (c) => {
 		let docPath: string;
@@ -301,13 +419,15 @@ async function jsonBody(c: Context): Promise<Record<string, unknown> | null> {
 
 /**
  * Map core file-op errors to responses, mirroring the PUT /api/docs/* handler
- * (DocPathError 400, DocNotFound 404, exists/identity 409). Unmapped errors
- * propagate to Hono's default 500.
+ * (DocPathError 400, DocNotFound/ThreadNotFound 404, exists/identity 409).
+ * Unmapped errors propagate to Hono's default 500.
  */
 function respondFileError(c: Context, e: unknown): Response {
 	if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
 	if (e instanceof DocNotFoundError)
 		return c.json({ error: "doc not found" }, 404);
+	if (e instanceof ThreadNotFoundError)
+		return c.json({ error: "thread not found" }, 404);
 	if (e instanceof PathExistsError) return c.json({ error: e.message }, 409);
 	if (e instanceof GitIdentityError)
 		return c.json({ error: "git identity not configured" }, 409);
