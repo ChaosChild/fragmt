@@ -20,6 +20,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - **Shipped:** M2 round-trip editing — Tiptap editor, save-as-commit through `commitAs`, stale-hash 409 guard, byte-for-byte frontmatter reattach, and the permanent corpus gate (`tests/roundtrip.test.ts`, built on the app's own extension array). 51 tests.
 - **Shipped:** M2-2 editing controls — contextual formatting surfaces only (selection/right-click bubble for marks, turn into, table structure, image edit; `/` slash menu for inserting blocks; empty-doc placeholder hint). Zero persistent chrome; the DESIGN editor clause amended in the same change. Escape order now popover → slash → selection → edit-cancel. 64 tests.
 - **Shipped:** M3 files & branches — full doc/folder lifecycle (one `commitAs` commit per op, R100 renames via fs mutations because `git mv`/`git rm` break the seam's unconditional `git add`), branch commands + `sync()` (pull --rebase + push, conflict aborts the rebase and leaves HEAD untouched; no-remote/no-upstream are no-ops), the HTTP surface for all of it, and the UI: branch dropdown with a dirty-buffer save-or-discard guard, sync LED + three triggers, file ops in fixed places. 91 tests.
+- **Shipped:** M4 inline comments — threads in `.docs/comments/<doc-path>.json` sidecars through the shared containment guard, one `commitAs` commit per mutation; comment HTTP surface (Hono mid-pattern `*` doesn't span slashes — one fall-through middleware splits the tail); read mode is now a non-editable Tiptap editor (one rendering path, react-markdown retired from the doc body, comment creation never flips the mode — review decision); bubble Comment action (comment-only in read mode); the rail with orphans, resolved toggle, and the LED/theme move; icons standardised on lucide-react. 111 tests.
 - **Realized versions:** TypeScript 7.0.2, Biome 2.5.7, Vite 8, React 19, Vitest 4, Node 22, @types/node 26; Tiptap 3.x, tiptap-markdown 0.9.x, happy-dom (M2, per the spike-validated majors).
 - **Deliberate deviations from the stack notes above:**
   - `tsconfig.json` gained `esModuleInterop` — `gray-matter` is CJS; standard fix for default-importing it under `nodenext`.
@@ -92,11 +93,11 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 **Goal:** inline self-notes anchored to text, versioned alongside docs. **Proves:** the mark + sidecar design from ARCHITECTURE.md works end-to-end.
 
-- [ ] Highlight-to-comment UI (selection → create thread)
-- [ ] Sidecar storage: `.docs/comments/<doc-path>.json`, keyed by mark id
-- [ ] Quote snapshot captured at comment creation
-- [ ] Resolve / delete comment
-- [ ] Orphan display: thread + quote snapshot when the span is gone
+- [x] Highlight-to-comment UI (selection → create thread)
+- [x] Sidecar storage: `.docs/comments/<doc-path>.json`, keyed by mark id
+- [x] Quote snapshot captured at comment creation
+- [x] Resolve / delete comment
+- [x] Orphan display: thread + quote snapshot when the span is gone
 
 ## M5 — Dogfood hardening
 
