@@ -1,6 +1,7 @@
 import { Check, Reply, RotateCcw, Trash2, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { CommentThread } from "./api";
+import { type AtDoc, filterAtDocs } from "./editor/at";
 import { ThemeToggle } from "./ThemeToggle";
 
 /** "2h ago" for recent, a locale date once older — the rail's quiet meta. */
@@ -24,9 +25,57 @@ function flash(el: Element) {
 	el.classList.add("flash");
 }
 
+/** Regex-escape a literal path for the linkify alternation. */
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A comment body with known doc paths as in-app links (M4-2): split on the
+ * known path list, longest first so overlapping paths can't half-match, with
+ * a word-boundary-ish guard so "a.md" doesn't fire inside "beta.md".
+ * ponytail: regex rebuilt per render — the rail holds a handful of bodies.
+ */
+function DocRefText({
+	text,
+	docs,
+	onOpenDoc,
+}: {
+	text: string;
+	docs: AtDoc[];
+	onOpenDoc: (path: string) => void;
+}) {
+	const paths = docs
+		.map((d) => d.path)
+		.filter(Boolean)
+		.sort((a, b) => b.length - a.length);
+	if (paths.length === 0 || !text) return <>{text}</>;
+	const re = new RegExp(`(?<![\\w/.-])(${paths.map(escapeRe).join("|")})`, "g");
+	const out: ReactNode[] = [];
+	let last = 0;
+	for (const m of text.matchAll(re)) {
+		const i = m.index ?? 0;
+		if (i > last) out.push(text.slice(last, i));
+		out.push(
+			<button
+				type="button"
+				className="doc-ref"
+				key={`${m[0]}@${i}`}
+				onClick={() => onOpenDoc(m[0])}
+			>
+				{m[0]}
+			</button>,
+		);
+		last = i + m[0].length;
+	}
+	if (out.length === 0) return <>{text}</>;
+	out.push(text.slice(last));
+	return <>{out}</>;
+}
+
 function ThreadCard({
 	thread,
 	orphan,
+	docs,
+	onOpenDoc,
 	onJump,
 	onReply,
 	onResolve,
@@ -36,6 +85,9 @@ function ThreadCard({
 	thread: CommentThread;
 	/** No live data-c span in the rendered doc (M4 orphan rule). */
 	orphan: boolean;
+	/** The tree's docs — @ mentions and body linkification (M4-2). */
+	docs: AtDoc[];
+	onOpenDoc: (path: string) => void;
 	onJump: (id: string) => void;
 	onReply: (id: string, body: string) => Promise<boolean>;
 	onResolve: (id: string) => void;
@@ -48,12 +100,51 @@ function ThreadCard({
 	// Reply collapsing: long stacks show the opening + latest reply only;
 	// the middle hides behind the expander until asked for.
 	const [expanded, setExpanded] = useState(false);
+	// @ mentions (M4-2), hand-rolled — a textarea is not Tiptap: the word
+	// before the caret (`@…`), a filtered list above the box, and the three
+	// keys that navigate it. `start` is the @'s index; Escape suppresses
+	// reopening until a different @ word starts.
+	const [at, setAt] = useState<{
+		items: AtDoc[];
+		start: number;
+		sel: number;
+	} | null>(null);
+	const atDismissed = useRef<number | null>(null);
 	const replyBoxRef = useRef<HTMLTextAreaElement>(null);
 	// Opening the form hands focus to it — focus management after the user's
 	// own Reply click, done programmatically (no autoFocus attribute).
 	useEffect(() => {
 		if (replying) replyBoxRef.current?.focus();
 	}, [replying]);
+
+	function detectAt(el: HTMLTextAreaElement) {
+		const caret = el.selectionStart ?? 0;
+		const m = el.value.slice(0, caret).match(/@([^\s@]*)$/);
+		if (!m || atDismissed.current === caret - m[0].length) {
+			setAt(null);
+			return;
+		}
+		atDismissed.current = null;
+		setAt({
+			items: filterAtDocs(docs, m[1]).slice(0, 8),
+			start: caret - m[0].length,
+			sel: 0,
+		});
+	}
+
+	/** Replace the @word with the doc path text; caret lands after it. */
+	function insertAtDoc(item: AtDoc) {
+		const el = replyBoxRef.current;
+		if (!el || !at) return;
+		const caret = el.selectionStart ?? el.value.length;
+		const pos = at.start + item.path.length;
+		setText(el.value.slice(0, at.start) + item.path + el.value.slice(caret));
+		setAt(null);
+		requestAnimationFrame(() => {
+			el.focus();
+			el.setSelectionRange(pos, pos);
+		});
+	}
 
 	async function submitReply() {
 		const body = text.trim();
@@ -98,7 +189,13 @@ function ThreadCard({
 				<span className="author">{thread.author}</span>
 				<span className="time">{timeAgo(thread.createdAt)}</span>
 			</div>
-			<div className="comment-body">{thread.replies[0]?.body}</div>
+			<div className="comment-body">
+				<DocRefText
+					text={thread.replies[0]?.body ?? ""}
+					docs={docs}
+					onOpenDoc={onOpenDoc}
+				/>
+			</div>
 			{rest.length > 1 && !expanded && (
 				<button
 					type="button"
@@ -116,7 +213,9 @@ function ThreadCard({
 						<span className="author">{reply.author}</span>
 						<span className="time">{timeAgo(reply.at)}</span>
 					</div>
-					<div className="comment-body">{reply.body}</div>
+					<div className="comment-body">
+						<DocRefText text={reply.body} docs={docs} onOpenDoc={onOpenDoc} />
+					</div>
 				</div>
 			))}
 			{orphan && (
@@ -162,15 +261,70 @@ function ThreadCard({
 						void submitReply();
 					}}
 				>
-					<textarea
-						rows={3}
-						required
-						aria-label={`Reply to ${thread.author}`}
-						placeholder="Reply…"
-						value={text}
-						ref={replyBoxRef}
-						onChange={(e) => setText(e.target.value)}
-					/>
+					<div className="at-wrap">
+						<textarea
+							rows={3}
+							required
+							aria-label={`Reply to ${thread.author}`}
+							placeholder="Reply…"
+							value={text}
+							ref={replyBoxRef}
+							onChange={(e) => {
+								setText(e.target.value);
+								detectAt(e.target);
+							}}
+							onBlur={() => setAt(null)}
+							onKeyDown={(e) => {
+								if (!at) return;
+								if (e.key === "ArrowDown") {
+									e.preventDefault();
+									setAt((a) =>
+										a
+											? { ...a, sel: Math.min(a.sel + 1, a.items.length - 1) }
+											: a,
+									);
+								} else if (e.key === "ArrowUp") {
+									e.preventDefault();
+									setAt((a) => (a ? { ...a, sel: Math.max(0, a.sel - 1) } : a));
+								} else if (e.key === "Enter") {
+									e.preventDefault();
+									const item = at.items[at.sel];
+									if (item) insertAtDoc(item);
+								} else if (e.key === "Escape") {
+									e.preventDefault();
+									e.stopPropagation();
+									atDismissed.current = at.start;
+									setAt(null);
+								}
+							}}
+						/>
+						{at && at.items.length > 0 && (
+							// The slash menu's panel and buttons, anchored above the
+							// textarea (mousedown-prevented items keep the caret).
+							<div
+								className="slash-menu at-list"
+								role="menu"
+								aria-label="Reference a document"
+							>
+								{at.items.map((d, i) => (
+									<button
+										type="button"
+										role="menuitem"
+										key={d.path}
+										data-selected={i === at.sel || undefined}
+										onMouseDown={(e) => e.preventDefault()}
+										onMouseEnter={() =>
+											setAt((a) => (a ? { ...a, sel: i } : a))
+										}
+										onClick={() => insertAtDoc(d)}
+									>
+										<span>{d.title}</span>
+										<span className="kbd">{d.path}</span>
+									</button>
+								))}
+							</div>
+						)}
+					</div>
 					<div className="popover-actions">
 						<button
 							type="button"
@@ -213,6 +367,8 @@ export function CommentsRail({
 	onReopen,
 	onDelete,
 	error,
+	docs,
+	onOpenDoc,
 }: {
 	threads: CommentThread[];
 	/** Ids whose data-c span is present in the rendered doc (App's reconcile). */
@@ -229,6 +385,10 @@ export function CommentsRail({
 	onReopen: (id: string) => void;
 	onDelete: (id: string) => void;
 	error: string | null;
+	/** The tree's docs — @ mentions and body linkification (M4-2). */
+	docs: AtDoc[];
+	/** A linkified doc path was clicked — open that doc (App). */
+	onOpenDoc: (path: string) => void;
 }) {
 	const [showResolved, setShowResolved] = useState(false);
 	const bodyRef = useRef<HTMLDivElement>(null);
@@ -317,6 +477,8 @@ export function CommentsRail({
 							key={t.id}
 							thread={t}
 							orphan={!liveIds.has(t.id)}
+							docs={docs}
+							onOpenDoc={onOpenDoc}
 							onJump={jumpToDoc}
 							onReply={onReply}
 							onResolve={onResolve}
@@ -344,6 +506,8 @@ export function CommentsRail({
 								key={t.id}
 								thread={t}
 								orphan={!liveIds.has(t.id)}
+								docs={docs}
+								onOpenDoc={onOpenDoc}
 								onJump={jumpToDoc}
 								onReply={onReply}
 								onResolve={onResolve}

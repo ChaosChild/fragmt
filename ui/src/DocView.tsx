@@ -8,6 +8,7 @@ import {
 	saveDoc,
 } from "./api";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
+import type { AtDoc } from "./editor/at";
 import { shortDate } from "./Sidebar";
 
 /**
@@ -79,6 +80,8 @@ export function DocView({
 	ledLabel,
 	draftBranch,
 	onOpenDraft,
+	docs,
+	onSelectDoc,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
@@ -117,6 +120,10 @@ export function DocView({
 	/** The branch a draft pill would check out; null = no pill (App computes). */
 	draftBranch: string | null;
 	onOpenDraft: () => void;
+	/** The tree's docs — the editor's @ menu and link-click doc set (M4-2). */
+	docs: AtDoc[];
+	/** An in-doc @ link resolved to a tree doc — navigate in-app (App). */
+	onSelectDoc: (path: string) => void;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -480,6 +487,9 @@ export function DocView({
 					onCancel={requestCancel}
 					onComment={(id, quote, body) => void handleComment(id, quote, body)}
 					onSpanClick={onSpanClick}
+					docPath={selected ?? doc.path}
+					docs={docs}
+					onSelectDoc={onSelectDoc}
 				/>
 			) : null}
 		</div>

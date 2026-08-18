@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type CommentFile,
 	type CommentThread,
@@ -29,6 +29,7 @@ import {
 } from "./api";
 import { CommentsRail } from "./CommentsRail";
 import { DocView } from "./DocView";
+import type { AtDoc } from "./editor/at";
 import {
 	type BranchAction,
 	BranchMenu,
@@ -49,6 +50,20 @@ function firstDoc(node: TreeNode): string | null {
 function treeHas(node: TreeNode, path: string): boolean {
 	if (!path) return false;
 	return (node.children ?? []).some((c) => c.path === path || treeHas(c, path));
+}
+
+/** The tree's docs as {title, path} — the @ menus' items and linkify's set. */
+function docItems(node: TreeNode | null): AtDoc[] {
+	const out: AtDoc[] = [];
+	const walk = (n: TreeNode) => {
+		for (const c of n.children ?? []) {
+			if (c.type === "doc")
+				out.push({ title: c.name.replace(/\.md$/i, ""), path: c.path });
+			else walk(c);
+		}
+	};
+	if (node) walk(node);
+	return out;
 }
 
 export function App() {
@@ -168,6 +183,9 @@ export function App() {
 	};
 
 	const threads: CommentThread[] = Object.values(commentFile.comments);
+	// The flat doc list (M4-2): one source for the editor's @ menu, its link
+	// clicks, the rail's reply @ mentions, and body linkification.
+	const docs = useMemo(() => docItems(tree), [tree]);
 	// The orphan rule, client-side: core's reconcileThreads check replicated
 	// against the RENDERED doc's markdown (doc.markdown is the exact string
 	// the editor renders from and is refreshed on every save). Smaller than
@@ -591,6 +609,8 @@ export function App() {
 						ledLabel={ledLabel}
 						draftBranch={draftBranch}
 						onOpenDraft={() => draftBranch && openDraft(draftBranch)}
+						docs={docs}
+						onSelectDoc={setSelected}
 					/>
 				</main>
 				{/* The rail is a layout sibling of <main> (right margin column);
@@ -609,6 +629,8 @@ export function App() {
 						onReopen={(id) => void railResolve(id, false)}
 						onDelete={(id) => void railDelete(id)}
 						error={railError}
+						docs={docs}
+						onOpenDoc={setSelected}
 					/>
 				)}
 			</div>

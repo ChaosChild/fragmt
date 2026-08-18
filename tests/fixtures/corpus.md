@@ -14,6 +14,8 @@ A paragraph with **bold**, *italic*, ~~strike~~, and `inline code`. Here is a
 [link to example](https://example.com). Now a mid-paragraph comment
 <span data-c="abc123">flagged phrase</span> that must survive intact.
 
+A repo-relative doc link to [a local doc](docs/related.md).
+
 Bold wrapping a comment: **prefix <span data-c="bold01">inside bold</span> suffix**.
 
 ## Lists

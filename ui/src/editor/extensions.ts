@@ -22,6 +22,12 @@ import {
 // "./slash.js" (not "./slash"): this file is typechecked by BOTH configs —
 // the root nodenext program reaches it via tests/roundtrip.test.ts.
 import {
+	type AtDoc,
+	type AtKeydownHandler,
+	AtReferences,
+	type AtRenderer,
+} from "./at.js";
+import {
 	SlashCommands,
 	type SlashKeydownHandler,
 	type SlashRenderer,
@@ -134,13 +140,27 @@ export const TightTaskList = Extension.create({
  * The optional callbacks wire the slash menu's UI (state/keydown/image handoff)
  * without making the extension set React-bound — headless consumers omit them.
  */
-export function editorExtensions(slash?: {
-	onState?: SlashRenderer;
-	onKeyDown?: SlashKeydownHandler;
-	onImage?: (insertAt: number) => void;
-}): Extensions {
+export function editorExtensions(
+	slash?: {
+		onState?: SlashRenderer;
+		onKeyDown?: SlashKeydownHandler;
+		onImage?: (insertAt: number) => void;
+	},
+	// The @ references (M4-2 item 5) — omitted by headless consumers, in
+	// which case the extension is NOT added at all (mirrors slash's
+	// optionality one step further: no docs, no plugin, no corpus impact).
+	at?: {
+		docs: () => AtDoc[];
+		onState?: AtRenderer;
+		onKeyDown?: AtKeydownHandler;
+	},
+): Extensions {
 	return [
-		StarterKit,
+		// openOnClick off in BOTH directions: Tiptap's own click plugin
+		// window.opens on plain clicks in edit mode, and read mode would
+		// fall through to browser navigation — EditorPane's onClick is the
+		// single click authority (doc → in-app, external → new tab).
+		StarterKit.configure({ link: { openOnClick: false } }),
 		CommentMark,
 		TaskList,
 		TaskItem,
@@ -155,6 +175,7 @@ export function editorExtensions(slash?: {
 			showOnlyCurrent: true,
 		}),
 		SlashCommands.configure({ items: slashItems, ...slash }),
+		...(at ? [AtReferences.configure(at)] : []),
 		Markdown.configure({ html: true }),
 	];
 }
