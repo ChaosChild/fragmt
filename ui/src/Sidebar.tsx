@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import type { DeletedDoc, DocMeta, RepoMeta, TreeNode } from "./api";
-import { type FileOp, RowMenu } from "./Menus";
+import { type FileOp, RowActions } from "./Menus";
 
 function countDocs(node: TreeNode): number {
 	let n = 0;
@@ -67,7 +67,6 @@ function DocCard({
 		>
 			<span className="dc-top">
 				<span className="dc-title">{node.name.replace(/\.md$/i, "")}</span>
-				{dm && <span className="dc-ver">v{dm.version}</span>}
 			</span>
 			{(dm || chip) && (
 				<span className="dc-meta">
@@ -182,12 +181,14 @@ function renderNodes({
 							{node.name}
 							<span className="count">{countDocs(node)}</span>
 						</button>
-						<RowMenu
-							kind="folder"
-							path={node.path}
-							name={node.name}
-							onFileOp={onFileOp}
-						/>
+						<span className="row-corner">
+							<RowActions
+								kind="folder"
+								path={node.path}
+								name={node.name}
+								onFileOp={onFileOp}
+							/>
+						</span>
 					</div>
 					{!isCollapsed && (
 						<ul className="folder-children">
@@ -208,6 +209,7 @@ function renderNodes({
 			);
 		}
 		const ghostBranch = ghosts.get(node.path);
+		const ver = meta?.docs[node.path]?.version;
 		return (
 			<li key={node.path}>
 				<div className="tree-row">
@@ -219,15 +221,20 @@ function renderNodes({
 						onSelect={onSelect}
 						onOpenGhost={onOpenGhost}
 					/>
-					{/* No row actions on ghosts — the doc doesn't exist on this branch. */}
-					{!ghostBranch && (
-						<RowMenu
-							kind="doc"
-							path={node.path}
-							name={node.name}
-							onFileOp={onFileOp}
-						/>
-					)}
+					{/* Dogfood revision of item 1: the actions sit INSIDE the card's
+					    top-right corner, left of the version — no dead column beside
+					    the card. Ghosts carry no actions (no doc on this branch). */}
+					<span className="row-corner">
+						{!ghostBranch && (
+							<RowActions
+								kind="doc"
+								path={node.path}
+								name={node.name}
+								onFileOp={onFileOp}
+							/>
+						)}
+						{ver !== undefined && <span className="dc-ver">v{ver}</span>}
+					</span>
 				</div>
 			</li>
 		);

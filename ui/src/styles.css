@@ -1773,10 +1773,13 @@ button.comment-quote:hover {
 .branch-dd {
 	min-height: 32px; /* a11y floor: ≥32px hit targets (§9) */
 }
-/* Tree row = select target + always-visible kebab (never hover-only, §5) */
+/* Tree row = full-width select target; file actions live in the corner
+   overlay inside the card (dogfood revision — the outside kebab left a
+   dead column beside the card). */
 .tree-row {
 	display: flex;
 	align-items: center;
+	position: relative;
 }
 .tree-row .doc-card,
 .tree-row .folder-row {
@@ -1789,7 +1792,6 @@ button.comment-quote:hover {
 .folder-group > .tree-row {
 	margin-top: var(--space-2);
 }
-.tree-row .menu-wrap,
 .side-head .menu-wrap {
 	flex-shrink: 0;
 }
@@ -1923,17 +1925,38 @@ button.comment-quote:hover {
 	cursor: default;
 	pointer-events: none;
 }
-/* The row kebab reveals on hover/focus-within (item 1) — still a focusable
-   ≥32px button, so it never becomes hover-only (§5/§8). */
-.tree-row .tool-btn {
+/* The row actions sit in the card's top-right corner, left of the version
+   chip (dogfood revision of item 1). The strip is click-through except its
+   buttons; icons reveal on row hover/focus-within — still focusable ≥32px
+   buttons, so nothing is hover-only (§5/§8). Small glyphs, generous targets. */
+.row-corner {
+	position: absolute;
+	top: 5px;
+	right: 8px;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	pointer-events: none;
+}
+.row-corner .tool-btn {
+	pointer-events: auto;
 	opacity: 0;
 	transition:
 		opacity var(--motion-fast) var(--ease-standard),
 		color var(--motion-fast) var(--ease-standard);
 }
-.tree-row:hover .tool-btn,
-.tree-row:focus-within .tool-btn {
+.row-corner .tool-btn svg {
+	width: 15px;
+	height: 15px;
+}
+.tree-row:hover .row-corner .tool-btn,
+.tree-row:focus-within .row-corner .tool-btn {
 	opacity: 1;
+}
+/* The title truncates before the corner (icons + version), so the reserve
+   is constant — no reflow when the icons reveal. */
+.doc-card .dc-top {
+	padding-right: 108px;
 }
 /* Recycle bin (item 9) — pinned below the doc list; every Restore sits on
    the same right edge, Restore all right-aligned beneath them. */

@@ -1,4 +1,4 @@
-import { Ellipsis, GitBranch, Plus } from "lucide-react";
+import { GitBranch, Move, Plus, Trash2 } from "lucide-react";
 import {
 	type FormEvent,
 	type MouseEvent as ReactMouseEvent,
@@ -279,12 +279,14 @@ export function NewDocButton({ onFileOp }: { onFileOp: (op: FileOp) => void }) {
 }
 
 /**
- * Per-row file actions (docs and folders): one visible-but-subtle kebab
- * (32px target) opening Rename/Move and Delete — never hover-only (§5).
- * Rename/Move is one input for the new path relative to docs root; Delete
- * asks once (destructive).
+ * Per-row file actions (docs and folders), inline in the card corner left
+ * of the version chip (dogfood revision of item 1 — the outside kebab
+ * left a dead column beside the card and squashed its text): two small
+ * icons — rename/move opens the new-path form, delete asks once — each a
+ * focusable ≥32px button revealed on row hover/focus (§5: never
+ * hover-only).
  */
-export function RowMenu({
+export function RowActions({
 	kind,
 	path,
 	name,
@@ -295,65 +297,41 @@ export function RowMenu({
 	name: string;
 	onFileOp: (op: FileOp) => void;
 }) {
-	const menu = useMenu();
-	const [mode, setMode] = useState<"menu" | "move" | "delete">("menu");
-	const [to, setTo] = useState("");
+	const move = useMenu();
+	const del = useMenu();
+	const [to, setTo] = useState(path);
 	const inputId = `move-${path.replaceAll("/", "-")}`;
 	const inputRef = useRef<HTMLInputElement>(null);
-	// Land focus in the move form when it appears (M2-2 image-form pattern).
+	// Prefill the form with the current path when the popover opens, and
+	// land focus in it (M2-2 image-form pattern).
 	useEffect(() => {
-		if (mode === "move") inputRef.current?.focus();
-	}, [mode]);
-
-	function closeAll() {
-		menu.close();
-		setMode("menu");
-	}
+		if (move.open) {
+			setTo(path);
+			inputRef.current?.focus();
+		}
+	}, [move.open, path]);
 
 	return (
-		<span className="menu-wrap" ref={menu.wrapRef}>
-			<button
-				type="button"
-				className="tool-btn"
-				aria-label={`Actions for ${name}`}
-				aria-expanded={menu.open}
-				onClick={(e) => {
-					if (!menu.open) setMode("menu");
-					menu.toggle(e);
-				}}
-			>
-				<Ellipsis aria-hidden="true" />
-			</button>
-			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
-				{mode === "menu" && (
-					<>
-						<button
-							type="button"
-							className="menu-item"
-							onClick={() => {
-								setTo(path);
-								setMode("move");
-							}}
-						>
-							Rename / move…
-						</button>
-						<button
-							type="button"
-							className="menu-item danger"
-							onClick={() => setMode("delete")}
-						>
-							Delete…
-						</button>
-					</>
-				)}
-				{mode === "move" && (
+		<>
+			<span className="menu-wrap" ref={move.wrapRef}>
+				<button
+					type="button"
+					className="tool-btn"
+					title="Rename / move"
+					aria-label={`Rename or move ${name}`}
+					aria-expanded={move.open}
+					onClick={move.toggle}
+				>
+					<Move aria-hidden="true" />
+				</button>
+				<MenuPopover anchor={move.anchor} popRef={move.popRef}>
 					<form
 						className="popover-form"
 						onSubmit={(e) => {
 							e.preventDefault();
 							if (!to.trim()) return;
 							const dest = kind === "doc" ? toDocPath(to) : toPath(to);
-							closeAll();
+							move.close();
 							onFileOp(
 								kind === "doc"
 									? { kind: "move-doc", from: path, to: dest }
@@ -372,7 +350,7 @@ export function RowMenu({
 							<button
 								type="button"
 								className="iconbtn subtle"
-								onClick={closeAll}
+								onClick={move.close}
 							>
 								Cancel
 							</button>
@@ -381,13 +359,25 @@ export function RowMenu({
 							</button>
 						</div>
 					</form>
-				)}
-				{mode === "delete" && (
+				</MenuPopover>
+			</span>
+			<span className="menu-wrap" ref={del.wrapRef}>
+				<button
+					type="button"
+					className="tool-btn"
+					title="Delete"
+					aria-label={`Delete ${name}`}
+					aria-expanded={del.open}
+					onClick={del.toggle}
+				>
+					<Trash2 aria-hidden="true" />
+				</button>
+				<MenuPopover anchor={del.anchor} popRef={del.popRef}>
 					<form
 						className="popover-form"
 						onSubmit={(e) => {
 							e.preventDefault();
-							closeAll();
+							del.close();
 							onFileOp(
 								kind === "doc"
 									? { kind: "delete-doc", path }
@@ -404,7 +394,7 @@ export function RowMenu({
 							<button
 								type="button"
 								className="iconbtn subtle"
-								onClick={closeAll}
+								onClick={del.close}
 							>
 								Cancel
 							</button>
@@ -413,8 +403,8 @@ export function RowMenu({
 							</button>
 						</div>
 					</form>
-				)}
-			</MenuPopover>
-		</span>
+				</MenuPopover>
+			</span>
+		</>
 	);
 }
