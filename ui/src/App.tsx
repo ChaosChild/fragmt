@@ -16,11 +16,14 @@ import {
 	getDoc,
 	getMeta,
 	getTree,
+	mergeDraft,
 	moveDoc,
 	patchComment,
 	type RepoMeta,
 	renameFolder,
 	restoreDoc,
+	SaveError,
+	startDraft,
 	sync,
 	type TreeNode,
 } from "./api";
@@ -304,6 +307,40 @@ export function App() {
 		else void switchTo(action);
 	}
 
+	// --- M4-2: protected main (item 7) --------------------------------------
+	// The draft model applies whenever meta names a main and we're on it.
+	const onMain = Boolean(meta?.main && branch === meta.main);
+
+	// The one draft-starting seam Edit and read-mode comments share on main.
+	// No prompt — the header's branch line names the new branch. startDraft
+	// checks the draft out server-side; switchTo's checkout of the branch we
+	// already sit on is a no-op that reuses the whole refresh (branch, meta,
+	// tree, doc). False (after the error banner) = don't proceed.
+	async function draftFirst(): Promise<boolean> {
+		const path = live.current.selected;
+		if (!path) return false;
+		try {
+			const { current } = await startDraft(path);
+			await switchTo({ kind: "switch", name: current });
+			return true;
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+			return false;
+		}
+	}
+
+	// The Edit gate: on main, draft before the mode flip — DocView awaits
+	// this and only flips on true (it stays dumb: no error handling of its
+	// own). Off main, the pre-edit sync runs as before; a fresh draft skips
+	// it — the checkout just made us current.
+	async function beforeEdit(): Promise<boolean> {
+		if (!onMain) {
+			void runSync();
+			return true;
+		}
+		return draftFirst();
+	}
+
 	// --- file ops: one commit each server-side; every op refreshes the tree.
 	async function runFileOp(op: FileOp) {
 		const target =
@@ -324,6 +361,11 @@ export function App() {
 		try {
 			switch (op.kind) {
 				case "create-doc":
+					// Protected main (item 7): a new doc is a body write — the
+					// draft starts first so the create commit lands on it and
+					// the card carries the chip. Folders stay on main (not a
+					// body write — spec).
+					if (onMain) setBranch((await startDraft(op.path)).current);
 					await createDoc(op.path);
 					break;
 				case "create-folder":
@@ -383,6 +425,24 @@ export function App() {
 			return;
 		}
 		void switchTo({ kind: "switch", name: branchName });
+	}
+
+	// Merge (item 8): the sanctioned write back to main. A 409 shows the
+	// conflict banner — the draft is untouched and still checked out.
+	// Success reuses switchTo's refresh; the post-merge checkout is already
+	// on main, so the "switch" is a no-op that reloads branch, meta, tree,
+	// and the open doc on main's version. (Dirty buffers never get here —
+	// the button is disabled; a reload would drop them.)
+	async function runMerge() {
+		try {
+			await mergeDraft();
+		} catch (e) {
+			if (e instanceof SaveError && e.status === 409) setConflict(e.message);
+			else setError(e instanceof Error ? e.message : String(e));
+			return;
+		}
+		const mainName = meta?.main;
+		if (mainName) void switchTo({ kind: "switch", name: mainName });
 	}
 
 	// One restore commit per entry, sequentially; the first error surfaces
@@ -460,12 +520,15 @@ export function App() {
 							<button
 								type="button"
 								className="iconbtn"
-								disabled={!canMerge}
+								disabled={!canMerge || dirty}
 								title={
 									canMerge
-										? `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
+										? dirty
+											? "save or discard changes to the open document first"
+											: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
 										: undefined
 								}
+								onClick={() => void runMerge()}
 							>
 								Merge
 							</button>
@@ -517,7 +580,11 @@ export function App() {
 						}}
 						conflict={conflict}
 						onDismissConflict={() => setConflict(null)}
-						onBeforeEdit={() => void runSync()}
+						onBeforeEdit={beforeEdit}
+						// Protected main (item 7): read-mode comments draft
+						// first — DocView awaits this before the combined POST
+						// (undefined off main: no interception).
+						onDraftFirst={onMain ? draftFirst : undefined}
 						docMeta={docMeta}
 						branch={branch}
 						led={led}

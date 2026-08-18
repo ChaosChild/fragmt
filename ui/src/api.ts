@@ -195,10 +195,22 @@ export const startDraft = (docPath: string) =>
 		body: JSON.stringify({ docPath }),
 	});
 
-export const mergeDraft = () =>
-	request<{ merged: true; sha: string }>("/api/merge", {
-		method: "POST",
-	});
+/** Own fetch (saveDoc's pattern): the 409 conflict body carries `message`,
+ *  not `error` — callers branch on SaveError.status to show the banner. */
+export async function mergeDraft(): Promise<{ sha: string }> {
+	const res = await fetch("/api/merge", { method: "POST" });
+	if (!res.ok) {
+		let message = `merge failed (${res.status})`;
+		try {
+			const body = (await res.json()) as { error?: string; message?: string };
+			message = body.error ?? body.message ?? message;
+		} catch {
+			// non-JSON error body — keep the generic message
+		}
+		throw new SaveError(res.status, message);
+	}
+	return (await res.json()) as { sha: string };
+}
 
 export const restoreDoc = (path: string, sha: string) =>
 	request<{ sha: string }>("/api/restore", {

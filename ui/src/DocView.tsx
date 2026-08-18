@@ -72,6 +72,7 @@ export function DocView({
 	conflict,
 	onDismissConflict,
 	onBeforeEdit,
+	onDraftFirst,
 	docMeta,
 	branch,
 	led,
@@ -99,7 +100,13 @@ export function DocView({
 	/** Sync conflict message (M3) — the calm banner, never a merge UI. */
 	conflict: string | null;
 	onDismissConflict: () => void;
-	onBeforeEdit: () => void;
+	/** Pre-edit gate (App): true = flip to edit mode. On main, App drafts
+	 *  first (protected main) and returns false on failure — the banner is
+	 *  App's; DocView stays dumb. */
+	onBeforeEdit: () => Promise<boolean>;
+	/** Protected main: awaited before the combined comment POST when the doc
+	 *  write must go through a draft (App provides it only on main). */
+	onDraftFirst?: () => Promise<boolean>;
 	/** The open doc's git metadata (author/version/date) — the doc-head lines. */
 	docMeta?: DocMeta;
 	/** Current branch name — the "vN · branch" segment. */
@@ -217,6 +224,10 @@ export function DocView({
 		setSaving(true);
 		setSaveError(null);
 		try {
+			// Protected main: on main the doc write drafts first (App) — the
+			// baseHash and serialized body stay valid, a fresh checkout
+			// doesn't change file content. False = App bannered; no POST.
+			if (onDraftFirst && !(await onDraftFirst())) return;
 			await addComment(doc.path, {
 				id,
 				quote,
@@ -399,9 +410,13 @@ export function DocView({
 									type="button"
 									className="iconbtn"
 									onClick={() => {
-										onBeforeEdit();
-										setEditing(true);
-										setSaveError(null);
+										// App gates the flip (protected main: draft
+										// first) — only a true enters edit mode.
+										void onBeforeEdit().then((proceed) => {
+											if (!proceed) return;
+											setEditing(true);
+											setSaveError(null);
+										});
 									}}
 								>
 									<Pencil aria-hidden="true" />
