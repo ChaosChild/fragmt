@@ -65,3 +65,43 @@ Notes for whoever specs it:
   reference for intended placement.
 - Whatever lands, the anti-pattern list still holds: no toast stacks, no
   nested hover menus, nothing important reachable only by hovering.
+
+## M4-2 scope — dogfooding round 2 (2026-08-17, post-M4)
+
+Nine items scheduled together as M4-2 in [PLAN.md](PLAN.md); the numbering is
+cross-referenced, so it is preserved here.
+
+1. **Navigation cards to the mock.** Doc cards carry author, date last
+   edited, a short snippet, version, and a draft indicator
+   (`docs/app.html` `.doc-card`). Blocked since M1 on the tree API carrying
+   no metadata — needs the git-log metadata API (last author/date/version
+   per doc) that M1 deferred.
+2. **Drafts must be visible.** Creating a branch and creating/editing a
+   document on it shows no draft card anywhere today. A card per doc that
+   differs from `main` (new, edited, deleted) with its branch — flows into 1
+   and 3.
+3. **Document header to the mock.** The email-style doc head (author ·
+   "editing vX · branch" · unsaved indicator, `app.html` `.doc-head`), plus
+   icons on Cancel/Save (currently text-only; the mock uses ✕ / ✓).
+4. **Reopen resolved comments.** Resolved threads can only be deleted. The
+   server currently pins `resolved: true` (`PATCH` rejects `false` — "v1.x");
+   reopen needs that lifted plus the rail affordance.
+5. **"@" references.** An `@` command — in documents and in comment bodies —
+   to reference existing documents, as a menu like the `/` slash menu. Ties
+   into the in-app link-navigation item above: a doc reference IS a
+   navigable link.
+6. **"+" gains a folder option.** The new-document action becomes a dropdown:
+   document (default) or folder — `createFolder` exists in core and the API,
+   only the UI is missing.
+7. **Protected main.** Editing a document on `main` should automatically
+   create a draft branch (possibly auto-named, no user prompt) and move the
+   document to draft. The platform operates on the principle that main is
+   protected — whether the branch actually is or not.
+8. **Merge is the operator's call.** With drafts visible in the navbar (1
+   and 2), a "Merge" button on the draft merges its branch to `main` —
+   multiple files per draft, merged together when the user decides. This
+   settles the sequencing question of when a draft becomes a PR: the
+   operator creates it on GitHub from the merged branch, or merges directly.
+9. **Restore deleted documents.** Everything is in git; deleting should be
+   reversible — restore a deleted doc (and its comments sidecar) from
+   history.

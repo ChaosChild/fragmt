@@ -99,6 +99,22 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - [x] Resolve / delete comment
 - [x] Orphan display: thread + quote snapshot when the span is gone
 
+## M4-2 — Dogfood polish: cards, headers, and the drafting model
+
+**Goal:** close the gap between the built UI and the v1-final mock for navigation and doc headers, and finish the drafting model — protected main, visible drafts, operator-driven merge. **Proves:** daily dogfooding becomes natural: drafts are visible where you browse, merging is your call, and the lifecycle has no dead ends. Full item detail in [BACKLOG.md](BACKLOG.md) § "M4-2 scope".
+
+- [ ] Doc cards to the mock: author, last-edited, snippet, version, draft indicator (needs the git-log metadata API deferred since M1)
+- [ ] Draft visibility: docs new/edited/deleted on a branch show as draft cards in the navbar
+- [ ] Doc header to the mock: author · "editing vX · branch" · unsaved indicator; Cancel/Save gain icons
+- [ ] Reopen resolved comments (server currently pins `resolved: true`)
+- [ ] "@" reference command in documents and comment bodies (menu like `/`; a doc reference is a navigable link — ties to the link-navigation backlog item)
+- [ ] "+" action becomes a dropdown: new document (default) or new folder
+- [ ] Protected main: editing a doc on main auto-creates a draft branch (auto-named, no prompt) and moves the doc to draft
+- [ ] "Merge" action on a draft — multi-file branches merge to main when the operator decides; PR creation stays with the operator (GitHub)
+- [ ] Restore deleted documents (and their comment sidecars) from git history
+
+**Sequencing note:** the merge button settles the "when does a draft become a PR" question — the operator merges in the UI when a draft is complete; opening a PR on GitHub remains a separate, manual act (v2 may fold it in).
+
 ## <span data-c="d13d457e-564a-4e9d-9bc5-f5239144f512">M5 — Dogfood hardening</span>
 
 **Goal:** the definition of done, literally exercised. **Proves:** v1 is done.

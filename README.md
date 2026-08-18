@@ -63,6 +63,7 @@ markdown and its full git history.
 | M2-2 — editing controls (bubble, slash, right-click) | shipped |
 | M3 — files & branches | shipped |
 | M4 — inline comments | shipped |
+| M4-2 — dogfood polish (cards, headers, protected main, merge) | specced |
 | M5 — dogfood hardening | specced |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
