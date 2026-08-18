@@ -130,3 +130,15 @@ Notes for whoever specs it:
   all. One commit covering doc + sidecar there too.
 - Amend the M4 spec's anchoring contract when this lands; the tests pinning
   one-commit-per-file-op show the pattern.
+
+## Drafting model
+
+### Merge-conflict resolution in the UI (2026-08-18, M4-2 planning)
+
+With protected main and effectively one draft line per document, merge
+conflicts should be rare — but they remain possible when main moves under a
+draft (out-of-tool edits, another machine), and comment sidecars are the
+likeliest collision point. M4-2 keeps the M3 discipline: the merge aborts,
+HEAD (and the checked-out branch) are restored untouched, and the UI surfaces
+the message. Look later at resolving conflicts inside fragmt — doc-level and
+sidecar-level — instead of aborting.
