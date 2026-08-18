@@ -63,7 +63,7 @@ markdown and its full git history.
 | M2-2 — editing controls (bubble, slash, right-click) | shipped |
 | M3 — files & branches | shipped |
 | M4 — inline comments | shipped |
-| M4-2 — dogfood polish (cards, headers, protected main, merge) | specced |
+| M4-2 — dogfood polish (cards, headers, protected main, merge) | shipped |
 | M5 — dogfood hardening | specced |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
@@ -78,7 +78,17 @@ server keeps the local clone synced with its remote (pull --rebase + push,
 never force) on an interval, on focus, and before editing. Inline comments
 anchor to text as marks in the markdown itself, with threads versioned in
 JSON sidecars — comment from read mode or edit mode, replies and resolve in
-the right-margin rail, orphans detected against the live document. v1 is done when the author writes this project's own
+the right-margin rail, orphans detected against the live document.
+
+**Main is protected** — whether the branch actually is or not. Editing (or
+commenting on, or creating) a doc on main automatically starts a draft
+branch (`drafts/<doc>`, no prompt) and the write lands there; the sidebar
+marks drafted docs with chips and ghost cards, the doc head shows author,
+version, branch, and sync state, and a global **Merge** button lands a
+finished draft on main and deletes its branch (conflicts abort cleanly).
+Deletions are reversible from the sidebar's recycle bin, `@` references
+insert navigable doc links, and comment actions are one git commit each.
+v1 is done when the author writes this project's own
 docs in the tool daily instead of in a text editor. Full detail, including
 what was deliberately cut, is in the [build plan](docs/PLAN.md).
 
