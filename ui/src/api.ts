@@ -154,6 +154,59 @@ export const checkoutBranch = (name: string) =>
 
 export const sync = () => request<SyncResult>("/api/sync", { method: "POST" });
 
+// --- M4-2: repo meta, drafts, merge, restore -------------------------------
+
+/** Mirror of the core meta types (src/core/meta.ts). */
+export interface DocMeta {
+	author: string;
+	authorEmail: string;
+	/** ISO. */
+	date: string;
+	version: number;
+	snippet: string;
+}
+export interface DraftEntry {
+	branch: string;
+	status: "new" | "edited" | "deleted";
+}
+export interface DeletedDoc {
+	path: string;
+	/** The delete commit — the restore pulls the parent's content. */
+	sha: string;
+	/** ISO. */
+	date: string;
+}
+export interface RepoMeta {
+	/** null = no draft model (chips hidden, main unprotected). */
+	main: string | null;
+	current: string;
+	docs: Record<string, DocMeta>;
+	drafts: Record<string, DraftEntry[]>;
+	deleted: DeletedDoc[];
+}
+
+export const getMeta = () => request<RepoMeta>("/api/meta");
+
+/** Creates (or reuses) a drafts/<slug> branch for the doc and checks it out. */
+export const startDraft = (docPath: string) =>
+	request<{ current: string; reused: boolean }>("/api/draft", {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ docPath }),
+	});
+
+export const mergeDraft = () =>
+	request<{ merged: true; sha: string }>("/api/merge", {
+		method: "POST",
+	});
+
+export const restoreDoc = (path: string, sha: string) =>
+	request<{ sha: string }>("/api/restore", {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ path, sha }),
+	});
+
 // --- M4: comments ---------------------------------------------------------
 
 /** Mirror of the core sidecar types (src/core/comments.ts). */

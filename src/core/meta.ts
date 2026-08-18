@@ -1,3 +1,4 @@
+import { readDoc } from "./docs.js";
 import { currentBranch, git, listBranches, logCommits } from "./git.js";
 
 export interface DocMeta {
@@ -5,6 +6,8 @@ export interface DocMeta {
 	authorEmail: string;
 	date: string;
 	version: number;
+	/** First non-heading, non-empty, non-table body line, clamped to 110 chars. */
+	snippet: string;
 }
 
 export interface DraftEntry {
@@ -75,6 +78,22 @@ function toDocPath(repoRel: string, prefix: string): string | null {
 		: null;
 }
 
+/** Card snippet: first non-heading, non-empty, non-table body line (fs read; missing file → ""). */
+function snippet(repoRoot: string, docsRoot: string, docPath: string): string {
+	let body: string;
+	try {
+		body = readDoc(repoRoot, docsRoot, docPath).markdown;
+	} catch {
+		return ""; // not on this branch's worktree — no snippet
+	}
+	for (const line of body.split("\n")) {
+		const t = line.trim();
+		if (!t || t.startsWith("#") || t.startsWith("|")) continue;
+		return t.slice(0, 110);
+	}
+	return "";
+}
+
 /**
  * The M4-2 meta walks — docs versions, cross-branch drafts, and the recycle
  * bin — each a small spawn count over the execFile seam.
@@ -112,8 +131,13 @@ export async function repoMeta(
 					authorEmail: fields[2],
 					date: fields[3],
 					version: 1,
+					snippet: "",
 				};
 		}
+	}
+	// One fs read per doc (the card snippet) — the walk above is git-only.
+	for (const docPath of Object.keys(docs)) {
+		docs[docPath].snippet = snippet(repoRoot, docsRoot, docPath);
 	}
 
 	// Walk 2 — per non-main branch, which docsRoot docs differ from main:

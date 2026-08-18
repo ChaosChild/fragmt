@@ -1860,3 +1860,115 @@ button.comment-quote:hover {
 	color: var(--danger);
 	border-color: var(--danger);
 }
+
+/* ── M4-2: two-row sidebar head, hover-revealed kebab, recycle bin ── */
+.side-head {
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--space-2);
+}
+.side-head-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+/* Row 2 (branch + Merge): the branch menu stretches full width — the name
+   ellipsizes, the button's title carries the whole branch. */
+.side-head-branch .menu-wrap {
+	flex: 1;
+	min-width: 0;
+}
+.branch-dd {
+	width: 100%;
+	min-width: 0;
+}
+.branch-dd .branch-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.side-head-branch .iconbtn {
+	flex-shrink: 0;
+}
+.iconbtn:disabled {
+	opacity: 0.5;
+	cursor: default;
+	pointer-events: none;
+}
+/* The row kebab reveals on hover/focus-within (item 1) — still a focusable
+   ≥32px button, so it never becomes hover-only (§5/§8). */
+.tree-row .tool-btn {
+	opacity: 0;
+	transition:
+		opacity var(--motion-fast) var(--ease-standard),
+		color var(--motion-fast) var(--ease-standard);
+}
+.tree-row:hover .tool-btn,
+.tree-row:focus-within .tool-btn {
+	opacity: 1;
+}
+/* Recycle bin (item 9) — pinned below the doc list; every Restore sits on
+   the same right edge, Restore all right-aligned beneath them. */
+.recycle-bin {
+	flex-shrink: 0;
+	padding: var(--space-2) var(--space-3) var(--space-3);
+	border-top: 1px solid var(--glass-border);
+}
+.recycle-bin .folder-row {
+	margin-top: 0;
+}
+.bin-list {
+	list-style: none;
+	padding: 0 var(--space-2);
+}
+.bin-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-height: 32px;
+}
+.bin-path {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--fg);
+}
+.bin-date {
+	flex-shrink: 0;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	color: var(--muted);
+}
+.bin-restore {
+	flex-shrink: 0;
+	border: none;
+	background: none;
+	cursor: pointer;
+	min-height: 32px;
+	padding: 0 4px;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--accent);
+}
+.bin-restore:hover {
+	text-decoration: underline;
+}
+.bin-restore:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.bin-all {
+	display: flex;
+	justify-content: flex-end;
+}
+/* The GitHub avatar is a real <img> on the initials slot's metrics. */
+.doc-head img.avatar {
+	display: block;
+	object-fit: cover;
+}

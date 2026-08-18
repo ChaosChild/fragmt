@@ -1,7 +1,50 @@
-import { MessageSquare, Pencil } from "lucide-react";
+import { Check, MessageSquare, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { addComment, type DocResponse, SaveError, saveDoc } from "./api";
+import {
+	addComment,
+	type DocMeta,
+	type DocResponse,
+	SaveError,
+	saveDoc,
+} from "./api";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
+import { shortDate } from "./Sidebar";
+
+/**
+ * The email-parallel avatar (item 3): the keyless GitHub noreply heuristic —
+ * `123456+user@` or `user@` → avatars.githubusercontent.com/<user>?s=76; a
+ * load error or non-matching email falls back to the author's initials.
+ */
+function Avatar({ author, email }: { author: string; email: string }) {
+	const [broken, setBroken] = useState(false);
+	const user = /^(\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(
+		email,
+	)?.[2];
+	if (user && !broken) {
+		return (
+			<img
+				className="avatar"
+				src={`https://avatars.githubusercontent.com/${user}?s=76`}
+				alt=""
+				width={38}
+				height={38}
+				onError={() => setBroken(true)}
+			/>
+		);
+	}
+	const initials = author
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((w) => w[0] ?? "")
+		.join("")
+		.toUpperCase();
+	return (
+		<span className="avatar" aria-hidden="true">
+			{initials}
+		</span>
+	);
+}
 
 /**
  * The doc pane: reading mode by default (DESIGN §3), one explicit Edit action
@@ -29,6 +72,12 @@ export function DocView({
 	conflict,
 	onDismissConflict,
 	onBeforeEdit,
+	docMeta,
+	branch,
+	led,
+	ledLabel,
+	draftBranch,
+	onOpenDraft,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
@@ -51,6 +100,16 @@ export function DocView({
 	conflict: string | null;
 	onDismissConflict: () => void;
 	onBeforeEdit: () => void;
+	/** The open doc's git metadata (author/version/date) — the doc-head lines. */
+	docMeta?: DocMeta;
+	/** Current branch name — the "vN · branch" segment. */
+	branch: string | null;
+	/** App's LED color/word — reused verbatim in the head (one vocabulary). */
+	led: string;
+	ledLabel: string;
+	/** The branch a draft pill would check out; null = no pill (App computes). */
+	draftBranch: string | null;
+	onOpenDraft: () => void;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -243,6 +302,18 @@ export function DocView({
 		</div>
 	);
 
+	// The doc-head meta line (item 3): "vN · branch · saved <time>" in read
+	// mode, "editing vN · branch" in edit mode, then the sync LED + word —
+	// the rail's one-word vocabulary, reused.
+	const syncWord = editing ? "unsaved changes" : ledLabel.toLowerCase();
+	const lineSegs: string[] = [];
+	if (docMeta)
+		lineSegs.push(
+			editing ? `editing v${docMeta.version}` : `v${docMeta.version}`,
+		);
+	if (branch) lineSegs.push(branch);
+	if (!editing && docMeta) lineSegs.push(`saved ${shortDate(docMeta.date)}`);
+
 	// One rendering path (M4 review decision 3): the editor is mounted in
 	// BOTH modes — read is `editable: false` on the same instance, Edit/Save/
 	// Cancel are mode flips with no remount (only a discard bumps the key to
@@ -251,59 +322,96 @@ export function DocView({
 	// identically in both modes (M2 pixel parity).
 	return (
 		<div className={editing ? "editor-pane" : "doc-pane"} ref={paneRef}>
-			<div className="doc-bar">
-				{breadcrumb}
-				<div className="doc-actions">
-					{editing ? (
-						<>
-							<button
-								type="button"
-								className="iconbtn subtle"
-								onClick={requestCancel}
-								disabled={saving}
-							>
-								Cancel
-							</button>
-							<button
-								type="button"
-								className="iconbtn primary"
-								onClick={() => void handleSave()}
-								disabled={saving}
-							>
-								{saving ? "Saving…" : "Save"}
-							</button>
-						</>
-					) : (
-						<>
-							<button
-								type="button"
-								className="iconbtn"
-								onClick={() => {
-									onBeforeEdit();
-									setEditing(true);
-									setSaveError(null);
-								}}
-								disabled={!doc}
-							>
-								<Pencil aria-hidden="true" />
-								Edit
-							</button>
-							{commentCount > 0 && (
+			<div className="doc-bar">{breadcrumb}</div>
+			{doc && (
+				<header className="doc-head">
+					<Avatar
+						author={docMeta?.author ?? ""}
+						email={docMeta?.authorEmail ?? ""}
+					/>
+					<div className="dh-main">
+						<div className="dh-author">{docMeta?.author ?? "—"}</div>
+						<div className="dh-line">
+							{lineSegs.map((s, i) => (
+								<span key={s}>
+									{i > 0 && <span className="sep">·</span>}
+									{s}
+								</span>
+							))}
+							{lineSegs.length > 0 && <span className="sep">·</span>}
+							<span className="dh-sync">
+								<span
+									className={`led ${editing ? "amber" : led}`}
+									role="status"
+									aria-label={syncWord}
+								/>
+								{syncWord}
+							</span>
+						</div>
+					</div>
+					{/* The draft pill (item 3): only on main, when a draft elsewhere
+					    touches this doc — click checks the draft out (App). */}
+					{draftBranch && (
+						<button type="button" className="draft-pill" onClick={onOpenDraft}>
+							<Pencil aria-hidden="true" />
+							draft exists — open
+						</button>
+					)}
+					<div className="doc-actions">
+						{editing ? (
+							<>
 								<button
 									type="button"
-									className="iconbtn comments-btn"
-									aria-label={`Comments (${commentCount})`}
-									onClick={onOpenComments}
+									className="iconbtn subtle"
+									onClick={requestCancel}
+									disabled={saving}
 								>
-									<MessageSquare aria-hidden="true" />
-									<span className="label">Comments</span>
-									<span className="badge">{commentCount}</span>
+									<X aria-hidden="true" />
+									<span className="label">Cancel</span>
 								</button>
-							)}
-						</>
-					)}
-				</div>
-			</div>
+								<button
+									type="button"
+									className="iconbtn primary"
+									onClick={() => void handleSave()}
+									disabled={saving}
+								>
+									<Check aria-hidden="true" />
+									<span className="label">{saving ? "Saving…" : "Save"}</span>
+								</button>
+							</>
+						) : (
+							<>
+								{/* comments-btn stays desktop-hidden (mock rule) — it
+								    surfaces ≤1180px, where the rail becomes a sheet. */}
+								{commentCount > 0 && (
+									<button
+										type="button"
+										className="iconbtn comments-btn"
+										aria-label={`Comments (${commentCount})`}
+										onClick={onOpenComments}
+									>
+										<MessageSquare aria-hidden="true" />
+										<span className="label">Comments</span>
+										<span className="badge">{commentCount}</span>
+									</button>
+								)}
+								<button
+									type="button"
+									className="iconbtn"
+									onClick={() => {
+										onBeforeEdit();
+										setEditing(true);
+										setSaveError(null);
+									}}
+								>
+									<Pencil aria-hidden="true" />
+									<span className="label">Edit</span>
+								</button>
+							</>
+						)}
+					</div>
+				</header>
+			)}
 			{conflictBanner}
 			{pendingBanner}
 			{confirmingCancel && (

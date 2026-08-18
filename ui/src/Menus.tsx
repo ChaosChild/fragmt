@@ -15,6 +15,7 @@ import { getBranches } from "./api";
 /** Every file operation the sidebar menus can request (App performs it). */
 export type FileOp =
 	| { kind: "create-doc"; path: string }
+	| { kind: "create-folder"; path: string }
 	| { kind: "move-doc"; from: string; to: string }
 	| { kind: "delete-doc"; path: string }
 	| { kind: "move-folder"; from: string; to: string }
@@ -144,13 +145,13 @@ export function BranchMenu({
 			<button
 				type="button"
 				className="branch-dd"
-				title="Switch branch"
+				title={current ?? "Switch branch"}
 				aria-label={`Branch: ${current ?? "unknown"}. Switch branch`}
 				aria-expanded={menu.open}
 				onClick={menu.toggle}
 			>
 				<GitBranch aria-hidden="true" />
-				on {current ?? "…"}
+				<span className="branch-name">on {current ?? "…"}</span>
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				{failed && <p className="menu-empty">branches unavailable</p>}
@@ -187,24 +188,37 @@ export function BranchMenu({
 	);
 }
 
-/** "New document" — one always-visible icon button in the sidebar head (§5). */
+/**
+ * The "+" button (M4-2 item 11): a two-choice popover — New document (the
+ * existing path form) or New folder (same form, the create-folder op; the
+ * folder appears in the tree, nothing gets selected).
+ */
 export function NewDocButton({ onFileOp }: { onFileOp: (op: FileOp) => void }) {
 	const menu = useMenu();
+	const [mode, setMode] = useState<"choice" | "doc" | "folder">("choice");
 	const [path, setPath] = useState("");
 	const pathRef = useRef<HTMLInputElement>(null);
-	// The form is the whole popover — land focus in it when it opens
-	// (same pattern as the M2-2 image form).
+	// Land focus in the form when one opens; reset to the choice menu on close.
 	useEffect(() => {
-		if (menu.open) pathRef.current?.focus();
-	}, [menu.open]);
+		if (menu.open) {
+			if (mode !== "choice") pathRef.current?.focus();
+			return;
+		}
+		setMode("choice");
+	}, [menu.open, mode]);
 
 	function submit(e: FormEvent) {
 		e.preventDefault();
 		if (!path.trim()) return;
-		const p = toDocPath(path);
+		const isDoc = mode === "doc";
+		const p = isDoc ? toDocPath(path) : toPath(path);
 		setPath("");
 		menu.close();
-		onFileOp({ kind: "create-doc", path: p });
+		onFileOp(
+			isDoc
+				? { kind: "create-doc", path: p }
+				: { kind: "create-folder", path: p },
+		);
 	}
 
 	return (
@@ -212,29 +226,53 @@ export function NewDocButton({ onFileOp }: { onFileOp: (op: FileOp) => void }) {
 			<button
 				type="button"
 				className="tool-btn"
-				title="New document"
-				aria-label="New document"
+				title="New document or folder"
+				aria-label="New document or folder"
 				aria-expanded={menu.open}
 				onClick={menu.toggle}
 			>
 				<Plus aria-hidden="true" />
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
-				<form className="popover-form" onSubmit={submit}>
-					<label htmlFor="new-doc-path">New document</label>
-					<input
-						id="new-doc-path"
-						ref={pathRef}
-						value={path}
-						onChange={(e) => setPath(e.target.value)}
-						placeholder="notes/new-doc.md"
-					/>
-					<div className="popover-actions">
-						<button type="submit" className="iconbtn primary">
-							Create
+				{mode === "choice" && (
+					<>
+						<button
+							type="button"
+							className="menu-item"
+							onClick={() => setMode("doc")}
+						>
+							New document
 						</button>
-					</div>
-				</form>
+						<button
+							type="button"
+							className="menu-item"
+							onClick={() => setMode("folder")}
+						>
+							New folder
+						</button>
+					</>
+				)}
+				{mode !== "choice" && (
+					<form className="popover-form" onSubmit={submit}>
+						<label htmlFor="new-path">
+							{mode === "doc" ? "New document" : "New folder"}
+						</label>
+						<input
+							id="new-path"
+							ref={pathRef}
+							value={path}
+							onChange={(e) => setPath(e.target.value)}
+							placeholder={
+								mode === "doc" ? "notes/new-doc.md" : "notes/new-folder"
+							}
+						/>
+						<div className="popover-actions">
+							<button type="submit" className="iconbtn primary">
+								Create
+							</button>
+						</div>
+					</form>
+				)}
 			</MenuPopover>
 		</span>
 	);

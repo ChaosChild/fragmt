@@ -57,8 +57,9 @@ function remove(root: string, path: string): void {
 
 test("docs: version counts, newest author/email/date, docsRoot .md filtering", async () => {
 	const root = repo("main");
-	write(root, "docs/a.md", "# a\n");
-	write(root, "docs/b.md", "# b\n");
+	const longLine = `${"x".repeat(120)} end`;
+	write(root, "docs/a.md", "# a\n\nfirst body line of a\n");
+	write(root, "docs/b.md", `# b\n\n${longLine}\n| table | row |\n`);
 	write(root, "docs/img.png", "png");
 	write(root, "README.md", "# readme\n");
 	const sha1 = commit(
@@ -66,7 +67,7 @@ test("docs: version counts, newest author/email/date, docsRoot .md filtering", a
 		"Alice One <alice@example.com>",
 		"two docs + noise",
 	);
-	write(root, "docs/a.md", "# a v2\n");
+	write(root, "docs/a.md", "# a v2\n\nsecond body line\n");
 	const sha2 = commit(root, "Bob Two <bob@example.com>", "edit a");
 
 	const meta = await repoMeta(root, "docs");
@@ -77,12 +78,16 @@ test("docs: version counts, newest author/email/date, docsRoot .md filtering", a
 		authorEmail: "bob@example.com",
 		date: run(root, ["show", "-s", "--format=%aI", sha2]),
 		version: 2,
+		// First non-heading/non-empty/non-table line; a.md's re-edit swaps it.
+		snippet: "second body line",
 	});
 	expect(meta.docs["b.md"]).toEqual({
 		author: "Alice One",
 		authorEmail: "alice@example.com",
 		date: run(root, ["show", "-s", "--format=%aI", sha1]),
 		version: 1,
+		// Headings and table lines skipped; the body line clamped to 110 chars.
+		snippet: longLine.slice(0, 110),
 	});
 
 	// docsRoot "." adopts repo-relative paths as-is.
