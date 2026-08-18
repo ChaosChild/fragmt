@@ -66,7 +66,7 @@ Notes for whoever specs it:
 - Whatever lands, the anti-pattern list still holds: no toast stacks, no
   nested hover menus, nothing important reachable only by hovering.
 
-## M4-2 scope — dogfooding round 2 (2026-08-17, post-M4)
+## M4-2 scope — dogfooding round 2 (2026-08-18, post-M4)
 
 Nine items scheduled together as M4-2 in [PLAN.md](PLAN.md); the numbering is
 cross-referenced, so it is preserved here.
@@ -108,7 +108,7 @@ cross-referenced, so it is preserved here.
 
 ## Git & commits
 
-### One commit per logical action, including comments (2026-08-17, post-M4 dogfooding)
+### One commit per logical action, including comments (2026-08-18, post-M4 dogfooding)
 
 Creating a comment ships **two commits** — the document's markdown (the new
 `data-c` span) and then the sidecar JSON. That is the M4 spec's anchoring

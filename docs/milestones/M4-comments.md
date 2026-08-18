@@ -61,7 +61,7 @@ The docPath segment is guarded like `readDoc`; the `<id>` segment is opaque (no 
 - **Orphan threads** render with the orphan style + note + Delete.
 - **Icons:** all UI icons come from `lucide-react` — the hand-inlined SVGs (pencil, link, kebab, plus) are replaced during this milestone.
 
-## Dogfood fixes (first pass, 2026-08-17)
+## Dogfood fixes (first pass, 2026-08-18)
 
 1. Quote snapshots get readable line spacing (1.5) — multi-line quotes were cramped.
 2. Resolved threads render AFTER all open ones; expanding resolved can never push open threads below the fold.
