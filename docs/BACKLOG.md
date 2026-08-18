@@ -142,3 +142,11 @@ likeliest collision point. M4-2 keeps the M3 discipline: the merge aborts,
 HEAD (and the checked-out branch) are restored untouched, and the UI surfaces
 the message. Look later at resolving conflicts inside fragmt — doc-level and
 sidecar-level — instead of aborting.
+
+### /api/meta history-walk performance (2026-08-18, M4-2 planning)
+
+M4-2's metadata endpoint feeds the cards and doc head from a single
+`git log` walk (capped at 2000 commits, one spawn) on every refresh. Fine for
+a personal docs repo; a large repo would feel it in sidebar-refresh latency.
+When it bites: `rev-list` per doc, or a cache invalidated by HEAD — the
+ceiling is ponytail-marked in core.
