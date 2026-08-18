@@ -61,6 +61,14 @@ The docPath segment is guarded like `readDoc`; the `<id>` segment is opaque (no 
 - **Orphan threads** render with the orphan style + note + Delete.
 - **Icons:** all UI icons come from `lucide-react` — the hand-inlined SVGs (pencil, link, kebab, plus) are replaced during this milestone.
 
+## Dogfood fixes (first pass, 2026-08-17)
+
+1. Quote snapshots get readable line spacing (1.5) — multi-line quotes were cramped.
+2. Resolved threads render AFTER all open ones; expanding resolved can never push open threads below the fold.
+3. Reply stacks collapse: the card shows the opening comment plus the latest reply only; earlier replies sit behind a "Show N earlier replies" expander (per-card state).
+4. The sync status splits into one word — Unsaved / Saved / Syncing / Synced / Error — so the rail head never wraps. Amber LED covers the not-yet-synced shades (the word distinguishes), green = synced, red = error. A save lands on "Saved", never straight to "Synced" (sync runs on its own triggers).
+5. Cursor honesty: the thread card is default-cursor; only the quote button is a pointer (its hover/focus treatment kept, scoped to the button).
+
 ## Tests
 
 - `comments.test.ts` (tmp repo): addThread writes the sidecar in one commit; resolve/reply/delete mutate correctly; reading a missing sidecar returns `{comments:{}}`; traversal rejection on the sidecar path.

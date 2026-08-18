@@ -1114,17 +1114,6 @@ body {
 	border-radius: 4px;
 	transition: background var(--motion-base) var(--ease-standard);
 }
-.comment-thread[data-c] {
-	cursor: pointer;
-}
-.comment-thread[data-c]:hover .comment-quote {
-	border-left-color: var(--accent);
-	color: var(--fg);
-}
-.comment-thread:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
 .comment-thread.flash {
 	animation: thread-flash 1.4s var(--ease-standard);
 }
@@ -1148,9 +1137,10 @@ body {
 	font-family: var(--font-serif);
 	font-size: 14px;
 	font-style: italic;
+	line-height: 1.5;
 	color: var(--muted);
 	border-left: 2px solid var(--border);
-	margin-bottom: var(--space-2);
+	margin-bottom: var(--space-3);
 	transition:
 		border-color var(--motion-fast) var(--ease-standard),
 		color var(--motion-fast) var(--ease-standard);
@@ -1216,6 +1206,13 @@ body {
 	text-align: left;
 	cursor: pointer;
 }
+/* Cursor honesty (fix 5): the card is not the control — only the quote
+   button jumps, so only it gets the pointer and the hover/focus chrome.
+   Scoped to the button so the orphan's plain-div quote stays inert. */
+button.comment-quote:hover {
+	border-left-color: var(--accent);
+	color: var(--fg);
+}
 .comment-quote:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);
@@ -1238,7 +1235,8 @@ body {
 	text-decoration-color: var(--danger);
 }
 .comment-actions button:focus-visible,
-.show-resolved:focus-visible {
+.show-resolved:focus-visible,
+.show-earlier:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);
 }
@@ -1255,17 +1253,25 @@ body {
 .sync-indicator.err {
 	color: var(--danger);
 }
-/* "Show resolved (N)" — label-meta supplies the font/color. */
-.show-resolved {
+/* "Show resolved (N)" and "Show N earlier replies" — label-meta supplies
+   the font/color; both are quiet expander buttons (a11y floor: 32px + ring). */
+.show-resolved,
+.show-earlier {
 	display: block;
 	border: none;
 	background: none;
 	cursor: pointer;
 	min-height: 32px;
 	text-align: left;
+}
+.show-resolved {
 	padding: 0 0 var(--space-3) var(--space-1);
 }
-.show-resolved:hover {
+.show-earlier {
+	margin: var(--space-3) 0 0 var(--space-3);
+}
+.show-resolved:hover,
+.show-earlier:hover {
 	color: var(--accent);
 }
 /* A failed reply/resolve/delete — shown at the top of the rail body. */

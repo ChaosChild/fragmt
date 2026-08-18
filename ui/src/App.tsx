@@ -56,6 +56,9 @@ export function App() {
 	const [syncing, setSyncing] = useState(false);
 	const [conflict, setConflict] = useState<string | null>(null);
 	const [ledRed, setLedRed] = useState(false);
+	// Whether a sync has confirmed the latest local commit — splits the
+	// amber word: Saved (committed, not yet synced) vs Synced (green).
+	const [synced, setSynced] = useState(true);
 
 	// --- comments (M4-5): App owns the sidecar state — the rail, the doc-bar
 	// badge, and DocView's create-notification all read from this one fetch;
@@ -217,6 +220,7 @@ export function App() {
 			}
 			setConflict(null);
 			setLedRed(false);
+			setSynced(true);
 			try {
 				setTree(await getTree());
 			} catch {
@@ -331,19 +335,19 @@ export function App() {
 		}
 	}
 
-	// LED — one dot, three truths: green synced, amber unsaved-or-syncing,
-	// red conflict-or-offline (red holds until the next clean sync).
-	const led = ledRed ? "red" : dirty || syncing ? "amber" : "green";
-	const ledLabel =
-		led === "red"
-			? conflict
-				? "Sync conflict"
-				: "Not synced"
-			: led === "amber"
-				? dirty
-					? "Unsaved changes"
-					: "Syncing"
-				: "Saved and synced";
+	// LED + one-word status: amber = not synced yet (the word says which —
+	// Unsaved/Saved/Syncing), green = synced, red = error (conflict or sync
+	// failure; holds until the next clean sync).
+	const led = ledRed ? "red" : dirty || syncing || !synced ? "amber" : "green";
+	const ledLabel = ledRed
+		? "Error"
+		: dirty
+			? "Unsaved"
+			: syncing
+				? "Syncing"
+				: synced
+					? "Synced"
+					: "Saved";
 
 	return (
 		<>
@@ -372,7 +376,13 @@ export function App() {
 					<DocView
 						doc={doc}
 						selected={selected}
-						onSaved={setDoc}
+						// A successful save commits locally — synced flips back
+						// to false: the LED reads Saved (amber), not Synced;
+						// the next sync confirms it.
+						onSaved={(d) => {
+							setDoc(d);
+							setSynced(false);
+						}}
 						onReload={reloadSelected}
 						onDirtyChange={setDirty}
 						commentCount={threads.length}

@@ -43,6 +43,9 @@ function ThreadCard({
 	const [replying, setReplying] = useState(false);
 	const [text, setText] = useState("");
 	const [sending, setSending] = useState(false);
+	// Reply collapsing: long stacks show the opening + latest reply only;
+	// the middle hides behind the expander until asked for.
+	const [expanded, setExpanded] = useState(false);
 	const replyBoxRef = useRef<HTMLTextAreaElement>(null);
 	// Opening the form hands focus to it — focus management after the user's
 	// own Reply click, done programmatically (no autoFocus attribute).
@@ -62,6 +65,10 @@ function ThreadCard({
 		setSending(false);
 	}
 
+	// Replies beyond the opening comment — one shows as-is, none show
+	// nothing, 2+ collapse to the latest plus the expander above.
+	const rest = thread.replies.slice(1);
+
 	const classes = [
 		"comment-thread",
 		thread.resolved ? "resolved" : "",
@@ -69,8 +76,8 @@ function ThreadCard({
 	]
 		.filter(Boolean)
 		.join(" ");
-	// data-c keys the staged hover rule and the rail-side jump target; orphans
-	// have no span to jump to, so they render without it.
+	// data-c keys the rail-side jump target (doc→rail focus); orphans have
+	// no span to jump to, so they render without it.
 	return (
 		<div className={classes} data-c={orphan ? undefined : thread.id}>
 			{orphan ? (
@@ -90,7 +97,18 @@ function ThreadCard({
 				<span className="time">{timeAgo(thread.createdAt)}</span>
 			</div>
 			<div className="comment-body">{thread.replies[0]?.body}</div>
-			{thread.replies.slice(1).map((reply) => (
+			{rest.length > 1 && !expanded && (
+				<button
+					type="button"
+					className="label-meta show-earlier"
+					aria-expanded={expanded}
+					onClick={() => setExpanded(true)}
+				>
+					Show {rest.length - 1} earlier{" "}
+					{rest.length - 1 === 1 ? "reply" : "replies"}
+				</button>
+			)}
+			{(expanded ? rest : rest.slice(-1)).map((reply) => (
 				<div className="comment-reply" key={reply.at}>
 					<div className="comment-header">
 						<span className="author">{reply.author}</span>
@@ -276,6 +294,22 @@ export function CommentsRail({
 						note.
 					</p>
 				)}
+				{/* Open threads always sit on top; the resolved block renders
+				    after them (and after the toggle) so expanding it never
+				    pushes the open ones down the rail. */}
+				{threads
+					.filter((t) => !t.resolved)
+					.map((t) => (
+						<ThreadCard
+							key={t.id}
+							thread={t}
+							orphan={!liveIds.has(t.id)}
+							onJump={jumpToDoc}
+							onReply={onReply}
+							onResolve={onResolve}
+							onDelete={onDelete}
+						/>
+					))}
 				{resolvedCount > 0 && (
 					<button
 						type="button"
@@ -288,19 +322,20 @@ export function CommentsRail({
 							: `Show resolved (${resolvedCount})`}
 					</button>
 				)}
-				{threads
-					.filter((t) => showResolved || !t.resolved)
-					.map((t) => (
-						<ThreadCard
-							key={t.id}
-							thread={t}
-							orphan={!liveIds.has(t.id)}
-							onJump={jumpToDoc}
-							onReply={onReply}
-							onResolve={onResolve}
-							onDelete={onDelete}
-						/>
-					))}
+				{showResolved &&
+					threads
+						.filter((t) => t.resolved)
+						.map((t) => (
+							<ThreadCard
+								key={t.id}
+								thread={t}
+								orphan={!liveIds.has(t.id)}
+								onJump={jumpToDoc}
+								onReply={onReply}
+								onResolve={onResolve}
+								onDelete={onDelete}
+							/>
+						))}
 			</div>
 		</aside>
 	);
