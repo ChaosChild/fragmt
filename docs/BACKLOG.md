@@ -149,6 +149,21 @@ Notes for whoever specs it:
 
 **2026-08-18:** graduated into M4-2 as item 10 (Lavish round 2).
 
+## Tree & files
+
+### Respect .gitignore in the doc tree (2026-08-18, post-M4-2 dogfooding)
+
+`listTree` skips dot-folders, `node_modules`, and `dist` by hardcoded rule,
+but anything else a `.gitignore` excludes (build output, caches, scratch
+folders) still shows as browsable docs when it contains markdown — and the
+fs-derived surfaces built on the walk (`/api/meta` snippets, the UI's
+doc/ghost sets) inherit the leak. The tree should exclude ignored paths:
+`git check-ignore` or a `git ls-files` allow-list is the seam, one call per
+tree refresh (not per file), with the hardcoded skips kept as the fallback
+when the repo has no ignores. Decide whether ignored docs that ARE tracked
+(the classic `.env`-style force-add) still show — git's own answer (tracked
+wins over ignore) is the sane default.
+
 ## Drafting model
 
 ### Merge-conflict resolution in the UI (2026-08-18, M4-2 planning)
