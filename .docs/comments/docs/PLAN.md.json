@@ -18,6 +18,20 @@
 					"at": "2026-08-17T12:05:44.473Z"
 				}
 			]
+		},
+		"d13d457e-564a-4e9d-9bc5-f5239144f512": {
+			"id": "d13d457e-564a-4e9d-9bc5-f5239144f512",
+			"quote": "M5 — Dogfood hardening",
+			"author": "Andrei Migatchev",
+			"createdAt": "2026-08-18T09:28:05.380Z",
+			"resolved": false,
+			"replies": [
+				{
+					"author": "Andrei Migatchev",
+					"body": "We'll need to add another milestone before M5 for the BACKLOG items.",
+					"at": "2026-08-18T09:28:05.380Z"
+				}
+			]
 		}
 	}
 }
