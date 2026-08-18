@@ -12,7 +12,7 @@
 - HTTP server: Hono
 - License: MIT
 
-Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M5](milestones/M5-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
+Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M4-2](milestones/M4-2-drafting-model.md) · [M5](milestones/M5-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
 
 ## Build status
 
@@ -112,6 +112,8 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - [ ] Protected main: editing a doc on main auto-creates a draft branch (auto-named, no prompt) and moves the doc to draft
 - [ ] "Merge" action on a draft — multi-file branches merge to main when the operator decides; PR creation stays with the operator (GitHub)
 - [ ] Restore deleted documents (and their comment sidecars) from git history
+- [ ] One commit per logical comment action (create/delete = single commits; M4's anchoring contract amended in the same change)
+- [ ] Sidebar head layout (from the design-pass backlog item): two-row head — brand + "+" / branch selector + global Merge; kebab hover-revealed on rows
 
 **Sequencing note:** the merge button settles the "when does a draft become a PR" question — the operator merges in the UI when a draft is complete; opening a PR on GitHub remains a separate, manual act (v2 may fold it in).
 

@@ -35,6 +35,10 @@ Notes for whoever specs it:
 - Decide and spec: anchor fragments (`#heading`) within the same doc; links
   to non-markdown files in the repo (open raw? download?); links to folders.
 
+**2026-08-18:** the minimal set (in-app navigation for doc links, external →
+new tab) ships with M4-2 item 5 because `@` references are links; the rest —
+anchors, non-markdown targets, folder links, `../` edge cases — stays here.
+
 ## Sidebar chrome
 
 ### Navbar / tree-row design pass (2026-08-17, M3 dogfooding)
@@ -59,17 +63,22 @@ Notes for whoever specs it:
   hover/focus while the same actions stay reachable from a fixed place (e.g.
   the doc bar for the open doc) — rows must keep ≥32px targets and full
   keyboard reach either way.
-- The head needs a layout decision, not a patch: truncate branch names
+- **The head needs a layout decision, not a patch: truncate branch names**
   (ellipsis + `title`), consider a two-row head, or move the branch control
   to the doc bar / top bar — `docs/app.html` (the v1-final mock) is the
   reference for intended placement.
 - Whatever lands, the anti-pattern list still holds: no toast stacks, no
   nested hover menus, nothing important reachable only by hovering.
 
+**2026-08-18:** the head layout and row-affordance halves of this item
+graduated into M4-2 (items 11 and 1 — two-row head with brand + "+" / branch
++ global Merge, kebab revealed on hover/focus) per the Lavish M4-2 round 2.
+The item stays open only for whatever dogfooding still flags.
+
 ## M4-2 scope — dogfooding round 2 (2026-08-18, post-M4)
 
-Nine items scheduled together as M4-2 in [PLAN.md](PLAN.md); the numbering is
-cross-referenced, so it is preserved here.
+Eleven items scheduled together as M4-2 in [PLAN.md](PLAN.md); the numbering
+is cross-referenced, so it is preserved here.
 
 1. **Navigation cards to the mock.** Doc cards carry author, date last
    edited, a short snippet, version, and a draft indicator
@@ -105,6 +114,13 @@ cross-referenced, so it is preserved here.
 9. **Restore deleted documents.** Everything is in git; deleting should be
    reversible — restore a deleted doc (and its comments sidecar) from
    history.
+10. **One commit per logical comment action** (graduated from "Git & commits"
+    below, Lavish round 2): comment create/delete become single commits
+    covering doc + sidecar; M4's anchoring contract is amended in the same
+    change.
+11. **Sidebar head layout** (graduated from "Sidebar chrome" above, Lavish
+    round 2): two-row head — brand + "+" / branch selector + global Merge
+    button; kebab revealed on hover/focus per DESIGN §5.
 
 ## Git & commits
 
@@ -130,6 +146,8 @@ Notes for whoever specs it:
   all. One commit covering doc + sidecar there too.
 - Amend the M4 spec's anchoring contract when this lands; the tests pinning
   one-commit-per-file-op show the pattern.
+
+**2026-08-18:** graduated into M4-2 as item 10 (Lavish round 2).
 
 ## Drafting model
 
