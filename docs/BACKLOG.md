@@ -105,3 +105,28 @@ cross-referenced, so it is preserved here.
 9. **Restore deleted documents.** Everything is in git; deleting should be
    reversible — restore a deleted doc (and its comments sidecar) from
    history.
+
+## Git & commits
+
+### One commit per logical action, including comments (2026-08-17, post-M4 dogfooding)
+
+Creating a comment ships **two commits** — the document's markdown (the new
+`data-c` span) and then the sidecar JSON. That is the M4 spec's anchoring
+contract ("two sequential commits via `commitAs`"), but in practice it is
+overkill: the two files are one logical action and should land in **one
+commit**.
+
+Notes for whoever specs it:
+
+- `commitAs` already takes a `files` array — write the doc body and the
+  sidecar, then one `commitAs` call covering both paths. The doc-first
+  ordering that motivated the split (a stale-hash 409 must never leave a
+  half-written comment) is preserved by validating/saving the doc *before*
+  the commit, not by committing it separately.
+- Pick a message that names the action (`Comment on <docPath>` beats two
+  `Update …` commits).
+- Same lens on comment **delete**: today it is a sidecar commit plus the
+  span removal waiting for the doc's next save — the most split action of
+  all. One commit covering doc + sidecar there too.
+- Amend the M4 spec's anchoring contract when this lands; the tests pinning
+  one-commit-per-file-op show the pattern.
