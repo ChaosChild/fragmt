@@ -180,9 +180,16 @@ export type CommentFile = { comments: Record<string, CommentThread> };
 export const getComments = (path: string) =>
 	request<CommentFile>(`/api/docs/${encodeURI(path)}/comments`);
 
+/** docBody + docBaseHash present → the combined create: doc + sidecar in ONE commit. */
 export const addComment = (
 	path: string,
-	thread: { id: string; quote: string; body: string },
+	thread: {
+		id: string;
+		quote: string;
+		body: string;
+		docBody?: string;
+		docBaseHash?: string;
+	},
 ) =>
 	request<{ sha: string }>(`/api/docs/${encodeURI(path)}/comments`, {
 		method: "POST",
@@ -190,7 +197,7 @@ export const addComment = (
 		body: JSON.stringify(thread),
 	});
 
-/** One action per call (the server's PATCH shape): reply appends, resolved:true resolves. */
+/** One action per call (the server's PATCH shape): reply appends, resolved flips either way. */
 export const patchComment = (
 	path: string,
 	id: string,
@@ -205,8 +212,11 @@ export const patchComment = (
 		},
 	);
 
-export const deleteComment = (path: string, id: string) =>
+/** baseHash present → the combined delete: span stripped + entry removed in ONE commit. */
+export const deleteComment = (path: string, id: string, baseHash?: string) =>
 	request<{ sha: string }>(
-		`/api/docs/${encodeURI(path)}/comments/${encodeURIComponent(id)}`,
+		`/api/docs/${encodeURI(path)}/comments/${encodeURIComponent(id)}${
+			baseHash ? `?baseHash=${encodeURIComponent(baseHash)}` : ""
+		}`,
 		{ method: "DELETE" },
 	);

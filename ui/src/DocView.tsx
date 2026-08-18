@@ -8,10 +8,10 @@ import { EditorPane, type EditorPaneHandle } from "./EditorPane";
  * flips the SAME mounted Tiptap editor to editable (M4 review decision 3 —
  * one rendering path, no reflow between modes). Save commits via PUT; a 409
  * shows a non-destructive banner and keeps the user's buffer (M2 spec).
- * Comment anchoring (M4) reuses the same PUT seam — doc first, sidecar
- * second — without ever flipping the mode. The rail lives in App; DocView
- * keeps only the doc-bar badge (fed from App's sidecar state) and forwards
- * highlight-span clicks to it.
+ * Comment anchoring (M4-2) is one combined POST — doc body and sidecar
+ * thread in a single server-side commit — without ever flipping the mode.
+ * The rail lives in App; DocView keeps only the doc-bar badge (fed from
+ * App's sidecar state) and forwards highlight-span clicks to it.
  */
 export function DocView({
 	doc,
@@ -146,21 +146,34 @@ export function DocView({
 		return ok;
 	}
 
-	// Comment anchoring (M4 spec's contract): the mark is already applied
-	// locally by the composer; here the doc saves FIRST, then the sidecar
-	// thread posts. A failed doc save (the existing banner above) leaves the
-	// sidecar untouched. The mode is never flipped — commenting from read
-	// mode stays in read mode.
+	// Comment anchoring (M4-2's one-commit contract): the mark is already
+	// applied locally by the composer; ONE POST carries the serialized doc
+	// body + base hash AND the thread — the server writes both files in a
+	// single commit. A failure (e.g. a stale base hash → 409) leaves disk
+	// untouched; the banner shows it and the buffer's mark just sits there
+	// until saved or discarded. The mode is never flipped — commenting from
+	// read mode stays in read mode.
 	async function handleComment(id: string, quote: string, body: string) {
-		if (!doc) return;
-		if (!(await persist(editorRef.current?.getMarkdown() ?? ""))) return;
+		if (!doc || saving) return;
+		setSaving(true);
+		setSaveError(null);
 		try {
-			await addComment(doc.path, { id, quote, body });
+			await addComment(doc.path, {
+				id,
+				quote,
+				body,
+				docBody: editorRef.current?.getMarkdown() ?? "",
+				docBaseHash: doc.hash,
+			});
+			// The doc changed on disk (mark included) — refetch for the
+			// canonical body + hash the next save or comment builds on.
+			setDirty(false);
+			onReload();
 			onCommentsChanged();
 		} catch (e) {
-			// Doc saved (mark included) but no thread — the error banner shows
-			// it; the orphan reconcile in the rail is the recovery story.
 			setSaveError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setSaving(false);
 		}
 	}
 

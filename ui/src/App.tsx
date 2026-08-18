@@ -177,10 +177,11 @@ export function App() {
 		return true;
 	}
 
-	async function railResolve(id: string) {
+	// Resolve/reopen — both directions hit the same sidecar-only PATCH.
+	async function railResolve(id: string, resolved: boolean) {
 		if (!selected) return;
 		try {
-			await patchComment(selected, id, { resolved: true });
+			await patchComment(selected, id, { resolved });
 		} catch (e) {
 			setRailError(e instanceof Error ? e.message : String(e));
 			return;
@@ -189,14 +190,20 @@ export function App() {
 		refreshComments();
 	}
 
-	// Delete removes the sidecar entry now; the span itself disappears on the
-	// doc's next save (spec) — so simply refetch both. The doc refetch is
-	// skipped while the buffer is dirty (it would drop unsaved edits).
+	// Delete with a CLEAN buffer uses the combined endpoint: the span and the
+	// sidecar entry go in ONE commit, and the doc refetch picks up the stripped
+	// body immediately. A dirty buffer can't send the doc (its base hash is
+	// stale by definition) → sidecar-only, the span leaves on the next save,
+	// and no refetch (it would drop unsaved edits).
 	async function railDelete(id: string) {
 		if (!selected) return;
 		if (!window.confirm("Delete this comment thread?")) return;
 		try {
-			await deleteComment(selected, id);
+			await deleteComment(
+				selected,
+				id,
+				live.current.dirty ? undefined : (doc?.hash ?? undefined),
+			);
 		} catch (e) {
 			setRailError(e instanceof Error ? e.message : String(e));
 			return;
@@ -416,7 +423,8 @@ export function App() {
 						onClose={() => setRailOpen(false)}
 						focus={spanFocus}
 						onReply={(id, body) => railReply(id, body)}
-						onResolve={(id) => void railResolve(id)}
+						onResolve={(id) => void railResolve(id, true)}
+						onReopen={(id) => void railResolve(id, false)}
 						onDelete={(id) => void railDelete(id)}
 						error={railError}
 					/>

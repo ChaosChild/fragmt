@@ -69,7 +69,8 @@ setResolved(repoRoot, docPath, id, resolved: boolean): Promise<{ sha }>  // repl
 stripCommentSpan(body: string, id: string): string
   // pure, exported: removes `<span data-c="id">` and its MATCHING `</span>` — linear indexOf
   // walk to the next close tag (spans never nest), inner text kept; unknown id → body unchanged
-addThreadWithDoc(repoRoot, docsRoot, docPath, { id, quote, author, body, docBody, baseHash }): Promise<{ sha }>
+addThreadWithDoc(repoRoot, docsRoot, docPath, { id, quote, body, docBody, baseHash }): Promise<{ sha }>
+  // author derives from the localUser identity the commit requires (as addThread);
   // writeDoc's full discipline — identity resolved first, stale-hash check on baseHash BEFORE any
   // disk write, byte-for-byte frontmatter reattach, LF-canonical body — then the sidecar too:
   // ONE commitAs: `Comment on <docPath>`

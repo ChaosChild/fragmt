@@ -87,6 +87,55 @@ export function readDoc(
 	};
 }
 
+/** Everything a doc-body write needs before a byte hits disk (M4-2). */
+export interface DocWritePrep {
+	abs: string;
+	user: { name: string; email: string };
+	/** The current file's body, canonicalized (the string `baseHash` hashed). */
+	current: string;
+	/** Final file bytes for a normalized body — raw frontmatter reattached byte-for-byte. */
+	raw: (normalized: string) => string;
+}
+
+/**
+ * The shared doc-write prep, extracted from writeDoc (M4-2) so the combined
+ * comment ops (comments.ts) reuse the identical discipline instead of
+ * duplicating it: traversal guard, existence, git identity BEFORE any write
+ * (a missing identity leaves the working tree untouched), stale check, and a
+ * `raw` that reattaches the CURRENT file's frontmatter + fence gap
+ * byte-for-byte (never re-serialize the YAML). Throws DocPathError,
+ * DocNotFoundError, GitIdentityError, or StaleDocError — all before disk.
+ */
+export async function prepareDocWrite(
+	repoRoot: string,
+	docsRoot: string,
+	docPath: string,
+	baseHash: string,
+): Promise<DocWritePrep> {
+	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		throw new DocNotFoundError(docPath);
+	}
+	const user = await localUser(repoRoot);
+	const parsed = matter(readFileSync(abs, "utf8"), {});
+	const current = canonicalBody(parsed.content);
+	if (docHash(current) !== baseHash) {
+		throw new StaleDocError(`doc changed since load: ${docPath}`);
+	}
+	// Keep the whitespace between the fence and the body byte-for-byte from
+	// the current file — dropping it puts the fence itself into the diff.
+	const gap = parsed.matter ? (parsed.content.match(/^\n+/)?.[0] ?? "") : "";
+	return {
+		abs,
+		user,
+		current,
+		raw: (normalized) =>
+			parsed.matter
+				? `---${parsed.matter}\n---\n${gap}${normalized}`
+				: normalized,
+	};
+}
+
 /**
  * Save a doc body and commit it. Steps, per the M2 spec:
  * 1. traversal guard (shared with readDoc);
@@ -106,23 +155,14 @@ export async function writeDoc(
 	body: string,
 	baseHash: string,
 ): Promise<{ sha: string; hash: string }> {
-	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
-	if (!existsSync(abs) || !statSync(abs).isFile()) {
-		throw new DocNotFoundError(docPath);
-	}
-	const user = await localUser(repoRoot);
-	const parsed = matter(readFileSync(abs, "utf8"), {});
-	if (docHash(canonicalBody(parsed.content)) !== baseHash) {
-		throw new StaleDocError(`doc changed since load: ${docPath}`);
-	}
+	const { abs, user, raw } = await prepareDocWrite(
+		repoRoot,
+		docsRoot,
+		docPath,
+		baseHash,
+	);
 	const normalized = canonicalBody(body);
-	// Keep the whitespace between the fence and the body byte-for-byte from
-	// the current file — dropping it puts the fence itself into the diff.
-	const gap = parsed.matter ? (parsed.content.match(/^\n+/)?.[0] ?? "") : "";
-	const raw = parsed.matter
-		? `---${parsed.matter}\n---\n${gap}${normalized}`
-		: normalized;
-	writeFileSync(abs, raw);
+	writeFileSync(abs, raw(normalized));
 	const repoRel = relative(repoRoot, abs).split(sep).join("/");
 	const sha = await commitAs(
 		user,

@@ -1,4 +1,4 @@
-import { Check, Reply, Trash2, X } from "lucide-react";
+import { Check, Reply, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CommentThread } from "./api";
 import { ThemeToggle } from "./ThemeToggle";
@@ -30,6 +30,7 @@ function ThreadCard({
 	onJump,
 	onReply,
 	onResolve,
+	onReopen,
 	onDelete,
 }: {
 	thread: CommentThread;
@@ -38,6 +39,7 @@ function ThreadCard({
 	onJump: (id: string) => void;
 	onReply: (id: string, body: string) => Promise<boolean>;
 	onResolve: (id: string) => void;
+	onReopen: (id: string) => void;
 	onDelete: (id: string) => void;
 }) {
 	const [replying, setReplying] = useState(false);
@@ -123,17 +125,25 @@ function ThreadCard({
 				</p>
 			)}
 			<div className="comment-actions">
-				{!thread.resolved && !orphan && (
-					<>
-						<button type="button" onClick={() => setReplying((v) => !v)}>
-							<Reply aria-hidden="true" />
-							Reply
-						</button>
-						<button type="button" onClick={() => onResolve(thread.id)}>
-							<Check aria-hidden="true" />
-							Resolve
-						</button>
-					</>
+				{thread.resolved ? (
+					/* The mock's .comment-thread.resolved shape: Reopen + Delete. */
+					<button type="button" onClick={() => onReopen(thread.id)}>
+						<RotateCcw aria-hidden="true" />
+						Reopen
+					</button>
+				) : (
+					!orphan && (
+						<>
+							<button type="button" onClick={() => setReplying((v) => !v)}>
+								<Reply aria-hidden="true" />
+								Reply
+							</button>
+							<button type="button" onClick={() => onResolve(thread.id)}>
+								<Check aria-hidden="true" />
+								Resolve
+							</button>
+						</>
+					)
 				)}
 				<button
 					type="button"
@@ -200,6 +210,7 @@ export function CommentsRail({
 	focus,
 	onReply,
 	onResolve,
+	onReopen,
 	onDelete,
 	error,
 }: {
@@ -214,6 +225,8 @@ export function CommentsRail({
 	focus: { id: string; n: number } | null;
 	onReply: (id: string, body: string) => Promise<boolean>;
 	onResolve: (id: string) => void;
+	/** A resolved thread's Reopen action (M4-2) — back to the open list. */
+	onReopen: (id: string) => void;
 	onDelete: (id: string) => void;
 	error: string | null;
 }) {
@@ -307,6 +320,7 @@ export function CommentsRail({
 							onJump={jumpToDoc}
 							onReply={onReply}
 							onResolve={onResolve}
+							onReopen={onReopen}
 							onDelete={onDelete}
 						/>
 					))}
@@ -333,6 +347,7 @@ export function CommentsRail({
 								onJump={jumpToDoc}
 								onReply={onReply}
 								onResolve={onResolve}
+								onReopen={onReopen}
 								onDelete={onDelete}
 							/>
 						))}
