@@ -1,3 +1,4 @@
+import { Ellipsis, GitBranch, Plus } from "lucide-react";
 import {
 	type FormEvent,
 	type MouseEvent as ReactMouseEvent,
@@ -22,34 +23,6 @@ export type FileOp =
 export type BranchAction =
 	| { kind: "switch"; name: string }
 	| { kind: "create"; name: string };
-
-const BranchIcon = (
-	<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-		<path d="M11.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm-2.25.75a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.493 2.493 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM3.5 3.25a.75.75 0 1 1 1.5 0 .75.75 0 0 1-1.5 0Z" />
-	</svg>
-);
-
-const KebabIcon = (
-	<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-		<circle cx="3" cy="8" r="1.4" />
-		<circle cx="8" cy="8" r="1.4" />
-		<circle cx="13" cy="8" r="1.4" />
-	</svg>
-);
-
-const PlusIcon = (
-	<svg
-		viewBox="0 0 24 24"
-		fill="none"
-		stroke="currentColor"
-		strokeWidth={2}
-		strokeLinecap="round"
-		aria-hidden="true"
-	>
-		<path d="M12 5v14" />
-		<path d="M5 12h14" />
-	</svg>
-);
 
 /** Docs must end in .md (core rule) — keep free-form input forgiving. */
 function toDocPath(input: string): string {
@@ -176,7 +149,7 @@ export function BranchMenu({
 				aria-expanded={menu.open}
 				onClick={menu.toggle}
 			>
-				{BranchIcon}
+				<GitBranch aria-hidden="true" />
 				on {current ?? "…"}
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
@@ -244,7 +217,7 @@ export function NewDocButton({ onFileOp }: { onFileOp: (op: FileOp) => void }) {
 				aria-expanded={menu.open}
 				onClick={menu.toggle}
 			>
-				{PlusIcon}
+				<Plus aria-hidden="true" />
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				<form className="popover-form" onSubmit={submit}>
@@ -311,7 +284,7 @@ export function RowMenu({
 					menu.toggle(e);
 				}}
 			>
-				{KebabIcon}
+				<Ellipsis aria-hidden="true" />
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				{mode === "menu" && (

@@ -18,23 +18,36 @@ export interface EditorPaneHandle {
 }
 
 /**
- * The Tiptap pane. Mounts fresh per edit session (keyed by doc path), loads
- * the body through tiptap-markdown's setContent, and hands the serialized
- * markdown back via `onSave`. Esc cancels, Ctrl/Cmd+S saves (DESIGN §8).
- * M2-2 adds the contextual formatting surfaces: selection/right-click bubble,
- * slash menu, and the image popover.
+ * The Tiptap pane — one rendering path for both modes (M4 review decision 3):
+ * read mode is this same editor with `editable: false`, so a read-mode
+ * selection maps to exact ProseMirror positions and entering edit is a mode
+ * flip on the mounted editor (no remount, no reflow). Mounts fresh per doc
+ * (keyed by path), loads the body through tiptap-markdown's setContent, and
+ * hands the serialized markdown back via `onSave`. Esc cancels, Ctrl/Cmd+S
+ * saves (DESIGN §8). M2-2 adds the contextual formatting surfaces:
+ * right-click bubble, slash menu, and the image popover — edit-mode only.
+ * M4 mounts the bubble in BOTH modes: read mode carries only the comment
+ * action, whose anchoring flow (`onComment`) runs on the non-editable
+ * instance without ever flipping the mode (review decision 3).
  */
 export function EditorPane({
 	markdown,
+	editable,
 	onSave,
 	onCancel,
+	onComment,
+	onSpanClick,
 	saving,
 	onDirtyChange,
 	ref,
 }: {
 	markdown: string;
+	editable: boolean;
 	onSave: (markdown: string) => void;
 	onCancel: () => void;
+	onComment: (id: string, quote: string, body: string) => void;
+	/** A comment highlight (span[data-c]) was activated — jump the rail to it. */
+	onSpanClick: (id: string) => void;
 	saving: boolean;
 	onDirtyChange?: (dirty: boolean) => void;
 	ref?: Ref<EditorPaneHandle>;
@@ -52,7 +65,11 @@ export function EditorPane({
 			onImage: (insertAt) => setImageAt(insertAt),
 		}),
 		content: "",
-		autofocus: true,
+		editable,
+		// Focus is the editable-flip effect's job — read mode never
+		// autofocuses, edit mode focuses on flip (autofocus here would grab
+		// focus on a read-mode mount).
+		autofocus: false,
 		// The content-editable div carries the read-mode typography class, so
 		// edit mode IS the rendered document (DESIGN: "Editor (M2)") — no
 		// reflow, no re-skin.
@@ -65,6 +82,18 @@ export function EditorPane({
 		editor?.commands.setContent(markdown);
 		setDirty(false);
 	}, [editor, markdown]);
+
+	// Edit/Cancel flips editability on the SAME mounted editor — the DOM
+	// never rebuilds, so the text cannot reflow (M2 rule). A stale bubble
+	// flag (bubble open when Save was clicked) would eat one Escape later;
+	// clear it on the way out. Tiptap's built-in tabindex extension keeps
+	// the non-editable view focusable, so selections work in read mode.
+	useEffect(() => {
+		if (!editor) return;
+		editor.setEditable(editable);
+		if (editable) editor.commands.focus();
+		else setBubbleOpen(false);
+	}, [editor, editable]);
 
 	// Dirty = any doc-changing transaction since load (DocView uses it to
 	// confirm before dropping the buffer).
@@ -99,7 +128,29 @@ export function EditorPane({
 				editor={editor}
 				className="edit-area"
 				aria-label="Document editor"
+				// Highlight jumps (M4-5), delegated over the editor DOM — edit
+				// mode is excluded (clicks are selection there), and a drag
+				// selection landing on a span doesn't jump: read-mode commenting
+				// on already-marked text must keep working.
+				onClick={(e) => {
+					if (editable || !window.getSelection()?.isCollapsed) return;
+					const span = (e.target as HTMLElement).closest("[data-c]");
+					if (span) onSpanClick(span.getAttribute("data-c") ?? "");
+				}}
 				onKeyDown={(e) => {
+					// Read mode owns no edit-session keys — Esc just clears
+					// the selection (PM's own handling), Ctrl+S would save a
+					// buffer the user cannot see they are editing. Enter/Space
+					// on a focused highlight (the mark carries tabindex) jumps
+					// to its thread instead.
+					if (!editable) {
+						const span = (e.target as HTMLElement).closest("[data-c]");
+						if (span && (e.key === "Enter" || e.key === " ")) {
+							e.preventDefault();
+							onSpanClick(span.getAttribute("data-c") ?? "");
+						}
+						return;
+					}
 					// Escape order (M2-2): popover → slash menu → bubble →
 					// selection → edit-cancel-with-confirm. Each surface
 					// dismisses itself first; the bubble runs a capture-phase
@@ -125,8 +176,13 @@ export function EditorPane({
 					}
 				}}
 			/>
-			<BubbleToolbar editor={editor} onVisibilityChange={setBubbleOpen} />
-			{slashState && (
+			<BubbleToolbar
+				editor={editor}
+				editable={editable}
+				onComment={onComment}
+				onVisibilityChange={setBubbleOpen}
+			/>
+			{editable && slashState && (
 				// Keyed by query: a new filter remounts the menu, resetting the
 				// highlight to the first item.
 				<SlashMenuView
@@ -138,7 +194,7 @@ export function EditorPane({
 					}}
 				/>
 			)}
-			{imageAt !== null && (
+			{editable && imageAt !== null && (
 				<ImagePopover
 					editor={editor}
 					insertAt={imageAt}

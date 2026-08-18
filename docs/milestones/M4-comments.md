@@ -7,7 +7,7 @@ Prerequisite: M2 complete. The `CommentMark` is already plumbed through the edit
 
 ## New dependencies (only these)
 
-None. (`crypto.randomUUID` is built-in; the editor + git layer come from M2.)
+- `lucide-react` — the icon standard (review decision 4): per-icon ESM imports, ~250 B each tree-shaken; replaces every hand-inlined SVG. Everything else is built-in (`crypto.randomUUID`; the editor + git layer come from M2).
 
 ## Core additions (src/core/)
 
@@ -54,10 +54,20 @@ The docPath segment is guarded like `readDoc`; the `<id>` segment is opaque (no 
 
 ## UI additions
 
-- **Selection → comment:** selecting text in the editor shows ONE small affordance (DESIGN §5 — no hover minefield) → an inline thread composer. Submit applies the mark + writes the sidecar + reloads.
-- **Comments rail** (`docs/app.html` right margin): threads with quote snapshot on top, author/time, body, actions (Reply / Resolve / Delete). Resolved hidden by default with a toggle. The rail carries the sync LED + theme toggle (per `app.html`).
-- **Anchored highlights in read mode:** `<span data-c>` rendered with the `.comment-highlight` tint; click scrolls to its thread + flashes.
+- **Selection → comment (review decision 1):** the M2-2 selection bubble gains a **Comment** action — one surface, zero new chrome. In read mode the bubble shows *only* Comment (formatting is an edit-mode concern); in edit mode it is a fourth group beside turn-into.
+- **Read mode is a non-editable editor (review decision 3):** the doc body stops rendering through react-markdown and becomes the same Tiptap editor with `editable: false` — one rendering path. A read-mode selection therefore maps to exact ProseMirror positions, and the comment command runs identically in both modes; no string matching anywhere, ever. M2's pixel-parity work means no reflow; react-markdown + remark-gfm leave the doc body (the corpus gate + typography parity de-risk the swap). Commenting from read mode applies the mark, saves the doc, writes the sidecar, and re-renders — the mode never changes.
+- **Comments rail** (`docs/app.html` right margin): threads with quote snapshot on top, author/time, body, actions (Reply / Resolve / Delete). Resolved hidden by default with a toggle. The rail carries the sync LED + theme toggle (per `app.html`, review decision 2 — the sidebar-head rethink stays a backlog design pass).
+- **Anchored highlights in read mode:** `span[data-c]` rendered with the `.comment-highlight` tint; click scrolls to its thread + flashes.
 - **Orphan threads** render with the orphan style + note + Delete.
+- **Icons:** all UI icons come from `lucide-react` — the hand-inlined SVGs (pencil, link, kebab, plus) are replaced during this milestone.
+
+## Dogfood fixes (first pass, 2026-08-18)
+
+1. Quote snapshots get readable line spacing (1.5) — multi-line quotes were cramped.
+2. Resolved threads render AFTER all open ones; expanding resolved can never push open threads below the fold.
+3. Reply stacks collapse: the card shows the opening comment plus the latest reply only; earlier replies sit behind a "Show N earlier replies" expander (per-card state).
+4. The sync status splits into one word — Unsaved / Saved / Syncing / Synced / Error — so the rail head never wraps. Amber LED covers the not-yet-synced shades (the word distinguishes), green = synced, red = error. A save lands on "Saved", never straight to "Synced" (sync runs on its own triggers).
+5. Cursor honesty: the thread card is default-cursor; only the quote button is a pointer (its hover/focus treatment kept, scoped to the button).
 
 ## Tests
 

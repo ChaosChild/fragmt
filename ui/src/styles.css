@@ -741,27 +741,22 @@ body {
 	border-color: var(--accent);
 }
 
-/* Markdown typography — fragmt reading mode (Newsreader) */
+/* Markdown typography — fragmt reading mode (Newsreader). Both modes
+   render through the same ProseMirror div (M4: read mode is the editor
+   with editable: false), so these rules and the injected ProseMirror
+   styles apply identically — the two modes cannot drift apart. */
 .markdown {
 	font-family: var(--font-serif);
 	font-optical-sizing: auto;
 	/* Tiptap injects `white-space: break-spaces; word-wrap: break-word`
 	   on the ProseMirror div (node_modules/@tiptap/core/dist/index.js,
-	   `var style =`). Only `word-wrap: break-word` is mirrored here — long
-	   words/URLs break at the same point in both modes, with no downside.
-	   `white-space: break-spaces` is deliberately NOT mirrored:
-	   react-markdown emits newline text nodes between block siblings, and
-	   `break-spaces` preserves each one as a blank line (~one line-height
-	   of stray space between every paragraph, heading, and list — read
-	   mode read roughly 2× looser than edit). Tiptap's DOM carries no
-	   inter-block whitespace, so its injected `break-spaces` is harmless
-	   there; read mode stays on the inherited `normal`, the whitespace
-	   collapses, and the vertical rhythm matches edit mode exactly. */
+	   `var style =`); mirror word-wrap for consumers without it. */
 	word-wrap: break-word;
 	/* Same injection disables ligatures (`font-variant-ligatures: none;
 	   font-feature-settings: "liga" 0`). Newsreader ships ligatures; they
-	   change glyph widths, so every long line would rewrap differently in
-	   edit mode. Disable them in read mode too — identical metrics. */
+	   change glyph widths, so every long line would rewrap differently
+	   between the injected and inherited values. Disable them here too —
+	   identical metrics everywhere. */
 	font-variant-ligatures: none;
 	font-feature-settings: "liga" 0;
 }
@@ -921,70 +916,65 @@ body {
 }
 
 /* ═══ EDITOR ═══════════════════════════════════════════════════ */
-/* Edit mode IS the read-mode typography: the content wrapper carries the
-   same `markdown` class as the rendered article, so entering edit mode must
-   not change how the document looks (DESIGN, "Editor (M2)"). Only
-   ProseMirror-structure rules live here — the bits the markdown class
-   cannot know about. No border or focus chrome: the document is the surface. */
-.editor-pane .edit-area {
+/* One rendering path (M4): the .edit-area wrapper mounts in BOTH modes —
+   read mode is the same editor non-editable — so every ProseMirror-structure
+   rule below applies in both. No border or focus chrome: the document is the
+   surface. */
+.edit-area {
 	min-height: 55vh;
 }
 /* Focus lands on the inner `.ProseMirror` contenteditable, and the browser
    draws its default outline on the focused element itself — the removal must
-   target that element, not the wrapper. No focus chrome in edit mode: the
+   target that element, not the wrapper. No focus chrome in either mode: the
    document is the surface. */
-.editor-pane .edit-area .ProseMirror:focus,
-.editor-pane .edit-area:focus-within {
+.edit-area .ProseMirror:focus,
+.edit-area:focus-within {
 	outline: none;
 	border: none;
 	box-shadow: none;
 	background: transparent;
 }
-/* StarterKit wraps text in <p> where read mode keeps it inline. Tight bullet/
-   ordered lists (tiptap-markdown renders the `tight` class — verified in the
-   live DOM) are inline text in read mode, so their paragraph margin must
-   collapse; loose lists keep it, exactly like remark's loose rendering. Task
+/* StarterKit wraps block text in <p>; plain markdown typography keeps most
+   of it inline. Tight bullet/ordered lists (tiptap-markdown renders the
+   `tight` class — verified in the live DOM) must collapse their paragraph
+   margin; loose lists keep it, exactly like loose markdown rendering. Task
    items are the only node producing `li > div > p` (Tiptap renders them
    tight regardless — the taskList ul carries no `tight` class), and table
-   cells render "block+" as a paragraph per cell while read-mode cells are
-   inline text — zero those always. */
-.editor-pane .edit-area .tight > li > p,
-.editor-pane .edit-area li > div > p,
-.editor-pane .edit-area td > p,
-.editor-pane .edit-area th > p {
+   cells render "block+" as a paragraph per cell — zero those always. */
+.edit-area .tight > li > p,
+.edit-area li > div > p,
+.edit-area td > p,
+.edit-area th > p {
 	margin: 0;
 }
 /* Tiptap's task item is <li data-checked><label>…</label><div><p>text</p></div></li>.
    Inline the label, the content div AND the paragraph inside it, so the
-   checkbox sits in the line of text exactly as remark-gfm renders it. */
-.editor-pane .edit-area li[data-checked] > label,
-.editor-pane .edit-area li[data-checked] > div,
-.editor-pane .edit-area li[data-checked] > div > p {
+   checkbox sits in the line of text as the markdown source reads. */
+.edit-area li[data-checked] > label,
+.edit-area li[data-checked] > div,
+.edit-area li[data-checked] > div > p {
 	display: inline;
 }
-.editor-pane .edit-area li[data-checked] > label input {
+.edit-area li[data-checked] > label input {
 	cursor: pointer;
-	/* remark-gfm inserts a literal " " text node between checkbox and text
-	   (mdast-util-to-hast/lib/handlers/list-item.js); Tiptap's inlined
-	   label/div/p chain has no whitespace node — this margin recreates the
-	   identical gap. */
+	/* The label/div/p chain carries no whitespace node between checkbox
+	   and text — this margin recreates the one-space gap of the source. */
 	margin-right: 0.25em;
 }
-/* Task items show only the checkbox — no disc marker beside it, in read
-   mode (remark-gfm) and edit mode (Tiptap) alike. */
+/* Task items show only the checkbox — no disc marker beside it. */
 .markdown li.task-list-item,
 .markdown li[data-checked] {
 	list-style: none;
 }
-/* Read-mode checkbox: the gap IS the literal space node, so pin the box —
-   no UA margin may add to it (matches edit mode's explicit gap above). */
+/* remark-gfm's checkbox — kept for any remaining static render (e.g. rail
+   quotes); the editor path pins its own gap above. */
 .markdown li.task-list-item > input {
 	margin-right: 0;
 }
 /* Tiptap injects `.ProseMirror pre { white-space: pre-wrap }` (author
-   origin, beats the inherited value) — read mode keeps the UA `pre` and
-   scrolls via overflow-x. Restore it so long lines overflow identically. */
-.editor-pane .edit-area pre {
+   origin, beats the inherited value) — the UA `pre` scrolls via
+   overflow-x. Restore it so long lines overflow identically. */
+.edit-area pre {
 	white-space: pre;
 }
 
@@ -1124,17 +1114,6 @@ body {
 	border-radius: 4px;
 	transition: background var(--motion-base) var(--ease-standard);
 }
-.comment-thread[data-c] {
-	cursor: pointer;
-}
-.comment-thread[data-c]:hover .comment-quote {
-	border-left-color: var(--accent);
-	color: var(--fg);
-}
-.comment-thread:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
 .comment-thread.flash {
 	animation: thread-flash 1.4s var(--ease-standard);
 }
@@ -1158,9 +1137,10 @@ body {
 	font-family: var(--font-serif);
 	font-size: 14px;
 	font-style: italic;
+	line-height: 1.5;
 	color: var(--muted);
 	border-left: 2px solid var(--border);
-	margin-bottom: var(--space-2);
+	margin-bottom: var(--space-3);
 	transition:
 		border-color var(--motion-fast) var(--ease-standard),
 		color var(--motion-fast) var(--ease-standard);
@@ -1211,6 +1191,95 @@ body {
 	color: var(--warn);
 	font-family: var(--font-mono);
 	letter-spacing: 0.02em;
+}
+/* ── M4-5 rail interactivity: the staged rules above cover the static card;
+	   these add what rendering it as live controls needs. ── */
+/* The live quote is a real <button> (jump-to-doc) — UA resets on top of the
+   staged rule; the orphan quote stays a plain div. */
+.comment-quote {
+	display: block;
+	width: 100%;
+	background: none;
+	border-top: none;
+	border-right: none;
+	border-bottom: none;
+	text-align: left;
+	cursor: pointer;
+}
+/* Cursor honesty (fix 5): the card is not the control — only the quote
+   button jumps, so only it gets the pointer and the hover/focus chrome.
+   Scoped to the button so the orphan's plain-div quote stays inert. */
+button.comment-quote:hover {
+	border-left-color: var(--accent);
+	color: var(--fg);
+}
+.comment-quote:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* Action buttons carry lucide icons and the a11y floor (§9: ≥32px, ring). */
+.comment-actions button {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	min-height: 32px;
+}
+.comment-actions button svg {
+	width: 12px;
+	height: 12px;
+}
+.comment-actions button.danger {
+	color: var(--danger);
+}
+.comment-actions button.danger:hover {
+	text-decoration-color: var(--danger);
+}
+.comment-actions button:focus-visible,
+.show-resolved:focus-visible,
+.show-earlier:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* Replies after the opening comment — a quieter indent. */
+.comment-reply {
+	margin: var(--space-3) 0 0 var(--space-3);
+	padding-left: var(--space-3);
+	border-left: 1px solid var(--border-soft);
+}
+/* The sync-indicator text follows its LED (staged rule pins success only). */
+.sync-indicator.warn {
+	color: var(--warn);
+}
+.sync-indicator.err {
+	color: var(--danger);
+}
+/* "Show resolved (N)" and "Show N earlier replies" — label-meta supplies
+   the font/color; both are quiet expander buttons (a11y floor: 32px + ring). */
+.show-resolved,
+.show-earlier {
+	display: block;
+	border: none;
+	background: none;
+	cursor: pointer;
+	min-height: 32px;
+	text-align: left;
+}
+.show-resolved {
+	padding: 0 0 var(--space-3) var(--space-1);
+}
+.show-earlier {
+	margin: var(--space-3) 0 0 var(--space-3);
+}
+.show-resolved:hover,
+.show-earlier:hover {
+	color: var(--accent);
+}
+/* A failed reply/resolve/delete — shown at the top of the rail body. */
+.rail-error {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--danger);
+	padding: 0 var(--space-1) var(--space-3);
 }
 
 /* ═══ TOP BAR — mobile / tablet only ═══════════════════════════ */
@@ -1625,6 +1694,23 @@ body {
 	min-width: 0;
 }
 .popover-form input:focus-visible {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: var(--focus-ring);
+}
+/* Comment composer (M4) — the input treatment on a body-font textarea */
+.popover-form textarea {
+	font-family: var(--font-body);
+	font-size: 13px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 7px 8px;
+	background: var(--surface);
+	color: var(--fg);
+	min-width: 0;
+	resize: vertical;
+}
+.popover-form textarea:focus-visible {
 	outline: none;
 	border-color: var(--accent);
 	box-shadow: var(--focus-ring);

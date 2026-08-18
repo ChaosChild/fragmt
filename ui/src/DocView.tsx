@@ -1,27 +1,17 @@
+import { MessageSquare, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { type DocResponse, SaveError, saveDoc } from "./api";
+import { addComment, type DocResponse, SaveError, saveDoc } from "./api";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
-
-const PencilIcon = (
-	<svg
-		aria-hidden="true"
-		viewBox="0 0 24 24"
-		fill="none"
-		stroke="currentColor"
-		strokeWidth={2}
-		strokeLinecap="round"
-		strokeLinejoin="round"
-	>
-		<path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-	</svg>
-);
 
 /**
  * The doc pane: reading mode by default (DESIGN §3), one explicit Edit action
- * swaps to Tiptap. Save commits via PUT; a 409 shows a non-destructive banner
- * and keeps the user's buffer (M2 spec).
+ * flips the SAME mounted Tiptap editor to editable (M4 review decision 3 —
+ * one rendering path, no reflow between modes). Save commits via PUT; a 409
+ * shows a non-destructive banner and keeps the user's buffer (M2 spec).
+ * Comment anchoring (M4) reuses the same PUT seam — doc first, sidecar
+ * second — without ever flipping the mode. The rail lives in App; DocView
+ * keeps only the doc-bar badge (fed from App's sidecar state) and forwards
+ * highlight-span clicks to it.
  */
 export function DocView({
 	doc,
@@ -29,6 +19,10 @@ export function DocView({
 	onSaved,
 	onReload,
 	onDirtyChange,
+	commentCount,
+	onOpenComments,
+	onCommentsChanged,
+	onSpanClick,
 	pendingBranch,
 	onPendingBranchCancel,
 	onPendingBranchGo,
@@ -41,6 +35,14 @@ export function DocView({
 	onSaved: (doc: DocResponse) => void;
 	onReload: () => void;
 	onDirtyChange: (dirty: boolean) => void;
+	/** Live thread count (App owns the sidecar state) — 0 hides the button. */
+	commentCount: number;
+	/** Opens/scrolls the comments rail (App); the mobile sheet's entry point. */
+	onOpenComments: () => void;
+	/** Bumps App's sidecar refetch after a successful create. */
+	onCommentsChanged: () => void;
+	/** A comment highlight was activated in the doc — jump the rail to it. */
+	onSpanClick: (id: string) => void;
 	/** A branch switch waiting on the save-or-discard choice (M3). */
 	pendingBranch: string | null;
 	onPendingBranchCancel: () => void;
@@ -61,6 +63,9 @@ export function DocView({
 		onDirtyChange(d);
 	};
 	const [confirmingCancel, setConfirmingCancel] = useState(false);
+	// Discard must drop the edited buffer: the editor stays mounted across
+	// the mode flip, so bumping the key remounts it fresh from doc.markdown.
+	const [resetCount, setResetCount] = useState(0);
 	const editorRef = useRef<EditorPaneHandle>(null);
 	const paneRef = useRef<HTMLDivElement>(null);
 
@@ -107,16 +112,17 @@ export function DocView({
 		</nav>
 	);
 
-	async function handleSave(): Promise<boolean> {
+	// The one PUT seam both save paths share (M2): sends the buffer with
+	// DocView's base hash; on success the doc state/hash refresh through
+	// onSaved (App.setDoc → same-content setContent → dirty resets), so the
+	// next save doesn't 409 itself.
+	async function persist(markdown: string): Promise<boolean> {
 		if (!doc || saving) return false;
-		const markdown = editorRef.current?.getMarkdown() ?? "";
 		setSaving(true);
 		setSaveError(null);
 		try {
 			const { hash } = await saveDoc(doc.path, markdown, doc.hash);
-			setEditing(false);
 			setDirty(false);
-			setConfirmingCancel(false);
 			onSaved({ ...doc, markdown, hash });
 			return true;
 		} catch (e) {
@@ -128,6 +134,33 @@ export function DocView({
 			return false;
 		} finally {
 			setSaving(false);
+		}
+	}
+
+	async function handleSave(): Promise<boolean> {
+		const ok = await persist(editorRef.current?.getMarkdown() ?? "");
+		if (ok) {
+			setEditing(false);
+			setConfirmingCancel(false);
+		}
+		return ok;
+	}
+
+	// Comment anchoring (M4 spec's contract): the mark is already applied
+	// locally by the composer; here the doc saves FIRST, then the sidecar
+	// thread posts. A failed doc save (the existing banner above) leaves the
+	// sidecar untouched. The mode is never flipped — commenting from read
+	// mode stays in read mode.
+	async function handleComment(id: string, quote: string, body: string) {
+		if (!doc) return;
+		if (!(await persist(editorRef.current?.getMarkdown() ?? ""))) return;
+		try {
+			await addComment(doc.path, { id, quote, body });
+			onCommentsChanged();
+		} catch (e) {
+			// Doc saved (mark included) but no thread — the error banner shows
+			// it; the orphan reconcile in the rail is the recovery story.
+			setSaveError(e instanceof Error ? e.message : String(e));
 		}
 	}
 
@@ -152,6 +185,7 @@ export function DocView({
 		setSaveError(null);
 		setConfirmingCancel(false);
 		setDirty(false);
+		setResetCount((c) => c + 1);
 	}
 
 	// A blocked branch switch: same save-or-discard shape as requestCancel,
@@ -196,116 +230,122 @@ export function DocView({
 		</div>
 	);
 
-	if (editing && doc) {
-		return (
-			<div className="editor-pane" ref={paneRef}>
-				<div className="doc-bar">
-					{breadcrumb}
-					<div className="doc-actions">
-						<button
-							type="button"
-							className="iconbtn subtle"
-							onClick={requestCancel}
-							disabled={saving}
-						>
-							Cancel
-						</button>
-						<button
-							type="button"
-							className="iconbtn primary"
-							onClick={() => void handleSave()}
-							disabled={saving}
-						>
-							{saving ? "Saving…" : "Save"}
-						</button>
-					</div>
-				</div>
-				{conflictBanner}
-				{pendingBanner}
-				{confirmingCancel && (
-					<div className="conflict-banner" role="alert">
-						<div>
-							<strong>Discard unsaved changes?</strong>
-							Your edits will be lost.
-						</div>
-						<div className="doc-actions">
+	// One rendering path (M4 review decision 3): the editor is mounted in
+	// BOTH modes — read is `editable: false` on the same instance, Edit/Save/
+	// Cancel are mode flips with no remount (only a discard bumps the key to
+	// drop the buffer). The pane classes share their layout rule; the editor
+	// carries the `markdown` typography class, so the document reads
+	// identically in both modes (M2 pixel parity).
+	return (
+		<div className={editing ? "editor-pane" : "doc-pane"} ref={paneRef}>
+			<div className="doc-bar">
+				{breadcrumb}
+				<div className="doc-actions">
+					{editing ? (
+						<>
 							<button
 								type="button"
-								className="iconbtn subtle dismiss"
-								onClick={() => setConfirmingCancel(false)}
+								className="iconbtn subtle"
+								onClick={requestCancel}
+								disabled={saving}
 							>
-								Keep editing
+								Cancel
 							</button>
+							<button
+								type="button"
+								className="iconbtn primary"
+								onClick={() => void handleSave()}
+								disabled={saving}
+							>
+								{saving ? "Saving…" : "Save"}
+							</button>
+						</>
+					) : (
+						<>
 							<button
 								type="button"
 								className="iconbtn"
-								onClick={discardAndClose}
+								onClick={() => {
+									onBeforeEdit();
+									setEditing(true);
+									setSaveError(null);
+								}}
+								disabled={!doc}
 							>
-								Discard
+								<Pencil aria-hidden="true" />
+								Edit
 							</button>
-						</div>
+							{commentCount > 0 && (
+								<button
+									type="button"
+									className="iconbtn comments-btn"
+									aria-label={`Comments (${commentCount})`}
+									onClick={onOpenComments}
+								>
+									<MessageSquare aria-hidden="true" />
+									<span className="label">Comments</span>
+									<span className="badge">{commentCount}</span>
+								</button>
+							)}
+						</>
+					)}
+				</div>
+			</div>
+			{conflictBanner}
+			{pendingBanner}
+			{confirmingCancel && (
+				<div className="conflict-banner" role="alert">
+					<div>
+						<strong>Discard unsaved changes?</strong>
+						Your edits will be lost.
 					</div>
-				)}
-				{saveError && (
-					<div className="conflict-banner" role="alert">
-						<div>
-							<strong>Save failed</strong>
-							{saveError}
-						</div>
+					<div className="doc-actions">
 						<button
 							type="button"
 							className="iconbtn subtle dismiss"
-							onClick={() => {
-								setEditing(false);
-								setSaveError(null);
-								onReload();
-							}}
+							onClick={() => setConfirmingCancel(false)}
 						>
-							Reload
+							Keep editing
+						</button>
+						<button type="button" className="iconbtn" onClick={discardAndClose}>
+							Discard
 						</button>
 					</div>
-				)}
+				</div>
+			)}
+			{saveError && (
+				<div className="conflict-banner" role="alert">
+					<div>
+						<strong>Save failed</strong>
+						{saveError}
+					</div>
+					<button
+						type="button"
+						className="iconbtn subtle dismiss"
+						onClick={() => {
+							setEditing(false);
+							setSaveError(null);
+							onReload();
+						}}
+					>
+						Reload
+					</button>
+				</div>
+			)}
+			{doc ? (
 				<EditorPane
-					key={doc.path}
+					key={`${doc.path}#${resetCount}`}
 					ref={editorRef}
 					markdown={doc.markdown}
+					editable={editing}
 					saving={saving}
 					onDirtyChange={setDirty}
 					onSave={() => void handleSave()}
 					onCancel={requestCancel}
+					onComment={(id, quote, body) => void handleComment(id, quote, body)}
+					onSpanClick={onSpanClick}
 				/>
-			</div>
-		);
-	}
-
-	return (
-		<div className="doc-pane">
-			<div className="doc-bar">
-				{breadcrumb}
-				<div className="doc-actions">
-					<button
-						type="button"
-						className="iconbtn"
-						onClick={() => {
-							onBeforeEdit();
-							setEditing(true);
-							setSaveError(null);
-						}}
-						disabled={!doc}
-					>
-						{PencilIcon}
-						Edit
-					</button>
-				</div>
-			</div>
-			{conflictBanner}
-			<article className="markdown">
-				{doc ? (
-					<ReactMarkdown remarkPlugins={[remarkGfm]}>
-						{doc.markdown}
-					</ReactMarkdown>
-				) : null}
-			</article>
+			) : null}
 		</div>
 	);
 }

@@ -62,7 +62,8 @@ markdown and its full git history.
 | M2 — round-trip editing (Tiptap, save = commit) | shipped |
 | M2-2 — editing controls (bubble, slash, right-click) | shipped |
 | M3 — files & branches | shipped |
-| M4 — inline comments | specced |
+| M4 — inline comments | shipped |
+| M4-2 — dogfood polish (cards, headers, protected main, merge) | specced |
 | M5 — dogfood hardening | specced |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
@@ -74,7 +75,10 @@ menu for inserting blocks and images — no markdown knowledge required. Docs
 and folders have a full lifecycle (create, rename/move, delete — one commit
 each); branches can be created and switched in the UI for drafting, and the
 server keeps the local clone synced with its remote (pull --rebase + push,
-never force) on an interval, on focus, and before editing. v1 is done when the author writes this project's own
+never force) on an interval, on focus, and before editing. Inline comments
+anchor to text as marks in the markdown itself, with threads versioned in
+JSON sidecars — comment from read mode or edit mode, replies and resolve in
+the right-margin rail, orphans detected against the live document. v1 is done when the author writes this project's own
 docs in the tool daily instead of in a text editor. Full detail, including
 what was deliberately cut, is in the [build plan](docs/PLAN.md).
 

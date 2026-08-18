@@ -20,6 +20,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - **Shipped:** M2 round-trip editing — Tiptap editor, save-as-commit through `commitAs`, stale-hash 409 guard, byte-for-byte frontmatter reattach, and the permanent corpus gate (`tests/roundtrip.test.ts`, built on the app's own extension array). 51 tests.
 - **Shipped:** M2-2 editing controls — contextual formatting surfaces only (selection/right-click bubble for marks, turn into, table structure, image edit; `/` slash menu for inserting blocks; empty-doc placeholder hint). Zero persistent chrome; the DESIGN editor clause amended in the same change. Escape order now popover → slash → selection → edit-cancel. 64 tests.
 - **Shipped:** M3 files & branches — full doc/folder lifecycle (one `commitAs` commit per op, R100 renames via fs mutations because `git mv`/`git rm` break the seam's unconditional `git add`), branch commands + `sync()` (pull --rebase + push, conflict aborts the rebase and leaves HEAD untouched; no-remote/no-upstream are no-ops), the HTTP surface for all of it, and the UI: branch dropdown with a dirty-buffer save-or-discard guard, sync LED + three triggers, file ops in fixed places. 91 tests.
+- **Shipped:** M4 inline comments — threads in `.docs/comments/<doc-path>.json` sidecars through the shared containment guard, one `commitAs` commit per mutation; comment HTTP surface (Hono mid-pattern `*` doesn't span slashes — one fall-through middleware splits the tail); read mode is now a non-editable Tiptap editor (one rendering path, react-markdown retired from the doc body, comment creation never flips the mode — review decision); bubble Comment action (comment-only in read mode); the rail with orphans, resolved toggle, and the LED/theme move; icons standardised on lucide-react. 111 tests.
 - **Realized versions:** TypeScript 7.0.2, Biome 2.5.7, Vite 8, React 19, Vitest 4, Node 22, @types/node 26; Tiptap 3.x, tiptap-markdown 0.9.x, happy-dom (M2, per the spike-validated majors).
 - **Deliberate deviations from the stack notes above:**
   - `tsconfig.json` gained `esModuleInterop` — `gray-matter` is CJS; standard fix for default-importing it under `nodenext`.
@@ -92,13 +93,29 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 **Goal:** inline self-notes anchored to text, versioned alongside docs. **Proves:** the mark + sidecar design from ARCHITECTURE.md works end-to-end.
 
-- [ ] Highlight-to-comment UI (selection → create thread)
-- [ ] Sidecar storage: `.docs/comments/<doc-path>.json`, keyed by mark id
-- [ ] Quote snapshot captured at comment creation
-- [ ] Resolve / delete comment
-- [ ] Orphan display: thread + quote snapshot when the span is gone
+- [x] <span data-c="99ae9594-b26e-43a9-a8e9-74e8f6cd598d">Highlight-to-comment UI (selection → create a comment thread)</span>
+- [x] Sidecar storage: `.docs/comments/<doc-path>.json`, keyed by mark id
+- [x] Quote snapshot captured at comment creation
+- [x] Resolve / delete comment
+- [x] Orphan display: thread + quote snapshot when the span is gone
 
-## M5 — Dogfood hardening
+## M4-2 — Dogfood polish: cards, headers, and the drafting model
+
+**Goal:** close the gap between the built UI and the v1-final mock for navigation and doc headers, and finish the drafting model — protected main, visible drafts, operator-driven merge. **Proves:** daily dogfooding becomes natural: drafts are visible where you browse, merging is your call, and the lifecycle has no dead ends. Full item detail in [BACKLOG.md](BACKLOG.md) § "M4-2 scope".
+
+- [ ] Doc cards to the mock: author, last-edited, snippet, version, draft indicator (needs the git-log metadata API deferred since M1)
+- [ ] Draft visibility: docs new/edited/deleted on a branch show as draft cards in the navbar
+- [ ] Doc header to the mock: author · "editing vX · branch" · unsaved indicator; Cancel/Save gain icons
+- [ ] Reopen resolved comments (server currently pins `resolved: true`)
+- [ ] "@" reference command in documents and comment bodies (menu like `/`; a doc reference is a navigable link — ties to the link-navigation backlog item)
+- [ ] "+" action becomes a dropdown: new document (default) or new folder
+- [ ] Protected main: editing a doc on main auto-creates a draft branch (auto-named, no prompt) and moves the doc to draft
+- [ ] "Merge" action on a draft — multi-file branches merge to main when the operator decides; PR creation stays with the operator (GitHub)
+- [ ] Restore deleted documents (and their comment sidecars) from git history
+
+**Sequencing note:** the merge button settles the "when does a draft become a PR" question — the operator merges in the UI when a draft is complete; opening a PR on GitHub remains a separate, manual act (v2 may fold it in).
+
+## <span data-c="d13d457e-564a-4e9d-9bc5-f5239144f512">M5 — Dogfood hardening</span>
 
 **Goal:** the definition of done, literally exercised. **Proves:** v1 is done.
 

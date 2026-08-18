@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import type { TreeNode } from "./api";
 import { type FileOp, RowMenu } from "./Menus";
@@ -9,12 +10,6 @@ function countDocs(node: TreeNode): number {
 	}
 	return n;
 }
-
-const Chevron = (
-	<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-		<path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z" />
-	</svg>
-);
 
 interface NodesProps {
 	nodes: TreeNode[];
@@ -45,7 +40,9 @@ function renderNodes({
 							aria-expanded={!isCollapsed}
 							onClick={() => toggle(node.path)}
 						>
-							<span className="disclosure">{Chevron}</span>
+							<span className="disclosure">
+								<ChevronRight aria-hidden="true" />
+							</span>
 							{node.name}
 							<span className="count">{countDocs(node)}</span>
 						</button>
