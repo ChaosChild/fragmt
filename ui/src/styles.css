@@ -1935,12 +1935,13 @@ button.comment-quote:hover {
 	right: 8px;
 	display: flex;
 	align-items: center;
-	gap: 2px;
+	gap: 1px;
 	pointer-events: none;
 }
 .row-corner .tool-btn {
 	pointer-events: auto;
 	opacity: 0;
+	width: 26px;
 	transition:
 		opacity var(--motion-fast) var(--ease-standard),
 		color var(--motion-fast) var(--ease-standard);
@@ -1956,7 +1957,7 @@ button.comment-quote:hover {
 /* The title truncates before the corner (icons + version), so the reserve
    is constant — no reflow when the icons reveal. */
 .doc-card .dc-top {
-	padding-right: 108px;
+	padding-right: 92px;
 }
 /* Recycle bin (item 9) — pinned below the doc list; every Restore sits on
    the same right edge, Restore all right-aligned beneath them. */
