@@ -99,7 +99,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - [x] Resolve / delete comment
 - [x] Orphan display: thread + quote snapshot when the span is gone
 
-## M5 — Dogfood hardening
+## <span data-c="d13d457e-564a-4e9d-9bc5-f5239144f512">M5 — Dogfood hardening</span>
 
 **Goal:** the definition of done, literally exercised. **Proves:** v1 is done.
 
