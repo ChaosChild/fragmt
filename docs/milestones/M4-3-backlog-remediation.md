@@ -107,10 +107,18 @@ UI: `BranchMenu` rows gain a trash icon (lucide) — hidden on the current branc
 9. In a doc: `#heading`, `doc.md#section`, a folder link, an image link, and a typo'd `.md` link each behave per the dispatch table — nothing navigates the app tab away.
 10. A scratch folder ignored by `.gitignore` disappears from the sidebar, the `@` menu, and the move picker; a force-added tracked file inside it stays.
 
+## Dogfood fixes (first pass, 2026-08-19 evening)
+
+1. **App errors render as a dismissable banner in the content pane** (`conflict-banner` styling, `role="alert"`, replaces the small sidebar-bottom paragraph). Root cause of the "move does nothing" reports: moves *were* firing — against a stale server process and, in one traced case, an ignored-path destination — but the failure message rendered near-invisibly, so every error read as nothing happening.
+2. **`moveDoc`/`moveFolder` roll back on commit failure** — the fs rename runs before `commitAs` (the M3 seam), and `git add` stages what it can *before* refusing an ignored path, so a failed commit left the doc renamed on disk (uncommitted, invisible to git status) plus staged deletions in the index. The rollback renames back and `git reset -q -- <paths>` unstages (best-effort, never masks the original error). Regression-tested via a move into a `.gitignore`d destination.
+3. **The move picker omits the doc's current folder** — and `/ (root)` when the doc is already at root — both guaranteed 409 "already exists" no-ops.
+4. Operational: the `:4400` dogfood server (plain `tsx`, no watch) predates the milestone's rebuild, serving old API code against the new UI bundle — `/api/meta` without `authors`/`title`, unfiltered `/api/tree`. Symptom triage (gitignored folders visible, no titles in the navbar, no avatar) starts with "is the server process current?". Restarted on current code; verified live: authors avatar resolves, tree filtered, titles identical in breadcrumb and navbar card, picker move lands.
+5. The sync suite's Windows timeout flake (pre-existing on main, verified by stashing) got honest 20s per-test timeouts.
+
 ## Guardrails for implementers
 
 - Every mutation stays **one `commitAs` per logical action**; the stale check before any disk write; never re-serialize frontmatter except the explicit `title` key `setTitle` writes.
-- All git through the execFile seam; no new git flags beyond the spec'd commands; no new npm dependencies.
+- All git through the execFile seam; no new git flags beyond the spec'd commands plus the move-rollback's `git reset -q -- <paths>` (error-path only, best-effort); no new npm dependencies.
 - The rename box never rewrites the filename — title writes only.
 - Raw route serves repo content as data, never as same-origin HTML/SVG.
 - Deleted docs never render as tree nodes; ignored paths never render on any tree-derived surface.
