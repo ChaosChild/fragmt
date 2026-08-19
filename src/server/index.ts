@@ -23,6 +23,7 @@ import {
 	docHash,
 	GitError,
 	GitIdentityError,
+	gitAllowList,
 	listBranches,
 	listTree,
 	mergeToMain,
@@ -61,7 +62,15 @@ const UI_DIST = fileURLToPath(new URL("../../ui/dist", import.meta.url));
 export function createApp(ctx: ServerContext): Hono {
 	const app = new Hono();
 
-	app.get("/api/tree", (c) => c.json(listTree(ctx.repoRoot, ctx.docsRoot)));
+	// M4-3 b7: the .gitignore filter — one ls-files spawn per refresh builds
+	// the allow-list of everything git considers part of the repo. Every
+	// tree-derived surface (sidebar, @ menu, move picker, link sets) reads
+	// this route, so all inherit the filter here. git unavailable → null →
+	// today's unfiltered walk (keep-prior-state).
+	app.get("/api/tree", async (c) => {
+		const allow = await gitAllowList(ctx.repoRoot, ctx.docsRoot);
+		return c.json(listTree(ctx.repoRoot, ctx.docsRoot, allow ?? undefined));
+	});
 
 	// --- M4: comment sidecar -------------------------------------------------
 	// Hono's `*` spans slashes only at the END of a pattern, so a nested

@@ -236,3 +236,27 @@ test("GET /api/raw: traversal attempts are 400 (the raw-URL guard covers the pre
 		expect(res.status, path).toBe(400);
 	}
 });
+
+// --- GET /api/tree: the .gitignore filter (M4-3 b7) --------------------------
+
+test("GET /api/tree: ignored paths never render; tracked and untracked-not-ignored do", async () => {
+	writeFileSync(join(root, ".gitignore"), "scratch/\nignored.md\n");
+	writeFileSync(join(root, "ignored.md"), "# i"); // untracked + ignored
+	writeFileSync(join(root, "new.md"), "# n"); // untracked, NOT ignored
+	mkdirSync(join(root, "scratch"), { recursive: true });
+	writeFileSync(join(root, "scratch", "note.md"), "# s"); // ignored dir
+	execFileSync("git", ["add", "-A"], { cwd: root });
+	execFileSync("git", ["commit", "-q", "-m", "gitignore"], { cwd: root });
+
+	const res = await api("GET", "/api/tree");
+	expect(res.status).toBe(200);
+	const body = (await res.json()) as {
+		name: string;
+		children?: { name: string }[];
+	};
+	// a.md (tracked seed) + new.md; the scratch/ dir and ignored.md are gone —
+	// every tree-derived surface (sidebar, @ menu, move picker) reads this
+	// route, so the filter is inherited everywhere at once.
+	expect(body.name).toBe(".");
+	expect(body.children?.map((c) => c.name)).toEqual(["a.md", "new.md"]);
+});
