@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { getRequestListener } from "@hono/node-server";
@@ -32,6 +33,7 @@ import {
 	readDoc,
 	renameFolder,
 	repoMeta,
+	resolveDocPath,
 	restoreDoc,
 	StaleDocError,
 	setResolved,
@@ -50,6 +52,7 @@ export interface ServerContext {
 
 const DOCS_PREFIX = "/api/docs/";
 const FOLDERS_PREFIX = "/api/folders/";
+const RAW_PREFIX = "/api/raw/";
 
 /** Package-root `ui/dist`. Same depth from `src/server/` (tsx) and `dist/server/` (built). */
 const UI_DIST = fileURLToPath(new URL("../../ui/dist", import.meta.url));
@@ -393,6 +396,57 @@ export function createApp(ctx: ServerContext): Hono {
 		}
 	});
 
+	// --- M4-3 b6: raw files (non-md link targets) ----------------------------
+
+	/** Extension → content type for /api/raw. html/svg serve as text/plain —
+	 *  repo content never executes in the app origin; anything unmapped is
+	 *  application/octet-stream with Content-Disposition (a download). */
+	const RAW_MIME: Record<string, string> = {
+		md: "text/markdown; charset=utf-8",
+		txt: "text/plain; charset=utf-8",
+		png: "image/png",
+		jpg: "image/jpeg",
+		jpeg: "image/jpeg",
+		gif: "image/gif",
+		webp: "image/webp",
+		svg: "text/plain; charset=utf-8",
+		pdf: "application/pdf",
+		json: "application/json",
+		csv: "text/csv",
+		html: "text/plain; charset=utf-8",
+		htm: "text/plain; charset=utf-8",
+	};
+
+	// The resolveDocPath containment guard (kind "raw" — no .md constraint),
+	// files-only: a directory or a missing path is a 404 like the doc routes.
+	// startServer's raw-URL `..` guard covers this prefix too (below).
+	app.get("/api/raw/*", (c) => {
+		let rawPath: string;
+		try {
+			rawPath = decodeURIComponent(c.req.path.slice(RAW_PREFIX.length));
+		} catch {
+			return c.json({ error: "invalid path" }, 400);
+		}
+		let abs: string;
+		try {
+			abs = resolveDocPath(ctx.repoRoot, ctx.docsRoot, rawPath, "raw");
+		} catch (e) {
+			if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
+			throw e;
+		}
+		if (!existsSync(abs) || !statSync(abs).isFile()) {
+			return c.json({ error: "not found" }, 404);
+		}
+		const bytes = new Uint8Array(readFileSync(abs));
+		const ext = abs.split(".").pop()?.toLowerCase() ?? "";
+		const mime = RAW_MIME[ext];
+		if (mime) return c.body(bytes, 200, { "content-type": mime });
+		return c.body(bytes, 200, {
+			"content-type": "application/octet-stream",
+			"content-disposition": "attachment",
+		});
+	});
+
 	app.get("/api/branches", async (c) =>
 		c.json({
 			current: await currentBranch(ctx.repoRoot),
@@ -603,7 +657,11 @@ function badBranchName(name: string): boolean {
  * we cannot tell what it would mean downstream.
  */
 function isTraversalAttempt(url: string): boolean {
-	if (![DOCS_PREFIX, FOLDERS_PREFIX].some((prefix) => url.startsWith(prefix)))
+	if (
+		![DOCS_PREFIX, FOLDERS_PREFIX, RAW_PREFIX].some((prefix) =>
+			url.startsWith(prefix),
+		)
+	)
 		return false;
 	try {
 		return decodeURIComponent(url).includes("..");
@@ -613,8 +671,9 @@ function isTraversalAttempt(url: string): boolean {
 }
 
 /**
- * Start the HTTP server. A raw-URL guard rejects `..` in doc/folder requests
- * before the framework's spec-compliant URL normalization collapses the segments
+ * Start the HTTP server. A raw-URL guard rejects `..` in doc/folder/raw
+ * requests before the framework's spec-compliant URL normalization collapses
+ * the segments
  * (without this, literal `/api/docs/../LICENSE` normalizes to a 404 instead of
  * the spec-required 400). The rest is delegated to @hono/node-server unchanged.
  */

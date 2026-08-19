@@ -63,6 +63,18 @@ function treeHas(node: TreeNode, path: string): boolean {
 	return (node.children ?? []).some((c) => c.path === path || treeHas(c, path));
 }
 
+/** The tree node for a folder path (docsRoot-relative), or null. */
+function findDir(node: TreeNode, path: string): TreeNode | null {
+	if (!path) return null;
+	for (const c of node.children ?? []) {
+		if (c.type !== "dir") continue;
+		if (c.path === path) return c;
+		const found = findDir(c, path);
+		if (found) return found;
+	}
+	return null;
+}
+
 /** The tree's docs as {title, path} — the @ menus' items and linkify's set.
  *  Titles come from meta (the display-name model, M4-3 b4); paths stay the
  *  identity and the link hrefs. */
@@ -151,6 +163,15 @@ export function App() {
 	const [spanFocus, setSpanFocus] = useState<{ id: string; n: number } | null>(
 		null,
 	);
+	// M4-3 b6 link completion: a cross-doc #fragment waiting for the new doc
+	// to render (EditorPane scrolls + consumes it), and a folder link's
+	// expand request (the sidebar owns its collapsed set; `n` re-arms repeats).
+	const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
+	const clearAnchor = useCallback(() => setPendingAnchor(null), []);
+	const [expandFolder, setExpandFolder] = useState<{
+		path: string;
+		n: number;
+	} | null>(null);
 
 	// Latest selected/dirty for the stable interval/focus sync callback.
 	const live = useRef({ selected, dirty });
@@ -659,6 +680,26 @@ export function App() {
 		}
 	}
 
+	// --- M4-3 b6: link-navigation callbacks ----------------------------------
+
+	// A doc link (optionally with a #fragment): navigate, and leave the
+	// fragment as the pending anchor — the new doc's EditorPane scrolls to it
+	// once the content and heading ids exist.
+	function onDocLink(path: string, anchor?: string) {
+		setSelected(path);
+		setPendingAnchor(anchor ?? null);
+	}
+
+	// A folder link: expand the sidebar path (ancestors + target), then select
+	// the folder's first doc if one exists — an empty .gitkeep folder just
+	// stays visible (the tree amendment); the selection is untouched then.
+	function onSelectFolderLink(path: string) {
+		setExpandFolder((f) => ({ path, n: (f?.n ?? 0) + 1 }));
+		const dir = tree ? findDir(tree, path) : null;
+		const first = dir ? firstDoc(dir) : null;
+		if (first) setSelected(first);
+	}
+
 	// LED + one-word status: amber = not synced yet (the word says which —
 	// Unsaved/Saved/Syncing), green = synced, red = error (conflict or sync
 	// failure; holds until the next clean sync).
@@ -749,6 +790,7 @@ export function App() {
 						selected={selected}
 						onSelect={setSelected}
 						meta={meta}
+						expandFolder={expandFolder}
 						onOpenGhost={(path, branchName) => void openGhost(path, branchName)}
 						onRestore={(items) => void runRestore(items)}
 						// Drag & drop (M4-3 b5): the sidebar's dropTargetValid has
@@ -812,7 +854,10 @@ export function App() {
 						onDraft={onDraft}
 						authors={meta?.authors ?? {}}
 						docs={docs}
-						onSelectDoc={setSelected}
+						onSelectDoc={onDocLink}
+						onSelectFolder={onSelectFolderLink}
+						pendingAnchor={pendingAnchor}
+						onAnchorConsumed={clearAnchor}
 						folders={folders}
 						onBeforeRename={beforeRename}
 						onMoveDoc={requestMoveDoc}

@@ -3,6 +3,7 @@ import {
 	type DragEvent as ReactDragEvent,
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
+	useEffect,
 	useMemo,
 	useState,
 } from "react";
@@ -416,6 +417,7 @@ export function Sidebar({
 	selected,
 	onSelect,
 	meta,
+	expandFolder,
 	onOpenGhost,
 	onRestore,
 	onDropItem,
@@ -425,6 +427,10 @@ export function Sidebar({
 	selected: string | null;
 	onSelect: (path: string) => void;
 	meta: RepoMeta | null;
+	/** A folder-link click's expand request (M4-3 b6): the path's ancestors
+	 *  and the folder itself leave the collapsed set — App bumps `n` so a
+	 *  repeat click on the same folder re-arms the effect. */
+	expandFolder: { path: string; n: number } | null;
 	/** Ghost-card click: checkout the branch, then open the doc (App). */
 	onOpenGhost: (path: string, branch: string) => void;
 	/** Sequential restores, then App refetches tree + meta. */
@@ -443,6 +449,20 @@ export function Sidebar({
 			else next.add(path);
 			return next;
 		});
+
+	// Folder-link expansion (M4-3 b6): expand = remove from the collapsed
+	// set. Every ancestor prefix leaves too, so the target is reachable.
+	useEffect(() => {
+		if (!expandFolder) return;
+		setCollapsed((prev) => {
+			if (prev.size === 0) return prev; // nothing collapsed — already open
+			const next = new Set(prev);
+			const segs = expandFolder.path.split("/");
+			for (let i = 1; i <= segs.length; i++)
+				next.delete(segs.slice(0, i).join("/"));
+			return next;
+		});
+	}, [expandFolder]);
 
 	// Drag & drop state (M4-3 b5): `drag` dims the source row, `dropKey`
 	// highlights the hovered target. The payload itself lives in currentDrag

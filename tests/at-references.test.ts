@@ -14,7 +14,7 @@ import {
 	filterAtDocs,
 } from "../ui/src/editor/at.js";
 import { editorExtensions } from "../ui/src/editor/extensions.js";
-import { resolveLinkTarget } from "../ui/src/editor/links.js";
+import { resolveLinkTarget, slugifyHeading } from "../ui/src/editor/links.js";
 
 const docs: AtDoc[] = [
 	{ title: "Plan", path: "docs/plan.md" },
@@ -104,33 +104,36 @@ describe("resolveLinkTarget", () => {
 		"dir/c.md",
 		"my doc.md",
 	]);
+	const folders = new Set(["dir", "dir/sub"]);
 
 	test("joins hrefs against the current doc's directory", () => {
-		expect(resolveLinkTarget("./b.md", "dir/a.md", known)).toEqual({
+		expect(resolveLinkTarget("./b.md", "dir/a.md", known, folders)).toEqual({
 			kind: "doc",
 			path: "dir/b.md",
 		});
-		expect(resolveLinkTarget("b.md", "dir/a.md", known)).toEqual({
+		expect(resolveLinkTarget("b.md", "dir/a.md", known, folders)).toEqual({
 			kind: "doc",
 			path: "dir/b.md",
 		});
 	});
 
 	test("../ traverses up one directory", () => {
-		expect(resolveLinkTarget("../c.md", "dir/sub/a.md", known)).toEqual({
+		expect(
+			resolveLinkTarget("../c.md", "dir/sub/a.md", known, folders),
+		).toEqual({
 			kind: "doc",
 			path: "dir/c.md",
 		});
 	});
 
 	test("../ escaping the doc set stays default", () => {
-		expect(resolveLinkTarget("../../outside.md", "dir/a.md", known)).toEqual({
-			kind: "default",
-		});
+		expect(
+			resolveLinkTarget("../../outside.md", "dir/a.md", known, folders),
+		).toEqual({ kind: "default" });
 	});
 
 	test("URL-encoded components decode before matching", () => {
-		expect(resolveLinkTarget("my%20doc.md", "a.md", known)).toEqual({
+		expect(resolveLinkTarget("my%20doc.md", "a.md", known, folders)).toEqual({
 			kind: "doc",
 			path: "my doc.md",
 		});
@@ -138,19 +141,158 @@ describe("resolveLinkTarget", () => {
 
 	test("http(s) and other absolute schemes are external", () => {
 		expect(
-			resolveLinkTarget("https://example.com/x", "docs/plan.md", known),
+			resolveLinkTarget(
+				"https://example.com/x",
+				"docs/plan.md",
+				known,
+				folders,
+			),
 		).toEqual({ kind: "external" });
 		expect(
-			resolveLinkTarget("http://example.com", "docs/plan.md", known),
+			resolveLinkTarget("http://example.com", "docs/plan.md", known, folders),
 		).toEqual({ kind: "external" });
 		expect(
-			resolveLinkTarget("mailto:a@b.example", "docs/plan.md", known),
+			resolveLinkTarget("mailto:a@b.example", "docs/plan.md", known, folders),
 		).toEqual({ kind: "external" });
 	});
 
 	test("a docsRoot-relative exact path matches verbatim (the @ menu's form)", () => {
 		expect(
-			resolveLinkTarget("docs/x.md", "docs/plan.md", new Set(["docs/x.md"])),
+			resolveLinkTarget(
+				"docs/x.md",
+				"docs/plan.md",
+				new Set(["docs/x.md"]),
+				folders,
+			),
 		).toEqual({ kind: "doc", path: "docs/x.md" });
+	});
+});
+
+// M4-3 b6: the five-way dispatch — the table in links.ts is normative.
+describe("resolveLinkTarget dispatch (M4-3 b6)", () => {
+	const known = new Set(["dir/b.md", "dir/c.md", "docs/x.md"]);
+	const folders = new Set(["dir", "dir/sub", "docs"]);
+
+	test("bare #fragment → anchor (decoded); empty href and bare # stay default", () => {
+		expect(resolveLinkTarget("#section", "a.md", known, folders)).toEqual({
+			kind: "anchor",
+			id: "section",
+		});
+		expect(resolveLinkTarget("#my%20heading", "a.md", known, folders)).toEqual({
+			kind: "anchor",
+			id: "my heading",
+		});
+		expect(resolveLinkTarget("#", "a.md", known, folders)).toEqual({
+			kind: "default",
+		});
+		expect(resolveLinkTarget("", "a.md", known, folders)).toEqual({
+			kind: "default",
+		});
+	});
+
+	test("doc href with a fragment matches the stripped path and carries the anchor", () => {
+		expect(resolveLinkTarget("b.md#intro", "dir/a.md", known, folders)).toEqual(
+			{
+				kind: "doc",
+				path: "dir/b.md",
+				anchor: "intro",
+			},
+		);
+		// The verbatim candidate (docsRoot-relative form) carries it too.
+		expect(
+			resolveLinkTarget("docs/x.md#setup", "other.md", known, folders),
+		).toEqual({ kind: "doc", path: "docs/x.md", anchor: "setup" });
+	});
+
+	test("folder links match dir-joined and verbatim, with and without trailing slash", () => {
+		expect(resolveLinkTarget("sub", "dir/a.md", known, folders)).toEqual({
+			kind: "folder",
+			path: "dir/sub",
+		});
+		expect(resolveLinkTarget("sub/", "dir/a.md", known, folders)).toEqual({
+			kind: "folder",
+			path: "dir/sub",
+		});
+		expect(resolveLinkTarget("dir/sub/", "x.md", known, folders)).toEqual({
+			kind: "folder",
+			path: "dir/sub",
+		});
+		expect(resolveLinkTarget("docs", "a.md", known, folders)).toEqual({
+			kind: "folder",
+			path: "docs",
+		});
+	});
+
+	test("non-md relative hrefs → raw with the markdown-relative path", () => {
+		expect(resolveLinkTarget("image.png", "dir/a.md", known, folders)).toEqual({
+			kind: "raw",
+			path: "dir/image.png",
+		});
+		expect(
+			resolveLinkTarget("assets/diagram.webp", "docs/x.md", known, folders),
+		).toEqual({ kind: "raw", path: "docs/assets/diagram.webp" });
+		// Pops within docsRoot — not an escape, still raw.
+		expect(
+			resolveLinkTarget("../img.png", "docs/x.md", known, folders),
+		).toEqual({ kind: "raw", path: "img.png" });
+	});
+
+	test("dead .md links (typo, uppercase .MD, unmatched fragment) → dead with the href", () => {
+		expect(resolveLinkTarget("typo.md", "a.md", known, folders)).toEqual({
+			kind: "dead",
+			href: "typo.md",
+		});
+		// Case-insensitive .md detection — dead, never raw.
+		expect(resolveLinkTarget("typo.MD", "a.md", known, folders)).toEqual({
+			kind: "dead",
+			href: "typo.MD",
+		});
+		expect(
+			resolveLinkTarget("gone.md#frag", "dir/a.md", known, folders),
+		).toEqual({ kind: "dead", href: "gone.md#frag" });
+	});
+
+	test("an href normalizing to the docsRoot stays default; './' in a folder is that folder", () => {
+		// A root doc's "." / "./" is the docsRoot itself — no destination.
+		expect(resolveLinkTarget(".", "a.md", known, folders)).toEqual({
+			kind: "default",
+		});
+		expect(resolveLinkTarget("./", "a.md", known, folders)).toEqual({
+			kind: "default",
+		});
+		// Inside dir/, "./" resolves to dir — a folder link like any other.
+		expect(resolveLinkTarget("./", "dir/a.md", known, folders)).toEqual({
+			kind: "folder",
+			path: "dir",
+		});
+	});
+});
+
+describe("slugifyHeading", () => {
+	test("GitHub-gfm-compatible for the ASCII common case", () => {
+		expect(slugifyHeading("Hello, World!", new Set())).toBe("hello-world");
+	});
+
+	test("keeps Unicode letters, strips other punctuation", () => {
+		expect(slugifyHeading("Über Straße", new Set())).toBe("über-straße");
+		expect(slugifyHeading("What?! Really...", new Set())).toBe("what-really");
+	});
+
+	test("collapses separator runs and trims edges", () => {
+		expect(slugifyHeading("  a --  b ", new Set())).toBe("a-b");
+		expect(slugifyHeading("--leading--", new Set())).toBe("leading");
+	});
+
+	test("empty result → section, itself deduped", () => {
+		const seen = new Set<string>();
+		expect(slugifyHeading("!!!", seen)).toBe("section");
+		expect(slugifyHeading("???", seen)).toBe("section-1");
+	});
+
+	test("duplicates get -1, -2 suffixes", () => {
+		const seen = new Set<string>();
+		expect(slugifyHeading("Notes", seen)).toBe("notes");
+		expect(slugifyHeading("Notes", seen)).toBe("notes-1");
+		expect(slugifyHeading("notes", seen)).toBe("notes-2");
 	});
 });

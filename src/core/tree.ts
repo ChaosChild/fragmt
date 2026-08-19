@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 export interface TreeNode {
@@ -24,8 +24,12 @@ function buildDir(name: string, path: string, abs: string): TreeNode {
 		const childPath = path === "" ? ent.name : `${path}/${ent.name}`;
 		if (ent.isDirectory()) {
 			const node = buildDir(ent.name, childPath, join(abs, ent.name));
-			// Prune directories with no .md anywhere beneath them.
-			if (countDocs(node) > 0) dirs.push(node);
+			// Prune directories with no .md anywhere beneath them — unless the
+			// dir carries a committed .gitkeep (createFolder's marker): a
+			// freshly created folder holds no docs yet and must not vanish from
+			// the operator's tree (M4-3 b6).
+			if (countDocs(node) > 0 || existsSync(join(abs, ent.name, ".gitkeep")))
+				dirs.push(node);
 		} else if (ent.isFile() && ent.name.toLowerCase().endsWith(".md")) {
 			docs.push({ name: ent.name, path: childPath, type: "doc" });
 		}

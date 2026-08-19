@@ -102,6 +102,9 @@ export function DocView({
 	onDraft,
 	docs,
 	onSelectDoc,
+	onSelectFolder,
+	pendingAnchor,
+	onAnchorConsumed,
 	authors,
 	folders,
 	onBeforeRename,
@@ -154,8 +157,17 @@ export function DocView({
 	authors: Record<string, string>;
 	/** The tree's docs — the editor's @ menu and link-click doc set (M4-2). */
 	docs: AtDoc[];
-	/** An in-doc @ link resolved to a tree doc — navigate in-app (App). */
-	onSelectDoc: (path: string) => void;
+	/** An in-doc link resolved to a tree doc — navigate in-app (App); the
+	 *  #fragment rides along and scrolls after the new doc renders (M4-3 b6). */
+	onSelectDoc: (path: string, anchor?: string) => void;
+	/** An in-doc link resolved to a tree folder — App expands it in the
+	 *  sidebar and selects its first doc (M4-3 b6). */
+	onSelectFolder: (path: string) => void;
+	/** A cross-doc #fragment waiting to scroll after the doc loads (App owns
+	 *  it; EditorPane consumes it). */
+	pendingAnchor: string | null;
+	/** The pending anchor was consumed — App clears it. */
+	onAnchorConsumed: () => void;
 	/** Every folder path in the tree — the header move picker's list (the
 	 *  picker itself prepends "/ (root)" as ""). */
 	folders: string[];
@@ -195,6 +207,14 @@ export function DocView({
 	const [renameError, setRenameError] = useState<string | null>(null);
 	const [renameBusy, setRenameBusy] = useState(false);
 	const [pendingRename, setPendingRename] = useState(false);
+	// M4-3 b6: the dead-link note's payload — a relative .md link that matched
+	// nothing in the tree. Cleared on doc change (the note describes the open
+	// doc's links) and by its Dismiss button.
+	const [linkNotFound, setLinkNotFound] = useState<string | null>(null);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `selected` is the change trigger — the note describes the open doc's links and clears with it.
+	useEffect(() => {
+		setLinkNotFound(null);
+	}, [selected]);
 	const renameRef = useRef<HTMLInputElement>(null);
 	const editorRef = useRef<EditorPaneHandle>(null);
 	const paneRef = useRef<HTMLDivElement>(null);
@@ -587,6 +607,24 @@ export function DocView({
 	return (
 		<div className={editing ? "editor-pane" : "doc-pane"} ref={paneRef}>
 			<div className="doc-bar">{docBar}</div>
+			{/* Dead-link note (M4-3 b6): a relative link that looks like a doc but
+			    matches nothing — said plainly under the breadcrumb, dismissable,
+			    never a tab hijack. Same visual family as the conflict banner. */}
+			{linkNotFound && (
+				<div className="conflict-banner" role="status">
+					<div>
+						<strong>Link not found</strong>
+						{linkNotFound}
+					</div>
+					<button
+						type="button"
+						className="iconbtn subtle dismiss"
+						onClick={() => setLinkNotFound(null)}
+					>
+						Dismiss
+					</button>
+				</div>
+			)}
 			{doc && (
 				<header className="doc-head">
 					<Avatar
@@ -740,7 +778,12 @@ export function DocView({
 					onSpanClick={onSpanClick}
 					docPath={selected ?? doc.path}
 					docs={docs}
+					folders={folders}
 					onSelectDoc={onSelectDoc}
+					onSelectFolder={onSelectFolder}
+					onLinkNotFound={setLinkNotFound}
+					anchor={pendingAnchor}
+					onAnchorConsumed={onAnchorConsumed}
 				/>
 			) : null}
 		</div>

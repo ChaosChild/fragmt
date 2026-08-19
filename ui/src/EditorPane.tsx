@@ -11,12 +11,19 @@ import type { AtDoc, AtMenuState } from "./editor/at";
 import { BubbleToolbar } from "./editor/BubbleToolbar";
 import { editorExtensions } from "./editor/extensions";
 import { ImagePopover } from "./editor/ImageForm";
-import { resolveLinkTarget } from "./editor/links";
+import { resolveLinkTarget, slugifyHeading } from "./editor/links";
 import { SlashMenuView } from "./editor/SlashMenu";
 import type { SlashMenuState } from "./editor/slash";
 
 export interface EditorPaneHandle {
 	getMarkdown(): string;
+}
+
+/** Scroll a heading id into view — the anchor dispatch's one action (M4-3 b6). */
+function scrollToHeadingId(id: string) {
+	document
+		.getElementById(id)
+		?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 /**
@@ -43,7 +50,12 @@ export function EditorPane({
 	onDirtyChange,
 	docPath,
 	docs,
+	folders,
 	onSelectDoc,
+	onSelectFolder,
+	onLinkNotFound,
+	anchor,
+	onAnchorConsumed,
 	ref,
 }: {
 	markdown: string;
@@ -59,8 +71,19 @@ export function EditorPane({
 	docPath: string;
 	/** The tree's docs — @ menu items and the known-path set for link clicks. */
 	docs: AtDoc[];
-	/** An in-doc link resolved to a tree doc — navigate in-app (App). */
-	onSelectDoc: (path: string) => void;
+	/** The tree's folder paths — the link dispatch's folder set (M4-3 b6). */
+	folders: string[];
+	/** An in-doc link resolved to a tree doc — navigate in-app (App), with the
+	 *  #fragment when the link carried one (scrolled after the doc loads). */
+	onSelectDoc: (path: string, anchor?: string) => void;
+	/** A link resolved to a tree folder — App expands it in the sidebar. */
+	onSelectFolder: (path: string) => void;
+	/** A relative link matched nothing and ends .md — DocView shows the note. */
+	onLinkNotFound: (href: string) => void;
+	/** A cross-doc #fragment pending scroll after this doc's content loads. */
+	anchor?: string | null;
+	/** The pending anchor was consumed (scrolled or dropped) — App clears it. */
+	onAnchorConsumed: () => void;
 	ref?: Ref<EditorPaneHandle>;
 }) {
 	const [slashState, setSlashState] = useState<SlashMenuState | null>(null);
@@ -75,6 +98,7 @@ export function EditorPane({
 	const docsRef = useRef(docs);
 	docsRef.current = docs;
 	const knownDocPaths = new Set(docs.map((d) => d.path));
+	const knownFolderPaths = new Set(folders);
 
 	const editor = useEditor({
 		extensions: editorExtensions(
@@ -112,8 +136,27 @@ export function EditorPane({
 	useEffect(() => {
 		editor?.commands.setContent(markdown);
 		editor?.commands.setTextSelection(0);
+		// Heading ids (M4-3 b6), both modes — one code path: #fragment and
+		// doc#frag links scroll to these. A cheap idempotent walk per doc
+		// load; the ids live only in the rendered DOM, never the markdown.
+		const seen = new Set<string>();
+		for (const el of Array.from(
+			editor?.view.dom.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6") ?? [],
+		)) {
+			el.id = slugifyHeading(el.textContent ?? "", seen);
+		}
 		setDirty(false);
 	}, [editor, markdown]);
+
+	// A cross-doc #fragment (a doc link click carried one): scroll once the
+	// new content and its heading ids exist (the load effect above runs first
+	// in the same commit), then hand the anchor back — App clears it either
+	// way, so an unknown fragment never scrolls a later, unrelated doc.
+	useEffect(() => {
+		if (!editor || !anchor) return;
+		scrollToHeadingId(anchor);
+		onAnchorConsumed();
+	}, [editor, anchor, onAnchorConsumed]);
 
 	// Edit/Cancel flips editability on the SAME mounted editor — the DOM
 	// never rebuilds, so the text cannot reflow (M2 rule). A stale bubble
@@ -164,6 +207,8 @@ export function EditorPane({
 				// the editor DOM. Edit mode is excluded from span jumps (clicks
 				// are selection there) and follows links only on Ctrl/Cmd; a
 				// drag selection landing on the target doesn't fire either.
+				// M4-3 b6 widens the dispatch: anchors, folder links, raw
+				// assets, and dead .md links (links.ts' table is normative).
 				onClick={(e) => {
 					if (
 						(editable && !(e.ctrlKey || e.metaKey)) ||
@@ -176,18 +221,53 @@ export function EditorPane({
 						onSpanClick(span.getAttribute("data-c") ?? "");
 						return;
 					}
-					const anchor = target.closest("a[href]");
-					if (!anchor) return;
-					const href = anchor.getAttribute("href") ?? "";
-					const resolved = resolveLinkTarget(href, docPath, knownDocPaths);
-					if (resolved.kind === "doc") {
-						e.preventDefault();
-						onSelectDoc(resolved.path);
-					} else if (resolved.kind === "external") {
-						e.preventDefault();
-						window.open(href, "_blank", "noopener,noreferrer");
+					const anchorEl = target.closest("a[href]");
+					if (!anchorEl) return;
+					const href = anchorEl.getAttribute("href") ?? "";
+					const resolved = resolveLinkTarget(
+						href,
+						docPath,
+						knownDocPaths,
+						knownFolderPaths,
+					);
+					switch (resolved.kind) {
+						case "doc":
+							e.preventDefault();
+							// Same doc + fragment: no reload — scroll in place.
+							if (resolved.anchor && resolved.path === docPath) {
+								scrollToHeadingId(resolved.anchor);
+							} else {
+								onSelectDoc(resolved.path, resolved.anchor);
+							}
+							break;
+						case "anchor":
+							e.preventDefault();
+							scrollToHeadingId(resolved.id);
+							break;
+						case "folder":
+							e.preventDefault();
+							onSelectFolder(resolved.path);
+							break;
+						case "raw":
+							e.preventDefault();
+							window.open(
+								`/api/raw/${encodeURI(resolved.path)}`,
+								"_blank",
+								"noopener,noreferrer",
+							);
+							break;
+						case "dead":
+							e.preventDefault();
+							onLinkNotFound(resolved.href);
+							break;
+						case "external":
+							e.preventDefault();
+							window.open(href, "_blank", "noopener,noreferrer");
+							break;
+						default:
+							// default: leave the browser to it.
+							break;
 					}
-					// default: leave the browser to it.
 				}}
 				onKeyDown={(e) => {
 					// Read mode owns no edit-session keys — Esc just clears

@@ -43,14 +43,15 @@ export interface Doc {
  * Resolve a docsRoot-relative path and enforce it stays under docsRoot and
  * (for docs) ends with .md. Shared by readDoc (M1), writeDoc (M2), and the
  * files.ts ops (M3). Trust boundary — the server maps violations to 400.
- * Folder ops pass kind "folder" to allow a path without the .md extension;
- * the traversal rules are identical for both kinds.
+ * Folder ops pass kind "folder" and the raw-file route passes kind "raw"
+ * (M4-3 b6) to allow a path without the .md extension; the traversal rules
+ * are identical for all kinds.
  */
 export function resolveDocPath(
 	repoRoot: string,
 	docsRoot: string,
 	docPath: string,
-	kind: "doc" | "folder" = "doc",
+	kind: "doc" | "folder" | "raw" = "doc",
 ): string {
 	const docsAbs = resolve(repoRoot, docsRoot);
 	const target = resolve(docsAbs, docPath);

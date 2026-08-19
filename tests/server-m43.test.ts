@@ -1,6 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import type { Server } from "node:http";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
@@ -53,6 +60,31 @@ function patchDoc(path: string, body: unknown): Promise<Response> {
 /** Raw git against the server's repo, independent of the code under test. */
 function gitOut(args: string[]): string {
 	return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+}
+
+/**
+ * Raw HTTP request (server.test.ts's pattern) — `fetch` collapses `..` in the
+ * path client-side, so the traversal guard needs a socket to be reached.
+ */
+function rawGet(path: string): Promise<{ status: number; body: string }> {
+	return new Promise((resolve, reject) => {
+		const socket = connect(port, "127.0.0.1", () => {
+			socket.write(
+				`GET ${path} HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n`,
+			);
+		});
+		let raw = "";
+		socket.on("data", (chunk) => {
+			raw += chunk;
+		});
+		socket.on("error", reject);
+		socket.on("end", () => {
+			resolve({
+				status: Number(raw.split(" ")[1]),
+				body: raw.split("\r\n\r\n").slice(1).join("\r\n\r\n"),
+			});
+		});
+	});
 }
 
 test("DELETE /api/branches: merged branch gone, still on current; slashed names OK", async () => {
@@ -147,4 +179,60 @@ test("PATCH /api/docs/*: exactly one of to/title — both/neither/blank → 400"
 	// Nothing was written by any rejected shape.
 	expect(readFileSync(join(root, "a.md"), "utf8")).toBe("# body\n");
 	expect(gitOut(["rev-list", "--count", "HEAD"])).toBe("1");
+});
+
+// --- GET /api/raw/* (M4-3 b6) ------------------------------------------------
+
+test("GET /api/raw: 200 with the mapped content-type (md text, image binary-safe)", async () => {
+	// Non-UTF8-safe bytes prove the route never decodes to a string.
+	const pngBytes = Buffer.from([
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+	]);
+	writeFileSync(join(root, "img.png"), pngBytes);
+
+	const md = await api("GET", "/api/raw/a.md");
+	expect(md.status).toBe(200);
+	expect(md.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+	expect(await md.text()).toBe("# body\n");
+
+	const png = await api("GET", "/api/raw/img.png");
+	expect(png.status).toBe(200);
+	expect(png.headers.get("content-type")).toBe("image/png");
+	expect(Buffer.from(await png.arrayBuffer())).toEqual(pngBytes);
+});
+
+test("GET /api/raw: svg and html serve as text/plain — never execute in the app origin", async () => {
+	writeFileSync(join(root, "pic.svg"), '<svg onload="alert(1)"/>');
+	writeFileSync(join(root, "page.html"), "<script>alert(1)</script>");
+	const svg = await api("GET", "/api/raw/pic.svg");
+	expect(svg.status).toBe(200);
+	expect(svg.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+	const html = await api("GET", "/api/raw/page.html");
+	expect(html.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+});
+
+test("GET /api/raw: unknown extension → octet-stream download", async () => {
+	writeFileSync(join(root, "blob.bin"), "xyz");
+	const res = await api("GET", "/api/raw/blob.bin");
+	expect(res.status).toBe(200);
+	expect(res.headers.get("content-type")).toBe("application/octet-stream");
+	expect(res.headers.get("content-disposition")).toBe("attachment");
+});
+
+test("GET /api/raw: missing file and directories are 404", async () => {
+	expect((await api("GET", "/api/raw/nope.txt")).status).toBe(404);
+	mkdirSync(join(root, "subdir"));
+	expect((await api("GET", "/api/raw/subdir")).status).toBe(404);
+});
+
+test("GET /api/raw: traversal attempts are 400 (the raw-URL guard covers the prefix)", async () => {
+	for (const path of [
+		"/api/raw/../secret",
+		"/api/raw/sub/../../secret",
+		"/api/raw/%2e%2e/secret",
+		"/api/raw/..%2fsecret",
+	]) {
+		const res = await rawGet(path);
+		expect(res.status, path).toBe(400);
+	}
 });

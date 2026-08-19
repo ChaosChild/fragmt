@@ -67,3 +67,37 @@ test("a repo with no markdown yields an empty root", () => {
 	expect(tree.children).toEqual([]);
 	expect(countDocs(tree)).toBe(0);
 });
+
+// M4-3 b6: createFolder commits a .gitkeep — a brand-new folder must appear in
+// the tree (the sidebar renders its count badge as 0); without the marker a
+// docless dir still prunes per the M1 rule.
+test("a .gitkeep folder stays visible with 0 docs; a bare empty dir prunes", () => {
+	fixture();
+	mkdirSync(join(root, "docs", "kept"), { recursive: true });
+	writeFileSync(join(root, "docs", "kept", ".gitkeep"), "");
+	mkdirSync(join(root, "docs", "plain"), { recursive: true });
+	const docs = listTree(root, ".").children?.find((c) => c.name === "docs");
+	// kept (0 docs) joins milestones; plain stays pruned.
+	expect(docs?.children?.map((c) => c.name)).toEqual([
+		"kept",
+		"milestones",
+		"ARCHITECTURE.md",
+		"PLAN.md",
+	]);
+	const kept = docs?.children?.find((c) => c.name === "kept");
+	expect(kept?.type).toBe("dir");
+	expect(countDocs(kept ?? { name: "", path: "", type: "doc" })).toBe(0);
+});
+
+test("a .gitkeep folder disappears once neither docs nor the marker remain", () => {
+	fixture();
+	mkdirSync(join(root, "docs", "kept"), { recursive: true });
+	writeFileSync(join(root, "docs", "kept", ".gitkeep"), "");
+	rmSync(join(root, "docs", "kept", ".gitkeep"));
+	const docs = listTree(root, ".").children?.find((c) => c.name === "docs");
+	expect(docs?.children?.map((c) => c.name)).toEqual([
+		"milestones",
+		"ARCHITECTURE.md",
+		"PLAN.md",
+	]);
+});
