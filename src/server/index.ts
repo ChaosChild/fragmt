@@ -35,6 +35,7 @@ import {
 	restoreDoc,
 	StaleDocError,
 	setResolved,
+	setTitle,
 	startDraft,
 	sync,
 	ThreadNotFoundError,
@@ -294,11 +295,33 @@ export function createApp(ctx: ServerContext): Hono {
 		}
 	});
 
+	// M4-3 b4: the doc PATCH is a two-way dispatch — {to} moves the file
+	// (M3), {title} writes the frontmatter title (rename, path unchanged).
+	// Exactly one action per call.
 	app.patch("/api/docs/*", async (c) => {
 		const from = tailPath(c, DOCS_PREFIX);
 		if (from === undefined) return c.json({ error: "invalid doc path" }, 400);
 		const body = await jsonBody(c);
 		if (body === null) return c.json({ error: "invalid request body" }, 400);
+		const hasTo = body.to !== undefined;
+		const hasTitle = body.title !== undefined;
+		if (hasTo === hasTitle)
+			return c.json({ error: "exactly one of to or title is required" }, 400);
+		if (hasTitle) {
+			if (typeof body.title !== "string" || !body.title.trim())
+				return c.json({ error: "title must be a non-empty string" }, 400);
+			try {
+				const { sha } = await setTitle(
+					ctx.repoRoot,
+					ctx.docsRoot,
+					from,
+					body.title,
+				);
+				return c.json({ sha });
+			} catch (e) {
+				return respondFileError(c, e);
+			}
+		}
 		if (typeof body.to !== "string")
 			return c.json({ error: "to is required" }, 400);
 		try {

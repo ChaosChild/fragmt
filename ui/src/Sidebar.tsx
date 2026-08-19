@@ -6,7 +6,7 @@ import {
 	useState,
 } from "react";
 import type { DeletedDoc, DocMeta, RepoMeta, TreeNode } from "./api";
-import { type FileOp, RowActions } from "./Menus";
+import { displayTitle } from "./display";
 import { clampSidebarWidth } from "./sidebar-geometry";
 
 /**
@@ -97,6 +97,8 @@ function DocCard({
 }) {
 	const dm: DocMeta | undefined = meta?.docs[node.path];
 	const chip = meta ? chipWord(meta, node.path) : null;
+	// M4-3 b4: indicators sit inline right after the name — nothing is
+	// right-aligned on the row, so overflow can never hide them.
 	return (
 		<button
 			type="button"
@@ -107,7 +109,10 @@ function DocCard({
 			}
 		>
 			<span className="dc-top">
-				<span className="dc-title">{node.name.replace(/\.md$/i, "")}</span>
+				<span className="dc-title">{displayTitle(dm?.title, node.name)}</span>
+				{dm?.version !== undefined && (
+					<span className="dc-ver">v{dm.version}</span>
+				)}
 			</span>
 			{(dm || chip) && (
 				<span className="dc-meta">
@@ -185,7 +190,6 @@ interface NodesProps {
 	nodes: TreeNode[];
 	selected: string | null;
 	onSelect: (path: string) => void;
-	onFileOp: (op: FileOp) => void;
 	onOpenGhost: (path: string, branch: string) => void;
 	collapsed: Set<string>;
 	toggle: (path: string) => void;
@@ -198,7 +202,6 @@ function renderNodes({
 	nodes,
 	selected,
 	onSelect,
-	onFileOp,
 	onOpenGhost,
 	collapsed,
 	toggle,
@@ -223,14 +226,6 @@ function renderNodes({
 							{node.name}
 							<span className="count">{countDocs(node)}</span>
 						</button>
-						<span className="row-corner">
-							<RowActions
-								kind="folder"
-								path={node.path}
-								name={node.name}
-								onFileOp={onFileOp}
-							/>
-						</span>
 					</div>
 					{!isCollapsed && (
 						<ul className="folder-children">
@@ -238,7 +233,6 @@ function renderNodes({
 								nodes: node.children ?? [],
 								selected,
 								onSelect,
-								onFileOp,
 								onOpenGhost,
 								collapsed,
 								toggle,
@@ -251,7 +245,6 @@ function renderNodes({
 			);
 		}
 		const ghostBranch = ghosts.get(node.path);
-		const ver = meta?.docs[node.path]?.version;
 		return (
 			<li key={node.path}>
 				<div className="tree-row">
@@ -263,20 +256,6 @@ function renderNodes({
 						onSelect={onSelect}
 						onOpenGhost={onOpenGhost}
 					/>
-					{/* Dogfood revision of item 1: the actions sit INSIDE the card's
-					    top-right corner, left of the version — no dead column beside
-					    the card. Ghosts carry no actions (no doc on this branch). */}
-					<span className="row-corner">
-						{!ghostBranch && (
-							<RowActions
-								kind="doc"
-								path={node.path}
-								name={node.name}
-								onFileOp={onFileOp}
-							/>
-						)}
-						{ver !== undefined && <span className="dc-ver">v{ver}</span>}
-					</span>
 				</div>
 			</li>
 		);
@@ -329,7 +308,6 @@ export function Sidebar({
 	tree,
 	selected,
 	onSelect,
-	onFileOp,
 	meta,
 	onOpenGhost,
 	onRestore,
@@ -337,7 +315,6 @@ export function Sidebar({
 	tree: TreeNode | null;
 	selected: string | null;
 	onSelect: (path: string) => void;
-	onFileOp: (op: FileOp) => void;
 	meta: RepoMeta | null;
 	/** Ghost-card click: checkout the branch, then open the doc (App). */
 	onOpenGhost: (path: string, branch: string) => void;
@@ -367,7 +344,6 @@ export function Sidebar({
 					nodes: merged?.children ?? [],
 					selected,
 					onSelect,
-					onFileOp,
 					onOpenGhost,
 					collapsed,
 					toggle,

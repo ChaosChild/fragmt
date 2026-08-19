@@ -37,6 +37,7 @@ import {
 } from "./api";
 import { CommentsRail } from "./CommentsRail";
 import { DocView } from "./DocView";
+import { displayTitle } from "./display";
 import type { AtDoc } from "./editor/at";
 import {
 	type BranchAction,
@@ -61,14 +62,34 @@ function treeHas(node: TreeNode, path: string): boolean {
 	return (node.children ?? []).some((c) => c.path === path || treeHas(c, path));
 }
 
-/** The tree's docs as {title, path} — the @ menus' items and linkify's set. */
-function docItems(node: TreeNode | null): AtDoc[] {
+/** The tree's docs as {title, path} — the @ menus' items and linkify's set.
+ *  Titles come from meta (the display-name model, M4-3 b4); paths stay the
+ *  identity and the link hrefs. */
+function docItems(node: TreeNode | null, meta: RepoMeta | null): AtDoc[] {
 	const out: AtDoc[] = [];
 	const walk = (n: TreeNode) => {
 		for (const c of n.children ?? []) {
 			if (c.type === "doc")
-				out.push({ title: c.name.replace(/\.md$/i, ""), path: c.path });
+				out.push({
+					title: displayTitle(meta?.docs[c.path]?.title, c.name),
+					path: c.path,
+				});
 			else walk(c);
+		}
+	};
+	if (node) walk(node);
+	return out;
+}
+
+/** Every folder path in the tree — the header move picker's list (M4-3 b4). */
+function folderPaths(node: TreeNode | null): string[] {
+	const out: string[] = [];
+	const walk = (n: TreeNode) => {
+		for (const c of n.children ?? []) {
+			if (c.type === "dir") {
+				out.push(c.path);
+				walk(c);
+			}
 		}
 	};
 	if (node) walk(node);
@@ -84,7 +105,13 @@ export function App() {
 	// M3: branches, sync, file ops.
 	const [branch, setBranch] = useState<string | null>(null);
 	const [dirty, setDirty] = useState(false);
-	const [pendingBranch, setPendingBranch] = useState<BranchAction | null>(null);
+	// The save-or-discard guard's payload (M3, generalized M4-3 b4): any
+	// action blocked on the choice — a branch switch, a header move/delete.
+	// DocView renders the banner; `go` runs after Save/Discard and clears.
+	const [pendingAction, setPendingAction] = useState<{
+		headline: string;
+		go: () => void;
+	} | null>(null);
 	const [syncing, setSyncing] = useState(false);
 	const [conflict, setConflict] = useState<string | null>(null);
 	const [ledRed, setLedRed] = useState(false);
@@ -203,8 +230,11 @@ export function App() {
 
 	const threads: CommentThread[] = Object.values(commentFile.comments);
 	// The flat doc list (M4-2): one source for the editor's @ menu, its link
-	// clicks, the rail's reply @ mentions, and body linkification.
-	const docs = useMemo(() => docItems(tree), [tree]);
+	// clicks, the rail's reply @ mentions, and body linkification. Titles
+	// ride along from meta (M4-3 b4) — paths stay the identity.
+	const docs = useMemo(() => docItems(tree, meta), [tree, meta]);
+	// The header move picker's folder list (M4-3 b4).
+	const folders = useMemo(() => folderPaths(tree), [tree]);
 	// The orphan rule, client-side: core's reconcileThreads check replicated
 	// against the RENDERED doc's markdown (doc.markdown is the exact string
 	// the editor renders from and is refreshed on every save). Smaller than
@@ -337,16 +367,31 @@ export function App() {
 		}
 	}
 
-	// The branch-switch guard: unsaved edits block the switch with the
-	// save-or-discard banner (DocView), never a silent loss. Deletion skips
-	// the guard — it never touches the worktree or the checked-out branch.
+	// The save-or-discard guard (M3, generalized M4-3 b4): unsaved edits
+	// block the action with the banner (DocView), never a silent loss. The
+	// header file actions route through the same gate.
+	function guardAction(headline: string, run: () => void) {
+		if (live.current.dirty) {
+			setPendingAction({
+				headline,
+				go: () => {
+					setPendingAction(null);
+					run();
+				},
+			});
+			return;
+		}
+		run();
+	}
+
+	// Branch switches pass through the guard; deletion skips it — it never
+	// touches the worktree or the checked-out branch.
 	function requestBranch(action: BranchAction) {
 		if (action.kind === "delete") {
 			void runDeleteBranch(action.name);
 			return;
 		}
-		if (live.current.dirty) setPendingBranch(action);
-		else void switchTo(action);
+		guardAction(`Switch to ${action.name}`, () => void switchTo(action));
 	}
 
 	// Branch deletion (M4-3): confirm → DELETE; an unmerged 409 asks again
@@ -413,23 +458,57 @@ export function App() {
 		return draftFirst();
 	}
 
+	// The pre-rename gate (M4-3 b4): the title write is a doc-body write, so
+	// on main the draft starts (and checks out) first — the doc path never
+	// changes, so the flow continues on the draft branch. DocView handles
+	// the dirty half with its own banner (the box opens after the choice).
+	async function beforeRename(): Promise<boolean> {
+		if (!onMain) return true;
+		return draftFirst();
+	}
+
+	// --- header file actions (M4-3 b4): rename/move/delete on the open doc.
+
+	// A title landed: the frontmatter changed, so the doc reloads and meta
+	// (sidebar cards, @ menu labels) refreshes. A local commit — the LED
+	// reads Saved, not Synced.
+	function onRenamed() {
+		setSynced(false);
+		reloadSelected();
+		refreshMeta();
+	}
+
+	// Move to a tree folder ("" = docsRoot root): the guard first, then the
+	// existing move op — tree + meta refresh and selection follows the new
+	// path (runFileOp's flow).
+	function requestMoveDoc(folder: string) {
+		const from = live.current.selected;
+		if (!from) return;
+		const base = from.slice(from.lastIndexOf("/") + 1);
+		const to = folder ? `${folder}/${base}` : base;
+		guardAction(
+			`Move to ${folder || "/ (root)"}`,
+			() => void runFileOp({ kind: "move-doc", from, to }),
+		);
+	}
+
+	// Delete: the guard first, then the house confirm, then the existing
+	// delete op — selection clears (the path left the tree).
+	function requestDeleteDoc(displayName: string) {
+		const path = live.current.selected;
+		if (!path) return;
+		guardAction("Delete this document", () => {
+			if (!window.confirm(`Delete "${displayName}"? The removal is committed.`))
+				return;
+			void runFileOp({ kind: "delete-doc", path });
+		});
+	}
+
 	// --- file ops: one commit each server-side; every op refreshes the tree.
+	// The dirty guard lives at the entry points now (guardAction, M4-3 b4):
+	// the sidebar's NewDocButton ops never target the open doc, and the
+	// header's move/delete route through the banner before reaching here.
 	async function runFileOp(op: FileOp) {
-		const target =
-			op.kind === "move-doc" || op.kind === "move-folder"
-				? op.from
-				: op.kind === "delete-doc" || op.kind === "delete-folder"
-					? op.path
-					: null;
-		if (
-			target &&
-			live.current.dirty &&
-			(live.current.selected === target ||
-				live.current.selected?.startsWith(`${target}/`))
-		) {
-			setError("save or discard changes to the open document first");
-			return;
-		}
 		try {
 			switch (op.kind) {
 				case "create-doc":
@@ -627,7 +706,6 @@ export function App() {
 						tree={tree}
 						selected={selected}
 						onSelect={setSelected}
-						onFileOp={runFileOp}
 						meta={meta}
 						onOpenGhost={(path, branchName) => void openGhost(path, branchName)}
 						onRestore={(items) => void runRestore(items)}
@@ -661,13 +739,8 @@ export function App() {
 							setRailOpen(true);
 							setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
 						}}
-						pendingBranch={pendingBranch?.name ?? null}
-						onPendingBranchCancel={() => setPendingBranch(null)}
-						onPendingBranchGo={() => {
-							const action = pendingBranch;
-							setPendingBranch(null);
-							if (action) void switchTo(action);
-						}}
+						pendingAction={pendingAction}
+						onPendingActionCancel={() => setPendingAction(null)}
 						conflict={conflict}
 						onDismissConflict={() => setConflict(null)}
 						onBeforeEdit={beforeEdit}
@@ -685,6 +758,11 @@ export function App() {
 						authors={meta?.authors ?? {}}
 						docs={docs}
 						onSelectDoc={setSelected}
+						folders={folders}
+						onBeforeRename={beforeRename}
+						onMoveDoc={requestMoveDoc}
+						onDeleteDoc={requestDeleteDoc}
+						onRenamed={onRenamed}
 					/>
 				</main>
 				{/* The rail is a layout sibling of <main> (right margin column);

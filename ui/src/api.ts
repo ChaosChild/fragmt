@@ -111,6 +111,15 @@ export const moveDoc = (from: string, to: string) =>
 		body: JSON.stringify({ to }),
 	});
 
+/** The PATCH's other branch (M4-3 b4): writes the frontmatter title — the
+ *  display name — without ever touching the file path. */
+export const setTitle = (path: string, title: string) =>
+	request<{ sha: string }>(`/api/docs/${encodeURI(path)}`, {
+		method: "PATCH",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ title }),
+	});
+
 export const deleteDoc = (path: string) =>
 	request<{ sha: string }>(`/api/docs/${encodeURI(path)}`, {
 		method: "DELETE",
@@ -188,6 +197,8 @@ export interface DocMeta {
 	date: string;
 	version: number;
 	snippet: string;
+	/** Frontmatter title — the display name; null = file name sans .md. */
+	title: string | null;
 }
 export interface DraftEntry {
 	branch: string;

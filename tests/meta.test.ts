@@ -80,6 +80,7 @@ test("docs: version counts, newest author/email/date, docsRoot .md filtering", a
 		version: 2,
 		// First non-heading/non-empty/non-table line; a.md's re-edit swaps it.
 		snippet: "second body line",
+		title: null,
 	});
 	expect(meta.docs["b.md"]).toEqual({
 		author: "Alice One",
@@ -88,6 +89,7 @@ test("docs: version counts, newest author/email/date, docsRoot .md filtering", a
 		version: 1,
 		// Headings and table lines skipped; the body line clamped to 110 chars.
 		snippet: longLine.slice(0, 110),
+		title: null,
 	});
 
 	// docsRoot "." adopts repo-relative paths as-is.
@@ -132,6 +134,20 @@ test("drafts: A/M/D per non-main branch, latest status wins, docsRoot only", asy
 		],
 		"c.md": [{ branch: "drafts/one", status: "deleted" }],
 	});
+});
+
+test("title: frontmatter title extracted in the snippet read; absent/non-string → null", async () => {
+	const root = repo("main");
+	write(root, "docs/titled.md", "---\ntitle: The Doc\nauthor: x\n---\n# t\n");
+	write(root, "docs/plain.md", "# p\n");
+	write(root, "docs/numeric.md", "---\ntitle: 42\n---\n# n\n");
+	commit(root, "A <a@example.com>", "seed");
+
+	const meta = await repoMeta(root, "docs");
+	expect(meta.docs["titled.md"].title).toBe("The Doc");
+	expect(meta.docs["plain.md"].title).toBeNull();
+	// A non-string title is "no title" — the file name is the display name.
+	expect(meta.docs["numeric.md"].title).toBeNull();
 });
 
 test("mainBranch: master falls back, main preferred when both exist", async () => {

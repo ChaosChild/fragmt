@@ -6,6 +6,7 @@
 // editing-controls.test.ts.
 import { Editor } from "@tiptap/core";
 import { describe, expect, test } from "vitest";
+import { displayTitle } from "../ui/src/display.js";
 import {
 	type AtDoc,
 	AtReferences,
@@ -42,6 +43,23 @@ describe("@ item filtering", () => {
 		]);
 		expect(filterAtDocs(docs, "")).toHaveLength(3);
 		expect(filterAtDocs(docs, "zzz")).toEqual([]);
+	});
+});
+
+// The display-name model (M4-3 b4): the @ menu labels, sidebar cards, and
+// breadcrumb all resolve the title this way — App threads meta's titles in
+// with the file name as the fallback.
+describe("displayTitle (the @ menu label rule)", () => {
+	test("frontmatter title preferred; file name sans .md the fallback", () => {
+		expect(displayTitle("The Plan", "plan.md")).toBe("The Plan");
+		expect(displayTitle(undefined, "plan.md")).toBe("plan");
+		expect(displayTitle(null, "Plan.MD")).toBe("Plan");
+	});
+
+	test("blank or non-string titles fall back to the name", () => {
+		expect(displayTitle("   ", "plan.md")).toBe("plan");
+		expect(displayTitle("", "plan.md")).toBe("plan");
+		expect(displayTitle(42, "plan.md")).toBe("plan");
 	});
 });
 

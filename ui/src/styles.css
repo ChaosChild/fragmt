@@ -429,7 +429,6 @@ body {
 	font-size: 14px;
 	font-weight: 600;
 	color: var(--fg);
-	flex: 1;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -523,7 +522,7 @@ body {
 	transform: rotate(90deg);
 }
 .folder-row .count {
-	margin-left: auto;
+	flex-shrink: 0;
 	font-size: 10px;
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
@@ -590,6 +589,42 @@ body {
 .breadcrumb span {
 	color: var(--fg);
 	font-weight: 500;
+}
+/* M4-3 b4: the breadcrumb name + its three file-action icons — rename,
+   move, delete — one tight cluster on the doc-bar line, both modes. */
+.doc-bar-main {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+}
+/* The inline rename box: the name becomes an input with icon confirm/cancel
+   (never text buttons — review decision); errors sit inline after it. */
+.rename-form {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+}
+.rename-form input {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	letter-spacing: var(--track-label);
+	color: var(--fg);
+	background: var(--glass-inner);
+	border: 1px solid var(--glass-border);
+	border-radius: var(--radius);
+	padding: 6px 8px;
+	width: min(280px, 40vw);
+	min-width: 0;
+}
+.rename-form input:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.rename-error {
+	font-size: 11px;
+	color: var(--danger);
 }
 .doc-actions {
 	display: flex;
@@ -1799,16 +1834,15 @@ button.comment-quote:hover {
 .branch-dd {
 	min-height: 32px; /* a11y floor: ≥32px hit targets (§9) */
 }
-/* Tree row = full-width select target; file actions live in the corner
-   overlay inside the card (dogfood revision — the outside kebab left a
-   dead column beside the card). */
+/* Tree row = full-width select target (M4-3 b4: the corner-icon overlay is
+   gone — the file actions live on the doc head's breadcrumb line now). */
 .tree-row {
 	display: flex;
 	align-items: center;
 	position: relative;
 	/* Readable row minimum at any depth (M4-3 b3): rows narrower than this
 	   overflow visibly and the .doc-list scrolls instead of crushing the
-	   title. The corner icons stay glued to this row's right edge. */
+	   title. */
 	min-width: 220px;
 }
 .tree-row .doc-card,
@@ -1825,7 +1859,8 @@ button.comment-quote:hover {
 .side-head .menu-wrap {
 	flex-shrink: 0;
 }
-/* Visible-but-subtle square icon button (new doc, row kebabs) — 32px target */
+/* Visible-but-subtle square icon button (new doc, branch delete, doc-head
+   file actions) — 32px target */
 .tool-btn {
 	display: inline-flex;
 	align-items: center;
@@ -1931,7 +1966,7 @@ button.comment-quote:hover {
 	border-color: var(--danger);
 }
 
-/* ── M4-2: two-row sidebar head, hover-revealed kebab, recycle bin ── */
+/* ── M4-2: two-row sidebar head, recycle bin ── */
 .side-head {
 	flex-direction: column;
 	align-items: stretch;
@@ -1964,40 +1999,6 @@ button.comment-quote:hover {
 	opacity: 0.5;
 	cursor: default;
 	pointer-events: none;
-}
-/* The row actions sit in the card's top-right corner, left of the version
-   chip (dogfood revision of item 1). The strip is click-through except its
-   buttons; icons reveal on row hover/focus-within — still focusable ≥32px
-   buttons, so nothing is hover-only (§5/§8). Small glyphs, generous targets. */
-.row-corner {
-	position: absolute;
-	top: 5px;
-	right: 8px;
-	display: flex;
-	align-items: center;
-	gap: 1px;
-	pointer-events: none;
-}
-.row-corner .tool-btn {
-	pointer-events: auto;
-	opacity: 0;
-	width: 26px;
-	transition:
-		opacity var(--motion-fast) var(--ease-standard),
-		color var(--motion-fast) var(--ease-standard);
-}
-.row-corner .tool-btn svg {
-	width: 15px;
-	height: 15px;
-}
-.tree-row:hover .row-corner .tool-btn,
-.tree-row:focus-within .row-corner .tool-btn {
-	opacity: 1;
-}
-/* The title truncates before the corner (icons + version), so the reserve
-   is constant — no reflow when the icons reveal. */
-.doc-card .dc-top {
-	padding-right: 92px;
 }
 /* Recycle bin (item 9) — pinned below the doc list; every Restore sits on
    the same right edge, Restore all right-aligned beneath them. */
