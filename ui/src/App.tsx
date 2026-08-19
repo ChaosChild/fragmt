@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type CSSProperties,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import {
 	type CommentFile,
 	type CommentThread,
@@ -37,7 +44,8 @@ import {
 	type FileOp,
 	NewDocButton,
 } from "./Menus";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, SidebarResizeHandle } from "./Sidebar";
+import { readStoredSidebarWidth, storeSidebarWidth } from "./sidebar-geometry";
 
 function firstDoc(node: TreeNode): string | null {
 	for (const child of node.children ?? []) {
@@ -80,6 +88,16 @@ export function App() {
 	const [syncing, setSyncing] = useState(false);
 	const [conflict, setConflict] = useState<string | null>(null);
 	const [ledRed, setLedRed] = useState(false);
+	// M4-3 b3: drag-resized sidebar width — applied as --sidebar-w on the
+	// .sidebar element itself (not :root), so the ≤768px drawer override
+	// keeps owning the width there. Persisted on pointerup only.
+	const [sidebarW, setSidebarW] = useState<number | null>(() =>
+		readStoredSidebarWidth(),
+	);
+	const applySidebarW = (width: number, commit: boolean) => {
+		setSidebarW(width);
+		if (commit) storeSidebarWidth(width);
+	};
 	// M4-2: repo meta (cards, drafts, recycle bin). Refetched on load, branch
 	// switches, file ops, and saves — a failure is quiet (the UI falls back to
 	// version-less cards).
@@ -570,7 +588,15 @@ export function App() {
 		<>
 			<div className="ambient" aria-hidden="true" />
 			<div className="layout">
-				<aside className="sidebar" aria-label="Documents">
+				<aside
+					className="sidebar"
+					aria-label="Documents"
+					style={
+						sidebarW === null
+							? undefined
+							: ({ "--sidebar-w": `${sidebarW}px` } as CSSProperties)
+					}
+				>
 					{/* Two-row head (item 11): brand + "+", then branch + Merge. */}
 					<div className="side-head">
 						<div className="side-head-row">
@@ -611,6 +637,7 @@ export function App() {
 							{error}
 						</p>
 					)}
+					<SidebarResizeHandle onWidth={applySidebarW} />
 				</aside>
 				<main className="main">
 					<DocView

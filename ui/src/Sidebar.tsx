@@ -1,7 +1,48 @@
 import { ChevronRight } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import {
+	type ReactNode,
+	type PointerEvent as ReactPointerEvent,
+	useMemo,
+	useState,
+} from "react";
 import type { DeletedDoc, DocMeta, RepoMeta, TreeNode } from "./api";
 import { type FileOp, RowActions } from "./Menus";
+import { clampSidebarWidth } from "./sidebar-geometry";
+
+/**
+ * The sidebar's right-edge drag handle (M4-3 b3): pointer capture carries the
+ * drag, App owns the value and persists it on pointerup. Pure decoration for
+ * a11y — hidden ≤768px, where the drawer override owns the width.
+ */
+export function SidebarResizeHandle({
+	onWidth,
+}: {
+	/** Clamped width in px; commit=true fires only on pointerup. */
+	onWidth: (width: number, commit: boolean) => void;
+}) {
+	const dragFrom = (e: ReactPointerEvent<HTMLDivElement>) => {
+		e.preventDefault();
+		e.currentTarget.setPointerCapture(e.pointerId);
+	};
+	const dragTo = (e: ReactPointerEvent<HTMLDivElement>, commit: boolean) => {
+		if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+		const left =
+			e.currentTarget.parentElement?.getBoundingClientRect().left ?? 0;
+		onWidth(clampSidebarWidth(e.clientX - left), commit);
+	};
+	return (
+		<div
+			className="sidebar-resize"
+			aria-hidden="true"
+			onPointerDown={dragFrom}
+			onPointerMove={(e) => dragTo(e, false)}
+			onPointerUp={(e) => dragTo(e, true)}
+			onPointerCancel={(e) =>
+				e.currentTarget.releasePointerCapture(e.pointerId)
+			}
+		/>
+	);
+}
 
 function countDocs(node: TreeNode): number {
 	let n = 0;
@@ -80,9 +121,11 @@ function DocCard({
 }
 
 /**
- * The recycle bin (item 9): a collapsed "Deleted (N)" disclosure at the
- * sidebar bottom, hidden when empty. Every Restore button sits on the same
- * right edge; restores run sequentially through App, then tree+meta refresh.
+ * The recycle bin (item 9, amended M4-3 b3): a collapsed "Deleted (N)"
+ * disclosure pinned at the sidebar bottom — always mounted, even at 0, since
+ * the bin doubles as the drag-delete target. Expanding an empty bin shows
+ * nothing to restore. Every Restore button sits on the same right edge;
+ * restores run sequentially through App, then tree+meta refresh.
  */
 function RecycleBin({
 	deleted,
@@ -92,7 +135,6 @@ function RecycleBin({
 	onRestore: (items: DeletedDoc[]) => void;
 }) {
 	const [open, setOpen] = useState(false);
-	if (deleted.length === 0) return null;
 	return (
 		<div className="recycle-bin">
 			<button
@@ -107,7 +149,7 @@ function RecycleBin({
 				Deleted
 				<span className="count">{deleted.length}</span>
 			</button>
-			{open && (
+			{open && deleted.length > 0 && (
 				<ul className="bin-list">
 					{deleted.map((d) => (
 						<li className="bin-row" key={d.path}>

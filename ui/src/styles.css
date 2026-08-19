@@ -187,6 +187,7 @@ body {
 	min-width: var(--sidebar-w);
 	display: flex;
 	flex-direction: column;
+	position: relative;
 	border-radius: var(--radius-lg);
 	background: var(--glass-bg);
 	border: 1px solid var(--glass-border);
@@ -200,6 +201,19 @@ body {
 	.sidebar {
 		background: var(--surface);
 	}
+}
+/* Drag handle on the sidebar's right edge (M4-3 b3) — App writes
+   --sidebar-w on the .sidebar element; hidden ≤768px, where the drawer
+   override owns the width. */
+.sidebar-resize {
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 6px;
+	height: 100%;
+	cursor: col-resize;
+	touch-action: none;
+	user-select: none;
 }
 
 .side-head {
@@ -330,11 +344,12 @@ body {
 	display: flex;
 }
 
-/* Doc list — Gmail rows, not XP tree */
+/* Doc list — Gmail rows, not XP tree. Horizontal scroll (not clip): deep
+   nesting keeps a readable row minimum (M4-3 b3), so the list scrolls. */
 .doc-list {
 	flex: 1;
 	overflow-y: auto;
-	overflow-x: hidden;
+	overflow-x: auto;
 	padding: var(--space-1) var(--space-3) var(--space-4);
 	list-style: none;
 }
@@ -350,6 +365,7 @@ body {
 .main::-webkit-scrollbar,
 .rail-body::-webkit-scrollbar {
 	width: 8px;
+	height: 8px;
 }
 .doc-list::-webkit-scrollbar-track,
 .main::-webkit-scrollbar-track,
@@ -515,11 +531,11 @@ body {
 	line-height: 1.6;
 	letter-spacing: 0;
 }
+/* Guide-line indent (M4-3 b3): padding + border only — 16px per level. */
 .folder-children {
 	list-style: none;
 	padding-left: var(--space-4);
 	border-left: 1px solid var(--glass-border);
-	margin-left: var(--space-4);
 }
 .folder-children.collapsed {
 	display: none;
@@ -1451,6 +1467,9 @@ button.comment-quote:hover {
 	.sidebar.open {
 		transform: translateX(0);
 	}
+	.sidebar-resize {
+		display: none;
+	} /* the drawer owns the width here */
 	.side-head {
 		display: flex;
 	} /* drawer gets brand back — it's the menu */
@@ -1787,6 +1806,10 @@ button.comment-quote:hover {
 	display: flex;
 	align-items: center;
 	position: relative;
+	/* Readable row minimum at any depth (M4-3 b3): rows narrower than this
+	   overflow visibly and the .doc-list scrolls instead of crushing the
+	   title. The corner icons stay glued to this row's right edge. */
+	min-width: 220px;
 }
 .tree-row .doc-card,
 .tree-row .folder-row {
