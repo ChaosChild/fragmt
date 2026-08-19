@@ -38,6 +38,7 @@ import {
 import { CommentsRail } from "./CommentsRail";
 import { DocView } from "./DocView";
 import { displayTitle } from "./display";
+import { type DragItem, movedPath } from "./dnd";
 import type { AtDoc } from "./editor/at";
 import {
 	type BranchAction,
@@ -478,29 +479,70 @@ export function App() {
 		refreshMeta();
 	}
 
-	// Move to a tree folder ("" = docsRoot root): the guard first, then the
-	// existing move op — tree + meta refresh and selection follows the new
-	// path (runFileOp's flow).
+	// Move any doc (the header picker or a drag, M4-3 b5) into a tree folder
+	// ("" = docsRoot root): the guard first, then the existing move op —
+	// tree + meta refresh and selection follows the new path (runFileOp's
+	// flow).
+	function moveDocTo(from: string, folder: string) {
+		guardAction(
+			`Move to ${folder || "/ (root)"}`,
+			() =>
+				void runFileOp({
+					kind: "move-doc",
+					from,
+					to: movedPath("doc", from, folder),
+				}),
+		);
+	}
+
 	function requestMoveDoc(folder: string) {
 		const from = live.current.selected;
 		if (!from) return;
-		const base = from.slice(from.lastIndexOf("/") + 1);
-		const to = folder ? `${folder}/${base}` : base;
+		moveDocTo(from, folder);
+	}
+
+	// A folder move arrives only by drag (M4-3 b5 — the header actions are
+	// per-doc): the guard, then renameFolder keeping the basename. runFileOp's
+	// move-folder branch moves the open doc's selection along with the subtree.
+	function requestMoveFolder(from: string, folder: string) {
 		guardAction(
-			`Move to ${folder || "/ (root)"}`,
-			() => void runFileOp({ kind: "move-doc", from, to }),
+			`Move folder to ${folder || "/ (root)"}`,
+			() =>
+				void runFileOp({
+					kind: "move-folder",
+					from,
+					to: movedPath("folder", from, folder),
+				}),
 		);
 	}
 
 	// Delete: the guard first, then the house confirm, then the existing
 	// delete op — selection clears (the path left the tree).
-	function requestDeleteDoc(displayName: string) {
-		const path = live.current.selected;
-		if (!path) return;
+	function deleteDocAt(path: string, displayName: string) {
 		guardAction("Delete this document", () => {
 			if (!window.confirm(`Delete "${displayName}"? The removal is committed.`))
 				return;
 			void runFileOp({ kind: "delete-doc", path });
+		});
+	}
+
+	function requestDeleteDoc(displayName: string) {
+		const path = live.current.selected;
+		if (!path) return;
+		deleteDocAt(path, displayName);
+	}
+
+	// The bin's folder drop (M4-3 b5): the dirty guard (an open doc may sit in
+	// the subtree), then a confirm that names the cost, then deleteFolder.
+	function requestDeleteFolder(path: string, name: string) {
+		guardAction(`Delete folder ${name}`, () => {
+			if (
+				!window.confirm(
+					`Delete folder "${name}" and everything in it? The removal is committed.`,
+				)
+			)
+				return;
+			void runFileOp({ kind: "delete-folder", path });
 		});
 	}
 
@@ -709,6 +751,19 @@ export function App() {
 						meta={meta}
 						onOpenGhost={(path, branchName) => void openGhost(path, branchName)}
 						onRestore={(items) => void runRestore(items)}
+						// Drag & drop (M4-3 b5): the sidebar's dropTargetValid has
+						// already no-opped same-parent and self-subtree drops, so every
+						// arrival here is a real move/delete through the batch-4 flows.
+						onDropItem={(item: DragItem, folder: string) =>
+							item.type === "doc"
+								? moveDocTo(item.path, folder)
+								: requestMoveFolder(item.path, folder)
+						}
+						onDropBin={(item: DragItem, name: string) =>
+							item.type === "doc"
+								? deleteDocAt(item.path, name)
+								: requestDeleteFolder(item.path, name)
+						}
 					/>
 					{error && (
 						<p className="label-meta" style={{ padding: "0 16px 16px" }}>

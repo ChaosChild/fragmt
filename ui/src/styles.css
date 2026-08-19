@@ -2065,3 +2065,42 @@ button.comment-quote:hover {
 	display: block;
 	object-fit: cover;
 }
+
+/* ── M4-3 b5: navbar drag & drop ──────────────────────────────── */
+/* Drag sources: the row dims while its item is in flight. */
+.doc-card.dragging,
+.folder-row.dragging {
+	opacity: 0.45;
+}
+/* Cheap drag affordance — grab at rest, grabbing once pressed (the drag
+   itself owns the cursor via dropEffect). */
+.doc-card[draggable="true"],
+.folder-row[draggable="true"] {
+	cursor: grab;
+}
+.doc-card[draggable="true"]:active,
+.folder-row[draggable="true"]:active {
+	cursor: grabbing;
+}
+/* Folder-row target: the accent tint + inset ring — the same shadow-not-
+   border family as focus-visible/hover, so nothing shifts layout. */
+.folder-row.drop-target {
+	color: var(--accent);
+	background: var(--accent-tint);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+/* Root target: the list's own background is the drop well. */
+.doc-list.drop-root {
+	background: var(--accent-tint);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+	border-radius: var(--radius);
+}
+/* The bin is a delete: danger styling, not accent. */
+.recycle-bin.drop-target {
+	background: color-mix(in srgb, var(--danger) 10%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 45%, transparent);
+	border-radius: var(--radius);
+}
+.recycle-bin.drop-target .folder-row {
+	color: var(--danger);
+}

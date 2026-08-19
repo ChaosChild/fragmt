@@ -1,5 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import {
+	type DragEvent as ReactDragEvent,
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
 	useMemo,
@@ -7,7 +8,33 @@ import {
 } from "react";
 import type { DeletedDoc, DocMeta, RepoMeta, TreeNode } from "./api";
 import { displayTitle } from "./display";
+import { basename, currentDrag, type DragItem, dropTargetValid } from "./dnd";
 import { clampSidebarWidth } from "./sidebar-geometry";
+
+/**
+ * The sidebar's drag & drop wiring (M4-3 b5), threaded as one object through
+ * the tree recursion and the bin instead of six loose props. `currentDrag`
+ * (dnd.ts) is the readable payload; this carries the source/target styling
+ * state and routes completed drops to App's existing ops. Pointer-only by
+ * design — the header's file-action icons are the keyboard path (a11y note,
+ * accepted in the spec).
+ */
+interface SidebarDnd {
+	/** The in-flight item — null when idle (dims the source row). */
+	drag: DragItem | null;
+	/** Highlight key of the hovered target: "folder:<path>" | "root" | "bin". */
+	dropKey: string | null;
+	startDrag: (item: DragItem) => void;
+	endDrag: () => void;
+	/** Set the highlight key (dragover) / clear it (drop, dragend). */
+	hover: (key: string | null) => void;
+	/** dragleave for `key`'s element — cleared only when the pointer truly left. */
+	leave: (e: ReactDragEvent<HTMLElement>, key: string) => void;
+	/** A valid drop on a folder row, or on the list background (folder ""). */
+	dropInto: (item: DragItem, folder: string) => void;
+	/** A drop on the bin — App confirms and deletes. */
+	dropBin: (item: DragItem) => void;
+}
 
 /**
  * The sidebar's right-edge drag handle (M4-3 b3): pointer capture carries the
@@ -86,6 +113,7 @@ function DocCard({
 	ghostBranch,
 	onSelect,
 	onOpenGhost,
+	dnd,
 }: {
 	node: TreeNode;
 	active: boolean;
@@ -94,16 +122,30 @@ function DocCard({
 	ghostBranch?: string;
 	onSelect: (path: string) => void;
 	onOpenGhost: (path: string, branch: string) => void;
+	/** Drag source wiring (M4-3 b5) — ghosts don't drag: their path doesn't
+	 *  exist on this branch, so a move would miss server-side. */
+	dnd: SidebarDnd;
 }) {
 	const dm: DocMeta | undefined = meta?.docs[node.path];
 	const chip = meta ? chipWord(meta, node.path) : null;
+	const dragging = dnd.drag?.type === "doc" && dnd.drag.path === node.path;
 	// M4-3 b4: indicators sit inline right after the name — nothing is
 	// right-aligned on the row, so overflow can never hide them.
 	return (
 		<button
 			type="button"
-			className={`doc-card${active ? " active" : ""}`}
+			className={`doc-card${active ? " active" : ""}${dragging ? " dragging" : ""}`}
 			title={node.path}
+			draggable={!ghostBranch}
+			onDragStart={(e) => {
+				if (ghostBranch) return;
+				// Firefox won't start a drag without payload data; the readable
+				// copy lives in currentDrag (dataTransfer is write-only mid-drag).
+				e.dataTransfer.effectAllowed = "move";
+				e.dataTransfer.setData("text/plain", node.path);
+				dnd.startDrag({ type: "doc", path: node.path });
+			}}
+			onDragEnd={dnd.endDrag}
 			onClick={() =>
 				ghostBranch ? onOpenGhost(node.path, ghostBranch) : onSelect(node.path)
 			}
@@ -128,20 +170,41 @@ function DocCard({
 /**
  * The recycle bin (item 9, amended M4-3 b3): a collapsed "Deleted (N)"
  * disclosure pinned at the sidebar bottom — always mounted, even at 0, since
- * the bin doubles as the drag-delete target. Expanding an empty bin shows
- * nothing to restore. Every Restore button sits on the same right edge;
- * restores run sequentially through App, then tree+meta refresh.
+ * the bin doubles as the drag-delete target (M4-3 b5: the whole block is a
+ * drop target; it accepts everything, no validity guard). Expanding an empty
+ * bin shows nothing to restore. Every Restore button sits on the same right
+ * edge; restores run sequentially through App, then tree+meta refresh.
  */
 function RecycleBin({
 	deleted,
 	onRestore,
+	dnd,
 }: {
 	deleted: DeletedDoc[];
 	onRestore: (items: DeletedDoc[]) => void;
+	/** Drop-target wiring — dragover highlights with danger styling. */
+	dnd: SidebarDnd;
 }) {
 	const [open, setOpen] = useState(false);
 	return (
-		<div className="recycle-bin">
+		// biome-ignore lint/a11y/noStaticElementInteractions: pointer-only drop target by design (M4-3 b5) — the header's file-action icons are the keyboard path.
+		<div
+			className={`recycle-bin${dnd.dropKey === "bin" ? " drop-target" : ""}`}
+			onDragOver={(e) => {
+				if (!currentDrag.item) return;
+				e.preventDefault();
+				e.dataTransfer.dropEffect = "move";
+				dnd.hover("bin");
+			}}
+			onDragLeave={(e) => dnd.leave(e, "bin")}
+			onDrop={(e) => {
+				const item = currentDrag.item;
+				if (!item) return;
+				e.preventDefault();
+				dnd.hover(null);
+				dnd.dropBin(item);
+			}}
+		>
 			<button
 				type="button"
 				className="folder-row"
@@ -196,6 +259,8 @@ interface NodesProps {
 	meta: RepoMeta | null;
 	/** docsRoot path → the drafts branch holding it (not in this branch's tree). */
 	ghosts: Map<string, string>;
+	/** Drag & drop wiring (M4-3 b5), threaded to every row. */
+	dnd: SidebarDnd;
 }
 
 function renderNodes({
@@ -207,18 +272,58 @@ function renderNodes({
 	toggle,
 	meta,
 	ghosts,
+	dnd,
 }: NodesProps): ReactNode[] {
 	return nodes.map((node) => {
 		if (node.type === "dir") {
 			const isCollapsed = collapsed.has(node.path);
+			// Highlight key + validity share one guard: an invalid target never
+			// preventDefaults its dragover, so the browser shows the blocked
+			// cursor and no drop can land on it.
+			const key = `folder:${node.path}`;
+			const validHere = () =>
+				dropTargetValid(currentDrag.item, {
+					kind: "folder",
+					path: node.path,
+				});
 			return (
 				<li className="folder-group" key={node.path}>
 					<div className="tree-row">
 						<button
 							type="button"
-							className="folder-row"
+							className={`folder-row${dnd.dropKey === key ? " drop-target" : ""}${
+								dnd.drag?.type === "folder" && dnd.drag.path === node.path
+									? " dragging"
+									: ""
+							}`}
 							aria-expanded={!isCollapsed}
+							draggable
 							onClick={() => toggle(node.path)}
+							onDragStart={(e) => {
+								e.dataTransfer.effectAllowed = "move";
+								e.dataTransfer.setData("text/plain", node.path);
+								dnd.startDrag({ type: "folder", path: node.path });
+							}}
+							onDragEnd={dnd.endDrag}
+							onDragOver={(e) => {
+								// The row is its own target — a hover here must never
+								// fall through to the list background (root) behind it,
+								// valid or not.
+								e.stopPropagation();
+								if (!validHere()) return;
+								e.preventDefault();
+								e.dataTransfer.dropEffect = "move";
+								dnd.hover(key);
+							}}
+							onDragLeave={(e) => dnd.leave(e, key)}
+							onDrop={(e) => {
+								e.stopPropagation();
+								const item = currentDrag.item;
+								if (!item || !validHere()) return;
+								e.preventDefault();
+								dnd.hover(null);
+								dnd.dropInto(item, node.path);
+							}}
 						>
 							<span className="disclosure">
 								<ChevronRight aria-hidden="true" />
@@ -238,6 +343,7 @@ function renderNodes({
 								toggle,
 								meta,
 								ghosts,
+								dnd,
 							})}
 						</ul>
 					)}
@@ -255,6 +361,7 @@ function renderNodes({
 						ghostBranch={ghostBranch}
 						onSelect={onSelect}
 						onOpenGhost={onOpenGhost}
+						dnd={dnd}
 					/>
 				</div>
 			</li>
@@ -311,6 +418,8 @@ export function Sidebar({
 	meta,
 	onOpenGhost,
 	onRestore,
+	onDropItem,
+	onDropBin,
 }: {
 	tree: TreeNode | null;
 	selected: string | null;
@@ -320,6 +429,11 @@ export function Sidebar({
 	onOpenGhost: (path: string, branch: string) => void;
 	/** Sequential restores, then App refetches tree + meta. */
 	onRestore: (items: DeletedDoc[]) => void;
+	/** A valid drop landed (M4-3 b5): move `item` into `folder` ("" = the list
+	 *  background = docsRoot root) — App guards and runs the existing ops. */
+	onDropItem: (item: DragItem, folder: string) => void;
+	/** A drop on the bin — App confirms and deletes (doc or folder). */
+	onDropBin: (item: DragItem, name: string) => void;
 }) {
 	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 	const toggle = (path: string) =>
@@ -330,6 +444,41 @@ export function Sidebar({
 			return next;
 		});
 
+	// Drag & drop state (M4-3 b5): `drag` dims the source row, `dropKey`
+	// highlights the hovered target. The payload itself lives in currentDrag
+	// (dnd.ts) — readable during dragover, cleared by the source's dragend.
+	const [drag, setDrag] = useState<DragItem | null>(null);
+	const [dropKey, setDropKey] = useState<string | null>(null);
+	// The confirm's display name for a bin drop: the title model for docs,
+	// the folder's own name for folders.
+	const labelFor = (item: DragItem): string =>
+		item.type === "doc"
+			? displayTitle(meta?.docs[item.path]?.title, basename(item.path))
+			: basename(item.path);
+	const dnd: SidebarDnd = {
+		drag,
+		dropKey,
+		startDrag: (item) => {
+			currentDrag.item = item;
+			setDrag(item);
+		},
+		endDrag: () => {
+			currentDrag.item = null;
+			setDrag(null);
+			setDropKey(null);
+		},
+		hover: setDropKey,
+		leave: (e, key) => {
+			// dragleave also fires when the pointer crosses into a child
+			// element — keep the highlight then; clear only this row's key.
+			const into = e.relatedTarget;
+			if (into instanceof Node && e.currentTarget.contains(into)) return;
+			setDropKey((k) => (k === key ? null : k));
+		},
+		dropInto: (item, folder) => onDropItem(item, folder),
+		dropBin: (item) => onDropBin(item, labelFor(item)),
+	};
+
 	const ghosts = useMemo(() => ghostMap(meta, tree), [meta, tree]);
 	const merged = useMemo(
 		() => (tree && ghosts.size > 0 ? withGhosts(tree, ghosts) : tree),
@@ -339,7 +488,29 @@ export function Sidebar({
 	if (!tree) return null;
 	return (
 		<>
-			<ul className="doc-list">
+			{/* The list's own background/padding is the "/" (docsRoot root)
+			    target (M4-3 b5): folder rows stop their dragovers so row drops
+			    never double-fire as root drops; doc rows bubble — a drop on a
+			    card that isn't a folder target lands at root. */}
+			<ul
+				className={`doc-list${dropKey === "root" ? " drop-root" : ""}`}
+				onDragOver={(e) => {
+					if (!dropTargetValid(currentDrag.item, { kind: "root", path: "" }))
+						return;
+					e.preventDefault();
+					e.dataTransfer.dropEffect = "move";
+					setDropKey("root");
+				}}
+				onDragLeave={(e) => dnd.leave(e, "root")}
+				onDrop={(e) => {
+					const item = currentDrag.item;
+					if (!item || !dropTargetValid(item, { kind: "root", path: "" }))
+						return;
+					e.preventDefault();
+					setDropKey(null);
+					onDropItem(item, "");
+				}}
+			>
 				{renderNodes({
 					nodes: merged?.children ?? [],
 					selected,
@@ -349,9 +520,12 @@ export function Sidebar({
 					toggle,
 					meta,
 					ghosts,
+					dnd,
 				})}
 			</ul>
-			{meta && <RecycleBin deleted={meta.deleted} onRestore={onRestore} />}
+			{meta && (
+				<RecycleBin deleted={meta.deleted} onRestore={onRestore} dnd={dnd} />
+			)}
 		</>
 	);
 }
