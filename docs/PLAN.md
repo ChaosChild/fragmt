@@ -102,7 +102,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 ## M4-2 — Dogfood polish: cards, headers, and the drafting model
 
-**Goal:** close the gap between the built UI and the v1-final mock for navigation and doc headers, and finish the drafting model — protected main, visible drafts, operator-driven merge. **Proves:** daily dogfooding becomes natural: drafts are visible where you browse, merging is your call, and the lifecycle has no dead ends. Full item detail in [BACKLOG.md](BACKLOG.md) § "M4-2 scope"; implementation spec: [M4-2](milestones/M4-2-drafting-model.md) (decisions locked in two Lavish rounds, 2026-08-18).
+**Goal:** close the gap between the built UI and the v1-final mock for navigation and doc headers, and finish the drafting model — protected main, visible drafts, operator-driven merge. **Proves:** daily dogfooding becomes natural: drafts are visible where you browse, merging is your call, and the lifecycle has no dead ends. Implementation spec: [M4-2](milestones/M4-2-drafting-model.md) (decisions locked in two Lavish rounds, 2026-08-18; the backlog scope section was removed once shipped).
 
 - [x] Doc cards to the mock: author, last-edited, snippet, version, draft indicator (needs the git-log metadata API deferred since M1)
 - [x] Draft visibility: docs new/edited/deleted on a branch show as draft cards in the navbar

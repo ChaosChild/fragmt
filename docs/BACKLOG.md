@@ -20,151 +20,115 @@ Links in rendered docs should behave like a docs app, not a raw file view:
   a **new tab/window** (`target="_blank" rel="noopener noreferrer"`) so they
   never hijack the fragmt tab.
 
-Current behavior: read mode renders default anchors — internal links
-navigate the browser away (usually to a 404 or the raw file), external links
-take over the tab.
-
 Notes for whoever specs it:
 
-- Applies to **read mode** (react-markdown `a` component override) and
-  **edit mode** (Tiptap `Link` mark click handling — likely follow-only while
-  editing, e.g. Ctrl/Cmd+click).
+- The **minimal set shipped with M4-2 item 5** (`@` references): read-mode
+  doc links navigate in-app (Ctrl/Cmd+click in edit mode), external links
+  open a new tab. What remains here: **anchor fragments (`#heading`)**,
+  links to **non-markdown files** (open raw? download?), **folder links**,
+  and `../` cases beyond the editor's basic join-and-check.
 - Resolve relative paths against the *current doc's directory*, not the repo
   root; handle `../` traversal and URL-encoded characters. The existing
   traversal guard in `resolveDocPath` is the safety net.
-- Decide and spec: anchor fragments (`#heading`) within the same doc; links
-  to non-markdown files in the repo (open raw? download?); links to folders.
 
-**2026-08-18:** the minimal set (in-app navigation for doc links, external →
-new tab) ships with M4-2 item 5 because `@` references are links; the rest —
-anchors, non-markdown targets, folder links, `../` edge cases — stays here.
+## Sidebar — cards, actions, and sizing
 
-## Sidebar chrome
+### Card file actions move to the content header (2026-08-19, post-M4-2 dogfooding)
 
-### Navbar / tree-row design pass (2026-08-17, M3 dogfooding)
+The M4-2 corner icons don't work as shipped:
 
-The M3 additions to the sidebar work but read as bolted-on chrome; the head
-and the rows need a rethink before v1:
+- They render inconsistently between rows — on **folder rows they overlap
+  the file-counter badge**.
+- The **move popover "flashes"** — opens and immediately closes with the
+  file name in it — so the action is unusable.
 
-- **The branch dropdown crowds the sidebar head.** A long branch name pushes
-  the dark/light toggle out of view and the dropdown itself clips at the right
-  edge — the head has no width budget for brand + new-doc + branch + sync LED
-  + theme in one row.
-- **The new-document "+" button sits awkwardly** in the head — placement and
-  visual weight feel wrong rather than merely new.
-- **The per-row "..." action menu renders on every doc/folder row** — that
-  much visible affordance for an occasional action is noise, and it fights the
-  calm-reading-room premise (DESIGN §1).
+Direction (owner's, from dogfooding):
 
-Notes for whoever specs it:
+1. **Remove the move/delete icons from the navbar altogether.**
+2. **Rename, move, and delete become functions of the content header**, on
+   the breadcrumb's file name (shown without the extension): three small
+   icons to the right of the name — rename (pen), move, delete (trash).
+   - *Rename* turns the file name (sans `.md`) into an **inline edit box**.
+     This needs **title ↔ filename rules** (perhaps a YAML frontmatter
+     title) so the display name stays human-readable while the FS filename
+     never violates syntax.
+   - *Move* shows the **tree/list of folders** and the user selects a
+     destination.
+   - *Delete* asks for a **confirmation prompt first**.
+3. **The navbar gets drag & drop** — dragging files and folders around moves
+   them; dragging into the **recycle bin area deletes**.
 
-- DESIGN §5 permits at most one hover-revealed affordance per region and
-  forbids hover-ONLY functionality: the kebab could be revealed on row
-  hover/focus while the same actions stay reachable from a fixed place (e.g.
-  the doc bar for the open doc) — rows must keep ≥32px targets and full
-  keyboard reach either way.
-- **The head needs a layout decision, not a patch: truncate branch names**
-  (ellipsis + `title`), consider a two-row head, or move the branch control
-  to the doc bar / top bar — `docs/app.html` (the v1-final mock) is the
-  reference for intended placement.
-- Whatever lands, the anti-pattern list still holds: no toast stacks, no
-  nested hover menus, nothing important reachable only by hovering.
+### Recycle bin audit — it doesn't render (2026-08-19, post-M4-2 dogfooding)
 
-**2026-08-18:** the head layout and row-affordance halves of this item
-graduated into M4-2 (items 11 and 1 — two-row head with brand + "+" / branch
-+ global Merge, kebab revealed on hover/focus) per the Lavish M4-2 round 2.
-The item stays open only for whatever dogfooding still flags.
+The recycle bin (M4-2 item 9) is not visible at the bottom of the navbar.
+Audit the implementation against the spec — what was done, what was not —
+and complete the work. Likely cause to check first: the bin is hidden when
+the deleted list is empty, and this repo has no deletions yet. It should be
+an always-visible area — it is also the drag-delete target for the item
+above.
 
-## M4-2 scope — dogfooding round 2 (2026-08-18, post-M4)
+### Nested card width collapses (2026-08-19, post-M4-2 dogfooding)
 
-Eleven items scheduled together as M4-2 in [PLAN.md](PLAN.md); the numbering
-is cross-referenced, so it is preserved here.
+Cards get narrower with each nesting level; a few levels deep the name is
+barely visible, and five levels down it's gone. Direction:
 
-1. **Navigation cards to the mock.** Doc cards carry author, date last
-   edited, a short snippet, version, and a draft indicator
-   (`docs/app.html` `.doc-card`). Blocked since M1 on the tree API carrying
-   no metadata — needs the git-log metadata API (last author/date/version
-   per doc) that M1 deferred.
-2. **Drafts must be visible.** Creating a branch and creating/editing a
-   document on it shows no draft card anywhere today. A card per doc that
-   differs from `main` (new, edited, deleted) with its branch — flows into 1
-   and 3.
-3. **Document header to the mock.** The email-style doc head (author ·
-   "editing vX · branch" · unsaved indicator, `app.html` `.doc-head`), plus
-   icons on Cancel/Save (currently text-only; the mock uses ✕ / ✓).
-4. **Reopen resolved comments.** Resolved threads can only be deleted. The
-   server currently pins `resolved: true` (`PATCH` rejects `false` — "v1.x");
-   reopen needs that lifted plus the rail affordance.
-5. **"@" references.** An `@` command — in documents and in comment bodies —
-   to reference existing documents, as a menu like the `/` slash menu. Ties
-   into the in-app link-navigation item above: a doc reference IS a
-   navigable link.
-6. **"+" gains a folder option.** The new-document action becomes a dropdown:
-   document (default) or folder — `createFolder` exists in core and the API,
-   only the UI is missing.
-7. **Protected main.** Editing a document on `main` should automatically
-   create a draft branch (possibly auto-named, no user prompt) and move the
-   document to draft. The platform operates on the principle that main is
-   protected — whether the branch actually is or not.
-8. **Merge is the operator's call.** With drafts visible in the navbar (1
-   and 2), a "Merge" button on the draft merges its branch to `main` —
-   multiple files per draft, merged together when the user decides. This
-   settles the sequencing question of when a draft becomes a PR: the
-   operator creates it on GitHub from the merged branch, or merges directly.
-9. **Restore deleted documents.** Everything is in git; deleting should be
-   reversible — restore a deleted doc (and its comments sidecar) from
-   history.
-10. **One commit per logical comment action** (graduated from "Git & commits"
-    below, Lavish round 2): comment create/delete become single commits
-    covering doc + sidecar; M4's anchoring contract is amended in the same
-    change.
-11. **Sidebar head layout** (graduated from "Sidebar chrome" above, Lavish
-    round 2): two-row head — brand + "+" / branch selector + global Merge
-    button; kebab revealed on hover/focus per DESIGN §5.
+1. **Fixed minimum card width regardless of level**; the maximum is 100% of
+   the available width.
+2. **Right-side indicators move to immediately after the name** (folder
+   count badge, doc version) — nothing right-aligned, where overflow can
+   hide it.
+3. **The navbar's width becomes resizable.**
 
-## Git & commits
+## Content header
 
-### One commit per logical action, including comments (2026-08-18, post-M4 dogfooding)
+### Draft badge missing in the doc header (2026-08-19, post-M4-2 dogfooding)
 
-Creating a comment ships **two commits** — the document's markdown (the new
-`data-c` span) and then the sidecar JSON. That is the M4 spec's anchoring
-contract ("two sequential commits via `commitAs`"), but in practice it is
-overkill: the two files are one logical action and should land in **one
-commit**.
+The draft badge doesn't show in the content header area. Investigate and
+fix. Note the current M4-2 rule: the draft pill renders **only on main**
+(when another branch carries changes to the open doc) — on a draft branch
+the header shows `vN · branch` with no badge. The expectation from
+dogfooding is a draft badge whenever the doc/branch is in draft state.
 
-Notes for whoever specs it:
+### Author avatar never resolves (2026-08-19, post-M4-2 dogfooding)
 
-- `commitAs` already takes a `files` array — write the doc body and the
-  sidecar, then one `commitAs` call covering both paths. The doc-first
-  ordering that motivated the split (a stale-hash 409 must never leave a
-  half-written comment) is preserved by validating/saving the doc *before*
-  the commit, not by committing it separately.
-- Pick a message that names the action (`Comment on <docPath>` beats two
-  `Update …` commits).
-- Same lens on comment **delete**: today it is a sidecar commit plus the
-  span removal waiting for the doc's next save — the most split action of
-  all. One commit covering doc + sidecar there too.
-- Amend the M4 spec's anchoring contract when this lands; the tests pinning
-  one-commit-per-file-op show the pattern.
+The GitHub avatar doesn't render — initials show even though the author's
+email is linked to a GitHub account with an avatar. The M4-2 heuristic only
+resolves `@users.noreply.github.com` emails; a regular address has no
+keyless email→username path. Investigate (confirm what the local git email
+actually is), then fix — likely a config mapping (email → GitHub username
+in `.fragmt.json`), keeping the noreply heuristic as the zero-config case.
 
-**2026-08-18:** graduated into M4-2 as item 10 (Lavish round 2).
+## Editor polish
 
-## Tree & files
+### Edit lands scrolled near the end of the file (2026-08-19, post-M4-2 dogfooding)
 
-### Respect .gitignore in the doc tree (2026-08-18, post-M4-2 dogfooding)
+Clicking Edit used to keep the content at the top; it now scrolls to
+somewhere near the end of the file. Investigate the mode-flip focus/scroll
+behavior (caret-focus scroll? the doc-head layout change?) and restore
+staying at the top.
 
-`listTree` skips dot-folders, `node_modules`, and `dist` by hardcoded rule,
-but anything else a `.gitignore` excludes (build output, caches, scratch
-folders) still shows as browsable docs when it contains markdown — and the
-fs-derived surfaces built on the walk (`/api/meta` snippets, the UI's
-doc/ghost sets) inherit the leak. The tree should exclude ignored paths:
-`git check-ignore` or a `git ls-files` allow-list is the seam, one call per
-tree refresh (not per file), with the hardcoded skips kept as the fallback
-when the repo has no ignores. Decide whether ignored docs that ARE tracked
-(the classic `.env`-style force-add) still show — git's own answer (tracked
-wins over ignore) is the sane default.
+### `@` menu needs a height cap (2026-08-19, post-M4-2 dogfooding)
+
+The reference popup currently opens with the height of the entire screen.
+Cap its height and let the list scroll inside its container.
 
 ## Drafting model
+
+### Branch deletion (2026-08-19, post-M4-2 dogfooding)
+
+Dead branches accumulate naturally:
+
+- Started editing a document → a draft branch was auto-created → the
+  changes got discarded → the document's state is unchanged, but an empty
+  branch is left behind.
+- A feature was documented across multiple files (one draft branch), then
+  dropped — undoing the edits wholesale is easiest by deleting the branch.
+
+Add branch deletion — in the branch dropdown. Deleting the checked-out
+branch requires switching away first; branches with unmerged commits need
+`git branch -D`, so confirm before doing something git's `-d` would refuse.
+Merge already deletes merged branches with `-d` (M4-2); this is its manual
+counterpart.
 
 ### Merge-conflict resolution in the UI (2026-08-18, M4-2 planning)
 
@@ -183,3 +147,42 @@ M4-2's metadata endpoint feeds the cards and doc head from a single
 a personal docs repo; a large repo would feel it in sidebar-refresh latency.
 When it bites: `rev-list` per doc, or a cache invalidated by HEAD — the
 ceiling is ponytail-marked in core.
+
+## Tree & files
+
+### Respect .gitignore in the doc tree (2026-08-18, post-M4-2 dogfooding)
+
+`listTree` skips dot-folders, `node_modules`, and `dist` by hardcoded rule,
+but anything else a `.gitignore` excludes (build output, caches, scratch
+folders) still shows as browsable docs when it contains markdown — and the
+fs-derived surfaces built on the walk (`/api/meta` snippets, the UI's
+doc/ghost sets) inherit the leak. The tree should exclude ignored paths:
+`git check-ignore` or a `git ls-files` allow-list is the seam, one call per
+tree refresh (not per file), with the hardcoded skips kept as the fallback
+when the repo has no ignores. Decide whether ignored docs that ARE tracked
+(the classic force-add) still show — git's own answer (tracked wins over
+ignore) is the sane default.
+
+## Agent interaction
+
+### The agent as a first-class user (2026-08-19, post-M4-2 dogfooding)
+
+The product's premise is agents as first-class users (README: agentic-ready
+from the ground up; the MCP server is the first thing after v1). Today
+nothing surfaces for an agent: it sees a folder of MDs, can edit files
+directly and **bypass the drafting model completely**, has **no way to
+discover comments** (inline spans and sidecar threads are invisible without
+reading fragmt's own specs), and no affordance to start, inspect, or merge
+drafts.
+
+Scope a real design before v1.1:
+
+- **Read surface** — comments, draft state, and doc metadata over the API:
+  what does an agent query to "see" what a human sees in the UI?
+- **Write surface** — draft-aware mutations: can an agent start a draft,
+  leave comments, and request a merge through the same one-commit contracts
+  the UI uses?
+- **Protocol** — the HTTP API is the seam for the planned MCP server; what
+  is missing for tool-shaped use (the M4-2 routes are a start)?
+- **Discovery** — how does an agent learn the rules (an in-repo conventions
+  surface? exposed docs?) instead of having to read the source?
