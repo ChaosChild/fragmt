@@ -34,7 +34,8 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
   - `npm run typecheck` now also covers `ui/` (new `ui/tsconfig.json` + `vite-env.d.ts`) — M2's first user of the UI tree under `tsc`.
   - Known first-save behavior: the editor's serializer is canonical — hand-wrapped paragraphs collapse to one line, `~` gets escaped (`\~`), blank lines are inserted after headings. Steady-state saves are minimal-diff (verified: five checkbox ticks → five changed lines).
 - **Deferred:** `docs/app.html` doc cards show author/version/last-edit/snippet, but M1's `/api/tree` carries none and there's no git layer until M2. Cards render the visual with available data; a git-log metadata API is a v1.x addition.
-- **Next:** M4-3 (backlog remediation) — the post-M4-2 dogfooding items, specced and locked in a Lavish round (2026-08-19); then M5 (dogfood hardening).
+- **Shipped:** M4-3 backlog remediation — the post-M4-2 dogfooding items in seven subagent batches: edit-flip scroll/menu-cap/on-draft-badge quick fixes; the `authors` config map resolving real emails to GitHub avatars; branch deletion (`-d`, confirm `-D` for unmerged); sidebar geometry (16px guide-line indent, min row width with scroll-not-clip, indicators after the name, resizable, always-visible bin); file actions on the breadcrumb name under a frontmatter-`title` model (the filename never changes — links are the currency) with the corner-icon machinery deleted; navbar drag & drop (rows → folders, → "/" root, → bin); link completion (heading slugs + anchors incl. `doc.md#frag`, folder links incl. empty ones, `GET /api/raw/*` for non-md, dead-link note); and `.gitignore` respected across every tree-derived surface via one `ls-files` allow-list (tracked wins). Spec: [M4-3](milestones/M4-3-backlog-remediation.md). 216 tests (sync suite's pre-existing Windows timeout flake fixed with honest 20s limits).
+- **Next:** M5 (dogfood hardening) — run fragmt on this repo's own docs daily and fix whatever bites; then M4-4 (the agentic design item).
 
 ## M0 — Environment prep
 
@@ -122,14 +123,14 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 **Goal:** clear the post-M4-2 dogfooding backlog — file actions to the content header (corner icons deleted), sidebar geometry + drag & drop, branch deletion, author identity, link-navigation completion, `.gitignore` in the tree. **Proves:** the friction found while dogfooding M4-2 is gone; nothing in the navbar is broken. Implementation spec: [M4-3](milestones/M4-3-backlog-remediation.md) (decisions locked in a Lavish round, 2026-08-19; agentic work excluded — that becomes M4-4).
 
-- [ ] Quick fixes: edit-flip scroll stays at top, `@`/slash menu height cap, "on draft" badge in the doc header
-- [ ] Authors map in `.fragmt.json` (email → GitHub username) feeding avatars; noreply heuristic stays zero-config
-- [ ] Branch deletion: `DELETE /api/branches/:name` (`-d`, confirm `-D` for unmerged) + trash in the dropdown
-- [ ] Sidebar geometry: 16px guide-line indent, row min-width (scroll, not clip), indicators after the name, resizable sidebar, always-visible recycle bin
-- [ ] Content-header file actions: rename (frontmatter `title` — the filename never changes), move (picker incl. "/"), delete (confirm); corner-icon machinery removed
-- [ ] Drag & drop: rows → folders (move), rows → "/" root (move), rows → bin (delete); self-drop guarded
-- [ ] Link navigation completion: heading slugs + anchors (incl. `doc.md#frag`), folder links (empty folders just expand), non-md files via `GET /api/raw/*` in a new tab, dead links get an inline note
-- [ ] `.gitignore` respected across every tree-derived surface (one `ls-files` allow-list per refresh; tracked wins)
+- [x] Quick fixes: edit-flip scroll stays at top, `@`/slash menu height cap, "on draft" badge in the doc header
+- [x] Authors map in `.fragmt.json` (email → GitHub username) feeding avatars; noreply heuristic stays zero-config
+- [x] Branch deletion: `DELETE /api/branches/:name` (`-d`, confirm `-D` for unmerged) + trash in the dropdown
+- [x] Sidebar geometry: 16px guide-line indent, row min-width (scroll, not clip), indicators after the name, resizable sidebar, always-visible recycle bin
+- [x] Content-header file actions: rename (frontmatter `title` — the filename never changes), move (picker incl. "/"), delete (confirm); corner-icon machinery removed
+- [x] Drag & drop: rows → folders (move), rows → "/" root (move), rows → bin (delete); self-drop guarded
+- [x] Link navigation completion: heading slugs + anchors (incl. `doc.md#frag`), folder links (empty folders just expand), non-md files via `GET /api/raw/*` in a new tab, dead links get an inline note
+- [x] `.gitignore` respected across every tree-derived surface (one `ls-files` allow-list per refresh; tracked wins)
 
 ## <span data-c="d13d457e-564a-4e9d-9bc5-f5239144f512">M5 — Dogfood hardening</span>
 

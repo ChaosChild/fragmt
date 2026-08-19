@@ -1,4 +1,7 @@
 {
 	"docsRoot": ".",
-	"order": {}
+	"order": {},
+	"authors": {
+		"chaoschild.1st@gmail.com": "ChaosChild"
+	}
 }

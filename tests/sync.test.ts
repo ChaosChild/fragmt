@@ -99,7 +99,12 @@ const rebaseInProgress = (root: string) =>
 	existsSync(join(root, ".git", "rebase-merge")) ||
 	existsSync(join(root, ".git", "rebase-apply"));
 
-test("clean sync: A pushes via sync, B pulls via sync and sees the file", async () => {
+// 20s timeouts: every test here spawns real git clones/fetches, and under the
+// full suite's parallel load on Windows the spawns alone can breach the 5s
+// default (flake seen on main before M4-3).
+test("clean sync: A pushes via sync, B pulls via sync and sees the file", {
+	timeout: 20_000,
+}, async () => {
 	const { origin, a, b } = originAndClones();
 	commitFile(a, "new.md", "# from A\n", "A adds new.md");
 
@@ -117,7 +122,9 @@ test("clean sync: A pushes via sync, B pulls via sync and sees the file", async 
 	expect(originHead).toBe(head(b));
 });
 
-test("conflict: B's divergent commit aborts the rebase and leaves B untouched", async () => {
+test("conflict: B's divergent commit aborts the rebase and leaves B untouched", {
+	timeout: 20_000,
+}, async () => {
 	const { a, b } = originAndClones();
 	commitFile(a, "f.md", "A edit\n", "A edits f");
 	expect(await sync(a)).toEqual({ conflict: false });
@@ -143,7 +150,9 @@ test("conflict: B's divergent commit aborts the rebase and leaves B untouched", 
 	expect(originMain).toBe(head(a));
 });
 
-test("a repo with no remote syncs as a no-op success", async () => {
+test("a repo with no remote syncs as a no-op success", {
+	timeout: 20_000,
+}, async () => {
 	const root = repo("fragmt-local-");
 	dirs.push(root);
 	commitFile(root, "solo.md", "# solo\n", "solo");
@@ -154,7 +163,9 @@ test("a repo with no remote syncs as a no-op success", async () => {
 	expect(status(root)).toBe("");
 });
 
-test("a remote without upstream tracking is also a no-op success", async () => {
+test("a remote without upstream tracking is also a no-op success", {
+	timeout: 20_000,
+}, async () => {
 	const { b } = originAndClones();
 	run(b, ["branch", "--unset-upstream"]);
 	const preHead = head(b);
