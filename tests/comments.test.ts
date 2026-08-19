@@ -1,18 +1,32 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import matter from "gray-matter";
 import { afterEach, expect, test } from "vitest";
 import {
 	addReply,
 	addThread,
+	addThreadWithDoc,
 	type CommentFile,
 	type CommentThread,
+	canonicalBody,
 	DocPathError,
 	deleteThread,
+	deleteThreadWithDoc,
+	docHash,
 	readComments,
 	reconcileThreads,
-	resolveThread,
+	StaleDocError,
+	setResolved,
+	stripCommentSpan,
 	ThreadNotFoundError,
 } from "../src/core/index.js";
 
@@ -54,6 +68,27 @@ const count = (root: string) =>
 
 const lastCommit = (root: string) =>
 	run(root, ["log", "-1", "--format=%an|%ae|%s"]);
+
+/** The files (repo-relative, sorted) touched by HEAD. */
+const lastCommitFiles = (root: string) =>
+	run(root, ["show", "--name-only", "--format=", "HEAD"])
+		.split("\n")
+		.filter(Boolean)
+		.sort();
+
+/**
+ * A doc on disk + a raw-git seed commit, independent of the code under test.
+ * Returns the canonical base hash the writeDoc contract hashes — of the BODY
+ * (frontmatter stripped), the same split readDoc performs.
+ */
+function seedDoc(root: string, docPath: string, body: string): string {
+	const abs = join(root, docPath);
+	mkdirSync(dirname(abs), { recursive: true });
+	writeFileSync(abs, body);
+	run(root, ["add", "--", docPath]);
+	run(root, ["commit", "-q", "-m", `seed ${docPath}`]);
+	return docHash(canonicalBody(matter(body, {}).content));
+}
 
 /** Parse a doc's sidecar straight off disk. */
 const sidecar = (root: string, docPath: string): CommentFile =>
@@ -110,15 +145,18 @@ test("addReply appends to the thread in one commit, opener stays first", async (
 	expect(lastCommit(root)).toBe(`${AUTHOR}|Update comments for doc.md`);
 });
 
-test("resolveThread flips resolved in one commit", async () => {
+test("setResolved flips resolved both ways, one commit each", async () => {
 	const root = repo();
 	seed(root);
 	await addThread(root, "doc.md", "c-1", "q", "opening");
 
-	await resolveThread(root, "doc.md", "c-1");
-
+	await setResolved(root, "doc.md", "c-1", true);
 	expect(sidecar(root, "doc.md").comments["c-1"]?.resolved).toBe(true);
-	expect(count(root)).toBe(3);
+
+	await setResolved(root, "doc.md", "c-1", false);
+	expect(sidecar(root, "doc.md").comments["c-1"]?.resolved).toBe(false);
+
+	expect(count(root)).toBe(4);
 	expect(lastCommit(root)).toBe(`${AUTHOR}|Update comments for doc.md`);
 });
 
@@ -133,6 +171,150 @@ test("deleteThread removes the entry in one commit", async () => {
 	expect(count(root)).toBe(3);
 	expect(lastCommit(root)).toBe(`${AUTHOR}|Update comments for doc.md`);
 	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("addThreadWithDoc writes doc + sidecar as ONE commit", async () => {
+	const root = repo();
+	seed(root);
+	const baseHash = seedDoc(root, "doc.md", "# title\n\nsome text\n");
+
+	await addThreadWithDoc(root, ".", "doc.md", {
+		id: "c-1",
+		quote: "some text",
+		body: "opening",
+		docBody: '# title\n\nsome <span data-c="c-1">text</span>\n',
+		baseHash,
+	});
+
+	// Exactly one commit, both files in it, the pinned message.
+	expect(count(root)).toBe(3); // seed + seedDoc + one combined commit
+	expect(lastCommit(root)).toBe(`${AUTHOR}|Comment on doc.md`);
+	expect(lastCommitFiles(root)).toEqual([
+		".docs/comments/doc.md.json",
+		"doc.md",
+	]);
+	// The doc got the span (frontmatter discipline: canonical body on disk).
+	expect(readFileSync(join(root, "doc.md"), "utf8")).toBe(
+		'# title\n\nsome <span data-c="c-1">text</span>\n',
+	);
+	const thread = sidecar(root, "doc.md").comments["c-1"];
+	expect(thread).toMatchObject({
+		id: "c-1",
+		quote: "some text",
+		author: "Comments Test",
+		resolved: false,
+		replies: [{ author: "Comments Test", body: "opening" }],
+	});
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("addThreadWithDoc reattaches frontmatter byte-for-byte", async () => {
+	const root = repo();
+	seed(root);
+	const baseHash = seedDoc(root, "doc.md", "---\ntitle: T\n---\n\n# title\n");
+
+	await addThreadWithDoc(root, ".", "doc.md", {
+		id: "c-1",
+		quote: "title",
+		body: "b",
+		docBody: '# <span data-c="c-1">title</span>\n',
+		baseHash,
+	});
+
+	expect(readFileSync(join(root, "doc.md"), "utf8")).toBe(
+		'---\ntitle: T\n---\n\n# <span data-c="c-1">title</span>\n',
+	);
+});
+
+test("a stale baseHash is StaleDocError with zero disk writes", async () => {
+	const root = repo();
+	seed(root);
+	seedDoc(root, "doc.md", "# title\n\nsome text\n");
+
+	await expect(
+		addThreadWithDoc(root, ".", "doc.md", {
+			id: "c-1",
+			quote: "q",
+			body: "b",
+			docBody: "# changed\n",
+			baseHash: "deadbeef".repeat(8),
+		}),
+	).rejects.toThrow(StaleDocError);
+
+	expect(readFileSync(join(root, "doc.md"), "utf8")).toBe(
+		"# title\n\nsome text\n",
+	);
+	expect(existsSync(join(root, ".docs"))).toBe(false);
+	expect(count(root)).toBe(2);
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("deleteThreadWithDoc strips the span and entry in ONE commit", async () => {
+	const root = repo();
+	seed(root);
+	const baseHash = seedDoc(root, "doc.md", "# title\n\nsome text\n");
+	await addThreadWithDoc(root, ".", "doc.md", {
+		id: "c-1",
+		quote: "text",
+		body: "opening",
+		docBody: '# title\n\nsome <span data-c="c-1">text</span>\n',
+		baseHash,
+	});
+	// Another span must survive the strip untouched.
+	await addThreadWithDoc(root, ".", "doc.md", {
+		id: "c-2",
+		quote: "title",
+		body: "second",
+		docBody:
+			'# <span data-c="c-2">title</span>\n\nsome <span data-c="c-1">text</span>\n',
+		baseHash: docHash('# title\n\nsome <span data-c="c-1">text</span>\n'),
+	});
+	expect(count(root)).toBe(4);
+
+	await deleteThreadWithDoc(
+		root,
+		".",
+		"doc.md",
+		"c-1",
+		docHash(
+			'# <span data-c="c-2">title</span>\n\nsome <span data-c="c-1">text</span>\n',
+		),
+	);
+
+	// One commit, both files, the pinned message; the span (and only it) gone.
+	expect(count(root)).toBe(5);
+	expect(lastCommit(root)).toBe(`${AUTHOR}|Remove comment on doc.md`);
+	expect(lastCommitFiles(root)).toEqual([
+		".docs/comments/doc.md.json",
+		"doc.md",
+	]);
+	expect(readFileSync(join(root, "doc.md"), "utf8")).toBe(
+		'# <span data-c="c-2">title</span>\n\nsome text\n',
+	);
+	const remaining = sidecar(root, "doc.md").comments;
+	expect(Object.keys(remaining)).toEqual(["c-2"]);
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("stripCommentSpan: only the matching span, inner text kept", () => {
+	const doc =
+		'a <span data-c="x">X</span> b <span data-c="y">Y</span> c <span data-c="x">X2</span> d';
+
+	// Only the FIRST matching span goes (ids are unique in practice).
+	expect(stripCommentSpan(doc, "x")).toBe(
+		'a X b <span data-c="y">Y</span> c <span data-c="x">X2</span> d',
+	);
+	// Adjacent spans: no residue between them.
+	expect(
+		stripCommentSpan('<span data-c="a">A</span><span data-c="b">B</span>', "a"),
+	).toBe('A<span data-c="b">B</span>');
+	// Multi-line inner text survives intact.
+	expect(stripCommentSpan('<span data-c="m">one\ntwo</span>', "m")).toBe(
+		"one\ntwo",
+	);
+	// Unknown id → unchanged, byte-for-byte.
+	expect(stripCommentSpan(doc, "nope")).toBe(doc);
+	expect(stripCommentSpan("no spans at all", "x")).toBe("no spans at all");
 });
 
 test("readComments returns {comments:{}} when no sidecar exists", async () => {
@@ -164,18 +346,23 @@ test("a ../ docPath is rejected by the sidecar guard without committing", async 
 test("reply/resolve/delete on a missing thread throw ThreadNotFoundError", async () => {
 	const root = repo();
 	seed(root);
+	// deleteThreadWithDoc also needs a live doc body (the span strip).
+	const hash = seedDoc(root, "doc.md", "# x\n");
 
 	await expect(addReply(root, "doc.md", "nope", "x")).rejects.toThrow(
 		ThreadNotFoundError,
 	);
-	await expect(resolveThread(root, "doc.md", "nope")).rejects.toThrow(
+	await expect(setResolved(root, "doc.md", "nope", true)).rejects.toThrow(
 		ThreadNotFoundError,
 	);
+	await expect(
+		deleteThreadWithDoc(root, ".", "doc.md", "nope", hash),
+	).rejects.toThrow(ThreadNotFoundError);
 	await expect(deleteThread(root, "doc.md", "nope")).rejects.toThrow(
 		ThreadNotFoundError,
 	);
 
-	expect(count(root)).toBe(1);
+	expect(count(root)).toBe(2); // seed + seedDoc — nothing since
 });
 
 test("reconcileThreads: live iff the data-c span is present (mixed case)", () => {

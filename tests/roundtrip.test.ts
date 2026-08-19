@@ -65,6 +65,8 @@ test("inline marks survive: bold, italic, strike, inline code, link", () => {
 	expect(out).toContain("~~strike~~");
 	expect(out).toContain("`inline code`");
 	expect(out).toContain("[link to example](https://example.com)");
+	// The @ menu's output form (M4-2): a docsRoot-relative path as the href.
+	expect(out).toContain("[a local doc](docs/related.md)");
 });
 
 test("nested bullet and numbered lists survive (3 levels)", () => {

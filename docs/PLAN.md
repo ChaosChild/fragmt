@@ -12,7 +12,7 @@
 - HTTP server: Hono
 - License: MIT
 
-Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M5](milestones/M5-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
+Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M4-2](milestones/M4-2-drafting-model.md) · [M5](milestones/M5-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
 
 ## Build status
 
@@ -21,6 +21,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - **Shipped:** M2-2 editing controls — contextual formatting surfaces only (selection/right-click bubble for marks, turn into, table structure, image edit; `/` slash menu for inserting blocks; empty-doc placeholder hint). Zero persistent chrome; the DESIGN editor clause amended in the same change. Escape order now popover → slash → selection → edit-cancel. 64 tests.
 - **Shipped:** M3 files & branches — full doc/folder lifecycle (one `commitAs` commit per op, R100 renames via fs mutations because `git mv`/`git rm` break the seam's unconditional `git add`), branch commands + `sync()` (pull --rebase + push, conflict aborts the rebase and leaves HEAD untouched; no-remote/no-upstream are no-ops), the HTTP surface for all of it, and the UI: branch dropdown with a dirty-buffer save-or-discard guard, sync LED + three triggers, file ops in fixed places. 91 tests.
 - **Shipped:** M4 inline comments — threads in `.docs/comments/<doc-path>.json` sidecars through the shared containment guard, one `commitAs` commit per mutation; comment HTTP surface (Hono mid-pattern `*` doesn't span slashes — one fall-through middleware splits the tail); read mode is now a non-editable Tiptap editor (one rendering path, react-markdown retired from the doc body, comment creation never flips the mode — review decision); bubble Comment action (comment-only in read mode); the rail with orphans, resolved toggle, and the LED/theme move; icons standardised on lucide-react. 111 tests.
+- **Shipped:** M4-2 dogfood polish — the drafting model: a `/api/meta` endpoint fed by three git-log walks (per-doc author/date/version/snippet, a cross-branch draft map, the deleted list) powers mock-true doc cards (draft chips, ghost cards), the email-style doc head (GitHub-avatar heuristic, actions moved in), the recycle bin with restore, and the two-row sidebar head; protected main (`POST /api/draft` — every doc-body write on main auto-drafts `drafts/<slug>`, no prompt) with the global Merge button (`checkout main && merge`, abort+surface on conflict, `branch -d` after); comment reopen plus one-commit-per-action create/delete (span strip server-side, M4 anchoring contract amended); `@` references with minimal in-app link navigation. Spec: [M4-2](milestones/M4-2-drafting-model.md); six reviewed subagent batches. 150 tests.
 - **Realized versions:** TypeScript 7.0.2, Biome 2.5.7, Vite 8, React 19, Vitest 4, Node 22, @types/node 26; Tiptap 3.x, tiptap-markdown 0.9.x, happy-dom (M2, per the spike-validated majors).
 - **Deliberate deviations from the stack notes above:**
   - `tsconfig.json` gained `esModuleInterop` — `gray-matter` is CJS; standard fix for default-importing it under `nodenext`.
@@ -33,7 +34,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
   - `npm run typecheck` now also covers `ui/` (new `ui/tsconfig.json` + `vite-env.d.ts`) — M2's first user of the UI tree under `tsc`.
   - Known first-save behavior: the editor's serializer is canonical — hand-wrapped paragraphs collapse to one line, `~` gets escaped (`\~`), blank lines are inserted after headings. Steady-state saves are minimal-diff (verified: five checkbox ticks → five changed lines).
 - **Deferred:** `docs/app.html` doc cards show author/version/last-edit/snippet, but M1's `/api/tree` carries none and there's no git layer until M2. Cards render the visual with available data; a git-log metadata API is a v1.x addition.
-- **Next:** M3 (files & branches) — `commitAs` and `writeDoc` are the seams every file op flows through.
+- **Next:** M5 (dogfood hardening) — run fragmt on this repo's own docs daily and fix whatever bites; M4-2's drafting model is the thing to exercise.
 
 ## M0 — Environment prep
 
@@ -101,17 +102,19 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 ## M4-2 — Dogfood polish: cards, headers, and the drafting model
 
-**Goal:** close the gap between the built UI and the v1-final mock for navigation and doc headers, and finish the drafting model — protected main, visible drafts, operator-driven merge. **Proves:** daily dogfooding becomes natural: drafts are visible where you browse, merging is your call, and the lifecycle has no dead ends. Full item detail in [BACKLOG.md](BACKLOG.md) § "M4-2 scope".
+**Goal:** close the gap between the built UI and the v1-final mock for navigation and doc headers, and finish the drafting model — protected main, visible drafts, operator-driven merge. **Proves:** daily dogfooding becomes natural: drafts are visible where you browse, merging is your call, and the lifecycle has no dead ends. Implementation spec: [M4-2](milestones/M4-2-drafting-model.md) (decisions locked in two Lavish rounds, 2026-08-18; the backlog scope section was removed once shipped).
 
-- [ ] Doc cards to the mock: author, last-edited, snippet, version, draft indicator (needs the git-log metadata API deferred since M1)
-- [ ] Draft visibility: docs new/edited/deleted on a branch show as draft cards in the navbar
-- [ ] Doc header to the mock: author · "editing vX · branch" · unsaved indicator; Cancel/Save gain icons
-- [ ] Reopen resolved comments (server currently pins `resolved: true`)
-- [ ] "@" reference command in documents and comment bodies (menu like `/`; a doc reference is a navigable link — ties to the link-navigation backlog item)
-- [ ] "+" action becomes a dropdown: new document (default) or new folder
-- [ ] Protected main: editing a doc on main auto-creates a draft branch (auto-named, no prompt) and moves the doc to draft
-- [ ] "Merge" action on a draft — multi-file branches merge to main when the operator decides; PR creation stays with the operator (GitHub)
-- [ ] Restore deleted documents (and their comment sidecars) from git history
+- [x] Doc cards to the mock: author, last-edited, snippet, version, draft indicator (needs the git-log metadata API deferred since M1)
+- [x] Draft visibility: docs new/edited/deleted on a branch show as draft cards in the navbar
+- [x] Doc header to the mock: author · "editing vX · branch" · unsaved indicator; Cancel/Save gain icons
+- [x] Reopen resolved comments (server currently pins `resolved: true`)
+- [x] "@" reference command in documents and comment bodies (menu like `/`; a doc reference is a navigable link — ties to the link-navigation backlog item)
+- [x] "+" action becomes a dropdown: new document (default) or new folder
+- [x] Protected main: editing a doc on main auto-creates a draft branch (auto-named, no prompt) and moves the doc to draft
+- [x] "Merge" action on a draft — multi-file branches merge to main when the operator decides; PR creation stays with the operator (GitHub)
+- [x] Restore deleted documents (and their comment sidecars) from git history
+- [x] One commit per logical comment action (create/delete = single commits; M4's anchoring contract amended in the same change)
+- [x] Sidebar head layout (from the design-pass backlog item): two-row head — brand + "+" / branch selector + global Merge; kebab hover-revealed on rows
 
 **Sequencing note:** the merge button settles the "when does a draft become a PR" question — the operator merges in the UI when a draft is complete; opening a PR on GitHub remains a separate, manual act (v2 may fold it in).
 

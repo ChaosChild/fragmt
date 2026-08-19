@@ -1,25 +1,44 @@
 import type { Editor } from "@tiptap/core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { SlashMenuState } from "./slash";
 
 /**
- * The slash menu's React surface (M2-2). Suggestion owns trigger/query/exit
- * and hands state over via the extension's onState callback; this component
- * renders the filtered list, positions it at the caret, and answers the
- * extension's keydown callback for ↑/↓/Enter/Escape.
+ * The minimal item shape the menu renders — slash items and @ reference
+ * items (at.ts) both satisfy it, so one component serves both menus.
+ */
+export type MenuItem = { id: string; label: string; hint?: string };
+
+export type MenuState<T extends MenuItem> = {
+	query: string;
+	items: T[];
+	range: { from: number; to: number };
+	/** Delete the trigger+query, then run the item (or hand off to a popover). */
+	execute: (item: T) => void;
+	/** Dismiss the menu and delete the trigger+query text. */
+	dismiss: () => void;
+};
+
+/**
+ * The slash menu's React surface (M2-2; shared with the @ menu since M4-2).
+ * Suggestion owns trigger/query/exit and hands state over via the
+ * extension's onState callback; this component renders the filtered list,
+ * positions it at the caret, and answers the extension's keydown callback
+ * for ↑/↓/Enter/Escape.
  *
  * Positioning clamps against the MEASURED menu height (flips above the caret
  * when there is no room below) and follows scroll/resize — a position:fixed
  * menu otherwise strands bottom items off-screen while the page scrolls.
  */
-export function SlashMenuView({
+export function SlashMenuView<T extends MenuItem>({
 	editor,
 	state,
 	registerKeydown,
+	ariaLabel = "Insert block",
 }: {
 	editor: Editor;
-	state: SlashMenuState;
+	state: MenuState<T>;
 	registerKeydown: (handler: (event: KeyboardEvent) => boolean) => void;
+	/** The menu container's accessible name ("Reference a document" for @). */
+	ariaLabel?: string;
 }) {
 	const [selected, setSelected] = useState(0);
 	const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -94,7 +113,7 @@ export function SlashMenuView({
 			ref={menuRef}
 			className="slash-menu"
 			role="menu"
-			aria-label="Insert block"
+			aria-label={ariaLabel}
 			tabIndex={-1}
 			aria-activedescendant={
 				state.items[selected] ? `slash-${state.items[selected].id}` : undefined

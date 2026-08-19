@@ -6,6 +6,7 @@ import { type Context, Hono } from "hono";
 import {
 	addReply,
 	addThread,
+	addThreadWithDoc,
 	checkoutBranch,
 	createBranch,
 	createDoc,
@@ -16,18 +17,24 @@ import {
 	deleteDoc,
 	deleteFolder,
 	deleteThread,
+	deleteThreadWithDoc,
 	docHash,
 	GitError,
 	GitIdentityError,
 	listBranches,
 	listTree,
+	mergeToMain,
 	moveDoc,
+	OnMainBranchError,
 	PathExistsError,
 	readComments,
 	readDoc,
 	renameFolder,
-	resolveThread,
+	repoMeta,
+	restoreDoc,
 	StaleDocError,
+	setResolved,
+	startDraft,
 	sync,
 	ThreadNotFoundError,
 	writeComments,
@@ -86,6 +93,31 @@ export function createApp(ctx: ServerContext): Hono {
 						);
 					if (typeof body.quote !== "string" || typeof body.body !== "string")
 						return c.json({ error: "quote and body are required" }, 400);
+					// docBody present → the combined op: doc + sidecar in ONE commit
+					// (docBaseHash is its writeDoc contract — required with it).
+					if (body.docBody !== undefined) {
+						if (
+							typeof body.docBody !== "string" ||
+							typeof body.docBaseHash !== "string"
+						)
+							return c.json(
+								{ error: "docBody and docBaseHash are required together" },
+								400,
+							);
+						const { sha } = await addThreadWithDoc(
+							ctx.repoRoot,
+							ctx.docsRoot,
+							docPath,
+							{
+								id: body.id,
+								quote: body.quote,
+								body: body.body,
+								docBody: body.docBody,
+								baseHash: body.docBaseHash,
+							},
+						);
+						return c.json({ sha });
+					}
 					const { sha } = await addThread(
 						ctx.repoRoot,
 						docPath,
@@ -107,6 +139,20 @@ export function createApp(ctx: ServerContext): Hono {
 							400,
 						);
 					if (c.req.method === "DELETE") {
+						// ?baseHash= → the combined op: span stripped + entry removed
+						// in ONE commit; absent → sidecar-only (a dirty client buffer
+						// cannot send the doc).
+						const baseHash = c.req.query("baseHash");
+						if (baseHash !== undefined) {
+							const { sha } = await deleteThreadWithDoc(
+								ctx.repoRoot,
+								ctx.docsRoot,
+								docPath,
+								id,
+								baseHash,
+							);
+							return c.json({ sha });
+						}
 						const { sha } = await deleteThread(ctx.repoRoot, docPath, id);
 						return c.json({ sha });
 					}
@@ -126,16 +172,15 @@ export function createApp(ctx: ServerContext): Hono {
 								400,
 							);
 						if (picked[0] === "resolved") {
-							// Unresolve arrives in v1.x; anything but literal true is a reject.
-							if (body.resolved !== true)
-								return c.json(
-									{
-										error:
-											"resolved can only be true (unresolve arrives in v1.x)",
-									},
-									400,
-								);
-							const { sha } = await resolveThread(ctx.repoRoot, docPath, id);
+							// M4-2: both directions — resolve and reopen.
+							if (typeof body.resolved !== "boolean")
+								return c.json({ error: "resolved must be a boolean" }, 400);
+							const { sha } = await setResolved(
+								ctx.repoRoot,
+								docPath,
+								id,
+								body.resolved,
+							);
 							return c.json({ sha });
 						}
 						const text = body[picked[0]];
@@ -369,6 +414,53 @@ export function createApp(ctx: ServerContext): Hono {
 		}
 	});
 
+	// --- M4-2: meta, drafting, merge, restore -------------------------------
+
+	app.get("/api/meta", async (c) =>
+		c.json(await repoMeta(ctx.repoRoot, ctx.docsRoot)),
+	);
+
+	app.post("/api/draft", async (c) => {
+		const body = await jsonBody(c);
+		if (body === null) return c.json({ error: "invalid request body" }, 400);
+		// The branch name is generated (slug-safe), so only the doc path needs
+		// a shape check here.
+		if (typeof body.docPath !== "string" || body.docPath === "")
+			return c.json({ error: "docPath is required" }, 400);
+		try {
+			return c.json(await startDraft(ctx.repoRoot, body.docPath, ctx.docsRoot));
+		} catch (e) {
+			return respondGitError(c, e);
+		}
+	});
+
+	app.post("/api/merge", async (c) => {
+		try {
+			const result = await mergeToMain(ctx.repoRoot);
+			// The conflict is a returned value, not a throw — map it to 409.
+			if (!result.merged) return c.json(result, 409);
+			return c.json(result);
+		} catch (e) {
+			if (e instanceof OnMainBranchError)
+				return c.json({ error: "nothing to merge — already on main" }, 400);
+			return respondGitError(c, e);
+		}
+	});
+
+	app.post("/api/restore", async (c) => {
+		const body = await jsonBody(c);
+		if (body === null) return c.json({ error: "invalid request body" }, 400);
+		if (typeof body.path !== "string" || typeof body.sha !== "string")
+			return c.json({ error: "path and sha are required" }, 400);
+		try {
+			return c.json(
+				await restoreDoc(ctx.repoRoot, ctx.docsRoot, body.path, body.sha),
+			);
+		} catch (e) {
+			return respondFileError(c, e);
+		}
+	});
+
 	app.post("/api/sync", async (c) => {
 		try {
 			return c.json(await sync(ctx.repoRoot));
@@ -419,8 +511,8 @@ async function jsonBody(c: Context): Promise<Record<string, unknown> | null> {
 
 /**
  * Map core file-op errors to responses, mirroring the PUT /api/docs/* handler
- * (DocPathError 400, DocNotFound/ThreadNotFound 404, exists/identity 409).
- * Unmapped errors propagate to Hono's default 500.
+ * (DocPathError 400, DocNotFound/ThreadNotFound 404, exists/identity/stale
+ * 409). Unmapped errors propagate to Hono's default 500.
  */
 function respondFileError(c: Context, e: unknown): Response {
 	if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
@@ -431,6 +523,8 @@ function respondFileError(c: Context, e: unknown): Response {
 	if (e instanceof PathExistsError) return c.json({ error: e.message }, 409);
 	if (e instanceof GitIdentityError)
 		return c.json({ error: "git identity not configured" }, 409);
+	if (e instanceof StaleDocError)
+		return c.json({ error: "doc changed since load — reload" }, 409);
 	throw e;
 }
 

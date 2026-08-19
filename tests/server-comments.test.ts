@@ -3,6 +3,7 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
+	readFileSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -57,6 +58,28 @@ async function threads(docPath: string): Promise<CommentFile["comments"]> {
 	const res = await api("GET", `/api/docs/${docPath}/comments`);
 	return ((await res.json()) as CommentFile).comments;
 }
+
+/** The doc's canonical markdown + hash, via GET — the client's baseHash source. */
+async function docState(
+	docPath: string,
+): Promise<{ markdown: string; hash: string }> {
+	const res = await api("GET", `/api/docs/${docPath}`);
+	return (await res.json()) as { markdown: string; hash: string };
+}
+
+const commitCount = () =>
+	Number(
+		execFileSync("git", ["rev-list", "--count", "HEAD"], {
+			cwd: root,
+			encoding: "utf8",
+		}).trim(),
+	);
+
+const lastMessage = () =>
+	execFileSync("git", ["log", "-1", "--format=%s"], {
+		cwd: root,
+		encoding: "utf8",
+	}).trim();
 
 async function seedThread(
 	docPath = "a.md",
@@ -128,6 +151,28 @@ test("PATCH resolved:true resolves the thread", async () => {
 	expect((await threads("a.md"))["id-1"]?.resolved).toBe(true);
 });
 
+test("PATCH resolved:false reopens the thread (the old 400 pin, lifted)", async () => {
+	await seedThread();
+	await api("PATCH", "/api/docs/a.md/comments/id-1", { resolved: true });
+
+	const res = await api("PATCH", "/api/docs/a.md/comments/id-1", {
+		resolved: false,
+	});
+
+	expect(res.status).toBe(200);
+	expect(((await res.json()) as { sha: string }).sha).toMatch(/^[0-9a-f]{40}$/);
+	expect((await threads("a.md"))["id-1"]?.resolved).toBe(false);
+});
+
+test("PATCH with a non-boolean resolved is 400", async () => {
+	await seedThread();
+	const res = await api("PATCH", "/api/docs/a.md/comments/id-1", {
+		resolved: "yes",
+	});
+	expect(res.status).toBe(400);
+	expect((await threads("a.md"))["id-1"]?.resolved).toBe(false);
+});
+
 test("PATCH body edits the opening comment (replies[0])", async () => {
 	await seedThread();
 	const res = await api("PATCH", "/api/docs/a.md/comments/id-1", {
@@ -139,7 +184,7 @@ test("PATCH body edits the opening comment (replies[0])", async () => {
 	expect(replies?.[0].body).toBe("edited opening");
 });
 
-test("PATCH with no field, several fields, or resolved:false is 400", async () => {
+test("PATCH with no field or several fields is 400", async () => {
 	await seedThread();
 	const url = "/api/docs/a.md/comments/id-1";
 	expect((await api("PATCH", url, {})).status).toBe(400);
@@ -147,10 +192,131 @@ test("PATCH with no field, several fields, or resolved:false is 400", async () =
 		400,
 	);
 	expect((await api("PATCH", url, { body: "x", reply: "y" })).status).toBe(400);
-	const res = await api("PATCH", url, { resolved: false });
-	expect(res.status).toBe(400);
-	expect(((await res.json()) as { error: string }).error).toContain("true");
 	expect((await threads("a.md"))["id-1"]?.resolved).toBe(false);
+});
+
+test("POST with docBody writes doc + sidecar as ONE commit", async () => {
+	const before = await docState("a.md");
+
+	const res = await api("POST", "/api/docs/a.md/comments", {
+		id: "id-1",
+		quote: "body",
+		body: "first!",
+		docBody: `${before.markdown}with <span data-c="id-1">mark</span>\n`,
+		docBaseHash: before.hash,
+	});
+
+	expect(res.status).toBe(200);
+	expect(((await res.json()) as { sha: string }).sha).toMatch(/^[0-9a-f]{40}$/);
+	expect(commitCount()).toBe(2); // seed + exactly one combined commit
+	expect(lastMessage()).toBe("Comment on a.md");
+	// Both files landed in that commit, frontmatter intact, span present.
+	const files = execFileSync(
+		"git",
+		["show", "--name-only", "--format=", "HEAD"],
+		{
+			cwd: root,
+			encoding: "utf8",
+		},
+	)
+		.split("\n")
+		.filter(Boolean)
+		.sort();
+	expect(files).toEqual([".docs/comments/a.md.json", "a.md"]);
+	expect(readFileSync(join(root, "a.md"), "utf8")).toBe(
+		`---\ntitle: A\n---\n${before.markdown}with <span data-c="id-1">mark</span>\n`,
+	);
+	const thread = (await threads("a.md"))["id-1"];
+	expect(thread?.replies[0]).toMatchObject({
+		author: "M4 Test",
+		body: "first!",
+	});
+});
+
+test("POST with docBody but no docBaseHash is 400", async () => {
+	const res = await api("POST", "/api/docs/a.md/comments", {
+		id: "id-1",
+		quote: "q",
+		body: "b",
+		docBody: "# changed\n",
+	});
+	expect(res.status).toBe(400);
+	expect(commitCount()).toBe(1);
+	expect(await threads("a.md")).toEqual({});
+});
+
+test("POST with a stale docBaseHash is 409 and writes nothing", async () => {
+	const before = await docState("a.md");
+	const diskBefore = readFileSync(join(root, "a.md"), "utf8");
+
+	const res = await api("POST", "/api/docs/a.md/comments", {
+		id: "id-1",
+		quote: "q",
+		body: "b",
+		docBody: "# changed\n",
+		docBaseHash: `${before.hash.slice(0, -1)}f`, // one byte off
+	});
+
+	expect(res.status).toBe(409);
+	expect(readFileSync(join(root, "a.md"), "utf8")).toBe(diskBefore);
+	expect(await threads("a.md")).toEqual({});
+	expect(commitCount()).toBe(1);
+	expect(
+		execFileSync("git", ["status", "--porcelain"], {
+			cwd: root,
+			encoding: "utf8",
+		}).trim(),
+	).toBe("");
+});
+
+test("DELETE with baseHash strips the span and entry in ONE commit", async () => {
+	const before = await docState("a.md");
+	await api("POST", "/api/docs/a.md/comments", {
+		id: "id-1",
+		quote: "body",
+		body: "first!",
+		docBody: `${before.markdown}with <span data-c="id-1">mark</span>\n`,
+		docBaseHash: before.hash,
+	});
+	const after = await docState("a.md");
+	expect(after.markdown).toContain('<span data-c="id-1">');
+
+	const res = await api(
+		"DELETE",
+		`/api/docs/a.md/comments/id-1?baseHash=${encodeURIComponent(after.hash)}`,
+	);
+
+	expect(res.status).toBe(200);
+	expect(((await res.json()) as { sha: string }).sha).toMatch(/^[0-9a-f]{40}$/);
+	expect(commitCount()).toBe(3); // seed + create + one combined delete
+	expect(lastMessage()).toBe("Remove comment on a.md");
+	// The span is gone from the file immediately; its text kept.
+	expect((await docState("a.md")).markdown).toBe(
+		`${before.markdown}with mark\n`,
+	);
+	expect(await threads("a.md")).toEqual({});
+});
+
+test("DELETE with a stale baseHash is 409 and writes nothing", async () => {
+	const before = await docState("a.md");
+	await api("POST", "/api/docs/a.md/comments", {
+		id: "id-1",
+		quote: "q",
+		body: "b",
+		docBody: `${before.markdown}<span data-c="id-1">x</span>\n`,
+		docBaseHash: before.hash,
+	});
+	const diskBefore = readFileSync(join(root, "a.md"), "utf8");
+
+	const res = await api(
+		"DELETE",
+		"/api/docs/a.md/comments/id-1?baseHash=deadbeef",
+	);
+
+	expect(res.status).toBe(409);
+	expect(readFileSync(join(root, "a.md"), "utf8")).toBe(diskBefore);
+	expect(Object.keys(await threads("a.md"))).toEqual(["id-1"]);
+	expect(commitCount()).toBe(2);
 });
 
 test("DELETE removes the thread; a second DELETE is 404", async () => {

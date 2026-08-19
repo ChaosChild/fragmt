@@ -154,6 +154,71 @@ export const checkoutBranch = (name: string) =>
 
 export const sync = () => request<SyncResult>("/api/sync", { method: "POST" });
 
+// --- M4-2: repo meta, drafts, merge, restore -------------------------------
+
+/** Mirror of the core meta types (src/core/meta.ts). */
+export interface DocMeta {
+	author: string;
+	authorEmail: string;
+	/** ISO. */
+	date: string;
+	version: number;
+	snippet: string;
+}
+export interface DraftEntry {
+	branch: string;
+	status: "new" | "edited" | "deleted";
+}
+export interface DeletedDoc {
+	path: string;
+	/** The delete commit — the restore pulls the parent's content. */
+	sha: string;
+	/** ISO. */
+	date: string;
+}
+export interface RepoMeta {
+	/** null = no draft model (chips hidden, main unprotected). */
+	main: string | null;
+	current: string;
+	docs: Record<string, DocMeta>;
+	drafts: Record<string, DraftEntry[]>;
+	deleted: DeletedDoc[];
+}
+
+export const getMeta = () => request<RepoMeta>("/api/meta");
+
+/** Creates (or reuses) a drafts/<slug> branch for the doc and checks it out. */
+export const startDraft = (docPath: string) =>
+	request<{ current: string; reused: boolean }>("/api/draft", {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ docPath }),
+	});
+
+/** Own fetch (saveDoc's pattern): the 409 conflict body carries `message`,
+ *  not `error` — callers branch on SaveError.status to show the banner. */
+export async function mergeDraft(): Promise<{ sha: string }> {
+	const res = await fetch("/api/merge", { method: "POST" });
+	if (!res.ok) {
+		let message = `merge failed (${res.status})`;
+		try {
+			const body = (await res.json()) as { error?: string; message?: string };
+			message = body.error ?? body.message ?? message;
+		} catch {
+			// non-JSON error body — keep the generic message
+		}
+		throw new SaveError(res.status, message);
+	}
+	return (await res.json()) as { sha: string };
+}
+
+export const restoreDoc = (path: string, sha: string) =>
+	request<{ sha: string }>("/api/restore", {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ path, sha }),
+	});
+
 // --- M4: comments ---------------------------------------------------------
 
 /** Mirror of the core sidecar types (src/core/comments.ts). */
@@ -180,9 +245,16 @@ export type CommentFile = { comments: Record<string, CommentThread> };
 export const getComments = (path: string) =>
 	request<CommentFile>(`/api/docs/${encodeURI(path)}/comments`);
 
+/** docBody + docBaseHash present → the combined create: doc + sidecar in ONE commit. */
 export const addComment = (
 	path: string,
-	thread: { id: string; quote: string; body: string },
+	thread: {
+		id: string;
+		quote: string;
+		body: string;
+		docBody?: string;
+		docBaseHash?: string;
+	},
 ) =>
 	request<{ sha: string }>(`/api/docs/${encodeURI(path)}/comments`, {
 		method: "POST",
@@ -190,7 +262,7 @@ export const addComment = (
 		body: JSON.stringify(thread),
 	});
 
-/** One action per call (the server's PATCH shape): reply appends, resolved:true resolves. */
+/** One action per call (the server's PATCH shape): reply appends, resolved flips either way. */
 export const patchComment = (
 	path: string,
 	id: string,
@@ -205,8 +277,11 @@ export const patchComment = (
 		},
 	);
 
-export const deleteComment = (path: string, id: string) =>
+/** baseHash present → the combined delete: span stripped + entry removed in ONE commit. */
+export const deleteComment = (path: string, id: string, baseHash?: string) =>
 	request<{ sha: string }>(
-		`/api/docs/${encodeURI(path)}/comments/${encodeURIComponent(id)}`,
+		`/api/docs/${encodeURI(path)}/comments/${encodeURIComponent(id)}${
+			baseHash ? `?baseHash=${encodeURIComponent(baseHash)}` : ""
+		}`,
 		{ method: "DELETE" },
 	);

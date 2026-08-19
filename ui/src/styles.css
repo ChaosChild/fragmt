@@ -1664,6 +1664,34 @@ button.comment-quote:hover {
 	padding: 7px 9px 4px;
 	border-top: 1px solid var(--border-soft);
 }
+/* @ reference list in the rail's reply textarea (M4-2): the slash panel's
+   look, but anchored above the box instead of at a caret. */
+.at-wrap {
+	position: relative;
+}
+.slash-menu.at-list {
+	position: absolute;
+	left: 0;
+	bottom: calc(100% + 6px);
+	width: min(300px, 100%);
+}
+/* A linkified doc path in a comment body — inline-link look, button
+   semantics (keyboard-reachable like every other rail control). */
+.doc-ref {
+	padding: 0;
+	border: none;
+	background: none;
+	font: inherit;
+	color: var(--accent);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	cursor: pointer;
+}
+.doc-ref:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+	border-radius: 3px;
+}
 .popover-form {
 	display: flex;
 	flex-direction: column;
@@ -1745,10 +1773,13 @@ button.comment-quote:hover {
 .branch-dd {
 	min-height: 32px; /* a11y floor: ≥32px hit targets (§9) */
 }
-/* Tree row = select target + always-visible kebab (never hover-only, §5) */
+/* Tree row = full-width select target; file actions live in the corner
+   overlay inside the card (dogfood revision — the outside kebab left a
+   dead column beside the card). */
 .tree-row {
 	display: flex;
 	align-items: center;
+	position: relative;
 }
 .tree-row .doc-card,
 .tree-row .folder-row {
@@ -1761,7 +1792,6 @@ button.comment-quote:hover {
 .folder-group > .tree-row {
 	margin-top: var(--space-2);
 }
-.tree-row .menu-wrap,
 .side-head .menu-wrap {
 	flex-shrink: 0;
 }
@@ -1859,4 +1889,138 @@ button.comment-quote:hover {
 .iconbtn.danger:hover {
 	color: var(--danger);
 	border-color: var(--danger);
+}
+
+/* ── M4-2: two-row sidebar head, hover-revealed kebab, recycle bin ── */
+.side-head {
+	flex-direction: column;
+	align-items: stretch;
+	gap: var(--space-2);
+}
+.side-head-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+}
+/* Row 2 (branch + Merge): the branch menu stretches full width — the name
+   ellipsizes, the button's title carries the whole branch. */
+.side-head-branch .menu-wrap {
+	flex: 1;
+	min-width: 0;
+}
+.branch-dd {
+	width: 100%;
+	min-width: 0;
+}
+.branch-dd .branch-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.side-head-branch .iconbtn {
+	flex-shrink: 0;
+}
+.iconbtn:disabled {
+	opacity: 0.5;
+	cursor: default;
+	pointer-events: none;
+}
+/* The row actions sit in the card's top-right corner, left of the version
+   chip (dogfood revision of item 1). The strip is click-through except its
+   buttons; icons reveal on row hover/focus-within — still focusable ≥32px
+   buttons, so nothing is hover-only (§5/§8). Small glyphs, generous targets. */
+.row-corner {
+	position: absolute;
+	top: 5px;
+	right: 8px;
+	display: flex;
+	align-items: center;
+	gap: 1px;
+	pointer-events: none;
+}
+.row-corner .tool-btn {
+	pointer-events: auto;
+	opacity: 0;
+	width: 26px;
+	transition:
+		opacity var(--motion-fast) var(--ease-standard),
+		color var(--motion-fast) var(--ease-standard);
+}
+.row-corner .tool-btn svg {
+	width: 15px;
+	height: 15px;
+}
+.tree-row:hover .row-corner .tool-btn,
+.tree-row:focus-within .row-corner .tool-btn {
+	opacity: 1;
+}
+/* The title truncates before the corner (icons + version), so the reserve
+   is constant — no reflow when the icons reveal. */
+.doc-card .dc-top {
+	padding-right: 92px;
+}
+/* Recycle bin (item 9) — pinned below the doc list; every Restore sits on
+   the same right edge, Restore all right-aligned beneath them. */
+.recycle-bin {
+	flex-shrink: 0;
+	padding: var(--space-2) var(--space-3) var(--space-3);
+	border-top: 1px solid var(--glass-border);
+}
+.recycle-bin .folder-row {
+	margin-top: 0;
+}
+.bin-list {
+	list-style: none;
+	padding: 0 var(--space-2);
+}
+.bin-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	min-height: 32px;
+}
+.bin-path {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--fg);
+}
+.bin-date {
+	flex-shrink: 0;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	color: var(--muted);
+}
+.bin-restore {
+	flex-shrink: 0;
+	border: none;
+	background: none;
+	cursor: pointer;
+	min-height: 32px;
+	padding: 0 4px;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: var(--accent);
+}
+.bin-restore:hover {
+	text-decoration: underline;
+}
+.bin-restore:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.bin-all {
+	display: flex;
+	justify-content: flex-end;
+}
+/* The GitHub avatar is a real <img> on the initials slot's metrics. */
+.doc-head img.avatar {
+	display: block;
+	object-fit: cover;
 }

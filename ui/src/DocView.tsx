@@ -1,17 +1,61 @@
-import { MessageSquare, Pencil } from "lucide-react";
+import { Check, MessageSquare, Pencil, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { addComment, type DocResponse, SaveError, saveDoc } from "./api";
+import {
+	addComment,
+	type DocMeta,
+	type DocResponse,
+	SaveError,
+	saveDoc,
+} from "./api";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
+import type { AtDoc } from "./editor/at";
+import { shortDate } from "./Sidebar";
+
+/**
+ * The email-parallel avatar (item 3): the keyless GitHub noreply heuristic —
+ * `123456+user@` or `user@` → avatars.githubusercontent.com/<user>?s=76; a
+ * load error or non-matching email falls back to the author's initials.
+ */
+function Avatar({ author, email }: { author: string; email: string }) {
+	const [broken, setBroken] = useState(false);
+	const user = /^(\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(
+		email,
+	)?.[2];
+	if (user && !broken) {
+		return (
+			<img
+				className="avatar"
+				src={`https://avatars.githubusercontent.com/${user}?s=76`}
+				alt=""
+				width={38}
+				height={38}
+				onError={() => setBroken(true)}
+			/>
+		);
+	}
+	const initials = author
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((w) => w[0] ?? "")
+		.join("")
+		.toUpperCase();
+	return (
+		<span className="avatar" aria-hidden="true">
+			{initials}
+		</span>
+	);
+}
 
 /**
  * The doc pane: reading mode by default (DESIGN §3), one explicit Edit action
  * flips the SAME mounted Tiptap editor to editable (M4 review decision 3 —
  * one rendering path, no reflow between modes). Save commits via PUT; a 409
  * shows a non-destructive banner and keeps the user's buffer (M2 spec).
- * Comment anchoring (M4) reuses the same PUT seam — doc first, sidecar
- * second — without ever flipping the mode. The rail lives in App; DocView
- * keeps only the doc-bar badge (fed from App's sidecar state) and forwards
- * highlight-span clicks to it.
+ * Comment anchoring (M4-2) is one combined POST — doc body and sidecar
+ * thread in a single server-side commit — without ever flipping the mode.
+ * The rail lives in App; DocView keeps only the doc-bar badge (fed from
+ * App's sidecar state) and forwards highlight-span clicks to it.
  */
 export function DocView({
 	doc,
@@ -29,6 +73,15 @@ export function DocView({
 	conflict,
 	onDismissConflict,
 	onBeforeEdit,
+	onDraftFirst,
+	docMeta,
+	branch,
+	led,
+	ledLabel,
+	draftBranch,
+	onOpenDraft,
+	docs,
+	onSelectDoc,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
@@ -50,7 +103,27 @@ export function DocView({
 	/** Sync conflict message (M3) — the calm banner, never a merge UI. */
 	conflict: string | null;
 	onDismissConflict: () => void;
-	onBeforeEdit: () => void;
+	/** Pre-edit gate (App): true = flip to edit mode. On main, App drafts
+	 *  first (protected main) and returns false on failure — the banner is
+	 *  App's; DocView stays dumb. */
+	onBeforeEdit: () => Promise<boolean>;
+	/** Protected main: awaited before the combined comment POST when the doc
+	 *  write must go through a draft (App provides it only on main). */
+	onDraftFirst?: () => Promise<boolean>;
+	/** The open doc's git metadata (author/version/date) — the doc-head lines. */
+	docMeta?: DocMeta;
+	/** Current branch name — the "vN · branch" segment. */
+	branch: string | null;
+	/** App's LED color/word — reused verbatim in the head (one vocabulary). */
+	led: string;
+	ledLabel: string;
+	/** The branch a draft pill would check out; null = no pill (App computes). */
+	draftBranch: string | null;
+	onOpenDraft: () => void;
+	/** The tree's docs — the editor's @ menu and link-click doc set (M4-2). */
+	docs: AtDoc[];
+	/** An in-doc @ link resolved to a tree doc — navigate in-app (App). */
+	onSelectDoc: (path: string) => void;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -146,21 +219,38 @@ export function DocView({
 		return ok;
 	}
 
-	// Comment anchoring (M4 spec's contract): the mark is already applied
-	// locally by the composer; here the doc saves FIRST, then the sidecar
-	// thread posts. A failed doc save (the existing banner above) leaves the
-	// sidecar untouched. The mode is never flipped — commenting from read
-	// mode stays in read mode.
+	// Comment anchoring (M4-2's one-commit contract): the mark is already
+	// applied locally by the composer; ONE POST carries the serialized doc
+	// body + base hash AND the thread — the server writes both files in a
+	// single commit. A failure (e.g. a stale base hash → 409) leaves disk
+	// untouched; the banner shows it and the buffer's mark just sits there
+	// until saved or discarded. The mode is never flipped — commenting from
+	// read mode stays in read mode.
 	async function handleComment(id: string, quote: string, body: string) {
-		if (!doc) return;
-		if (!(await persist(editorRef.current?.getMarkdown() ?? ""))) return;
+		if (!doc || saving) return;
+		setSaving(true);
+		setSaveError(null);
 		try {
-			await addComment(doc.path, { id, quote, body });
+			// Protected main: on main the doc write drafts first (App) — the
+			// baseHash and serialized body stay valid, a fresh checkout
+			// doesn't change file content. False = App bannered; no POST.
+			if (onDraftFirst && !(await onDraftFirst())) return;
+			await addComment(doc.path, {
+				id,
+				quote,
+				body,
+				docBody: editorRef.current?.getMarkdown() ?? "",
+				docBaseHash: doc.hash,
+			});
+			// The doc changed on disk (mark included) — refetch for the
+			// canonical body + hash the next save or comment builds on.
+			setDirty(false);
+			onReload();
 			onCommentsChanged();
 		} catch (e) {
-			// Doc saved (mark included) but no thread — the error banner shows
-			// it; the orphan reconcile in the rail is the recovery story.
 			setSaveError(e instanceof Error ? e.message : String(e));
+		} finally {
+			setSaving(false);
 		}
 	}
 
@@ -230,6 +320,18 @@ export function DocView({
 		</div>
 	);
 
+	// The doc-head meta line (item 3): "vN · branch · saved <time>" in read
+	// mode, "editing vN · branch" in edit mode, then the sync LED + word —
+	// the rail's one-word vocabulary, reused.
+	const syncWord = editing ? "unsaved changes" : ledLabel.toLowerCase();
+	const lineSegs: string[] = [];
+	if (docMeta)
+		lineSegs.push(
+			editing ? `editing v${docMeta.version}` : `v${docMeta.version}`,
+		);
+	if (branch) lineSegs.push(branch);
+	if (!editing && docMeta) lineSegs.push(`saved ${shortDate(docMeta.date)}`);
+
 	// One rendering path (M4 review decision 3): the editor is mounted in
 	// BOTH modes — read is `editable: false` on the same instance, Edit/Save/
 	// Cancel are mode flips with no remount (only a discard bumps the key to
@@ -238,59 +340,100 @@ export function DocView({
 	// identically in both modes (M2 pixel parity).
 	return (
 		<div className={editing ? "editor-pane" : "doc-pane"} ref={paneRef}>
-			<div className="doc-bar">
-				{breadcrumb}
-				<div className="doc-actions">
-					{editing ? (
-						<>
-							<button
-								type="button"
-								className="iconbtn subtle"
-								onClick={requestCancel}
-								disabled={saving}
-							>
-								Cancel
-							</button>
-							<button
-								type="button"
-								className="iconbtn primary"
-								onClick={() => void handleSave()}
-								disabled={saving}
-							>
-								{saving ? "Saving…" : "Save"}
-							</button>
-						</>
-					) : (
-						<>
-							<button
-								type="button"
-								className="iconbtn"
-								onClick={() => {
-									onBeforeEdit();
-									setEditing(true);
-									setSaveError(null);
-								}}
-								disabled={!doc}
-							>
-								<Pencil aria-hidden="true" />
-								Edit
-							</button>
-							{commentCount > 0 && (
+			<div className="doc-bar">{breadcrumb}</div>
+			{doc && (
+				<header className="doc-head">
+					<Avatar
+						author={docMeta?.author ?? ""}
+						email={docMeta?.authorEmail ?? ""}
+					/>
+					<div className="dh-main">
+						<div className="dh-author">{docMeta?.author ?? "—"}</div>
+						<div className="dh-line">
+							{lineSegs.map((s, i) => (
+								<span key={s}>
+									{i > 0 && <span className="sep">·</span>}
+									{s}
+								</span>
+							))}
+							{lineSegs.length > 0 && <span className="sep">·</span>}
+							<span className="dh-sync">
+								<span
+									className={`led ${editing ? "amber" : led}`}
+									role="status"
+									aria-label={syncWord}
+								/>
+								{syncWord}
+							</span>
+						</div>
+					</div>
+					{/* The draft pill (item 3): only on main, when a draft elsewhere
+					    touches this doc — click checks the draft out (App). */}
+					{draftBranch && (
+						<button type="button" className="draft-pill" onClick={onOpenDraft}>
+							<Pencil aria-hidden="true" />
+							draft exists — open
+						</button>
+					)}
+					<div className="doc-actions">
+						{editing ? (
+							<>
 								<button
 									type="button"
-									className="iconbtn comments-btn"
-									aria-label={`Comments (${commentCount})`}
-									onClick={onOpenComments}
+									className="iconbtn subtle"
+									onClick={requestCancel}
+									disabled={saving}
 								>
-									<MessageSquare aria-hidden="true" />
-									<span className="label">Comments</span>
-									<span className="badge">{commentCount}</span>
+									<X aria-hidden="true" />
+									<span className="label">Cancel</span>
 								</button>
-							)}
-						</>
-					)}
-				</div>
-			</div>
+								<button
+									type="button"
+									className="iconbtn primary"
+									onClick={() => void handleSave()}
+									disabled={saving}
+								>
+									<Check aria-hidden="true" />
+									<span className="label">{saving ? "Saving…" : "Save"}</span>
+								</button>
+							</>
+						) : (
+							<>
+								{/* comments-btn stays desktop-hidden (mock rule) — it
+								    surfaces ≤1180px, where the rail becomes a sheet. */}
+								{commentCount > 0 && (
+									<button
+										type="button"
+										className="iconbtn comments-btn"
+										aria-label={`Comments (${commentCount})`}
+										onClick={onOpenComments}
+									>
+										<MessageSquare aria-hidden="true" />
+										<span className="label">Comments</span>
+										<span className="badge">{commentCount}</span>
+									</button>
+								)}
+								<button
+									type="button"
+									className="iconbtn"
+									onClick={() => {
+										// App gates the flip (protected main: draft
+										// first) — only a true enters edit mode.
+										void onBeforeEdit().then((proceed) => {
+											if (!proceed) return;
+											setEditing(true);
+											setSaveError(null);
+										});
+									}}
+								>
+									<Pencil aria-hidden="true" />
+									<span className="label">Edit</span>
+								</button>
+							</>
+						)}
+					</div>
+				</header>
+			)}
 			{conflictBanner}
 			{pendingBanner}
 			{confirmingCancel && (
@@ -344,6 +487,9 @@ export function DocView({
 					onCancel={requestCancel}
 					onComment={(id, quote, body) => void handleComment(id, quote, body)}
 					onSpanClick={onSpanClick}
+					docPath={selected ?? doc.path}
+					docs={docs}
+					onSelectDoc={onSelectDoc}
 				/>
 			) : null}
 		</div>

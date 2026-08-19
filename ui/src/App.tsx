@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	type CommentFile,
 	type CommentThread,
 	checkoutBranch,
 	createBranch,
 	createDoc,
+	createFolder,
+	type DeletedDoc,
 	type DocResponse,
 	deleteComment,
 	deleteDoc,
@@ -12,15 +14,22 @@ import {
 	getBranches,
 	getComments,
 	getDoc,
+	getMeta,
 	getTree,
+	mergeDraft,
 	moveDoc,
 	patchComment,
+	type RepoMeta,
 	renameFolder,
+	restoreDoc,
+	SaveError,
+	startDraft,
 	sync,
 	type TreeNode,
 } from "./api";
 import { CommentsRail } from "./CommentsRail";
 import { DocView } from "./DocView";
+import type { AtDoc } from "./editor/at";
 import {
 	type BranchAction,
 	BranchMenu,
@@ -43,6 +52,20 @@ function treeHas(node: TreeNode, path: string): boolean {
 	return (node.children ?? []).some((c) => c.path === path || treeHas(c, path));
 }
 
+/** The tree's docs as {title, path} — the @ menus' items and linkify's set. */
+function docItems(node: TreeNode | null): AtDoc[] {
+	const out: AtDoc[] = [];
+	const walk = (n: TreeNode) => {
+		for (const c of n.children ?? []) {
+			if (c.type === "doc")
+				out.push({ title: c.name.replace(/\.md$/i, ""), path: c.path });
+			else walk(c);
+		}
+	};
+	if (node) walk(node);
+	return out;
+}
+
 export function App() {
 	const [tree, setTree] = useState<TreeNode | null>(null);
 	const [selected, setSelected] = useState<string | null>(null);
@@ -56,6 +79,15 @@ export function App() {
 	const [syncing, setSyncing] = useState(false);
 	const [conflict, setConflict] = useState<string | null>(null);
 	const [ledRed, setLedRed] = useState(false);
+	// M4-2: repo meta (cards, drafts, recycle bin). Refetched on load, branch
+	// switches, file ops, and saves — a failure is quiet (the UI falls back to
+	// version-less cards).
+	const [meta, setMeta] = useState<RepoMeta | null>(null);
+	const refreshMeta = useCallback(() => {
+		getMeta()
+			.then(setMeta)
+			.catch(() => {});
+	}, []);
 	// Whether a sync has confirmed the latest local commit — splits the
 	// amber word: Saved (committed, not yet synced) vs Synced (green).
 	const [synced, setSynced] = useState(true);
@@ -86,7 +118,8 @@ export function App() {
 		getBranches()
 			.then((r) => setBranch(r.current))
 			.catch(() => {});
-	}, []);
+		refreshMeta();
+	}, [refreshMeta]);
 
 	// Auto-select the first doc once the tree lands.
 	useEffect(() => {
@@ -150,6 +183,9 @@ export function App() {
 	};
 
 	const threads: CommentThread[] = Object.values(commentFile.comments);
+	// The flat doc list (M4-2): one source for the editor's @ menu, its link
+	// clicks, the rail's reply @ mentions, and body linkification.
+	const docs = useMemo(() => docItems(tree), [tree]);
 	// The orphan rule, client-side: core's reconcileThreads check replicated
 	// against the RENDERED doc's markdown (doc.markdown is the exact string
 	// the editor renders from and is refreshed on every save). Smaller than
@@ -177,10 +213,11 @@ export function App() {
 		return true;
 	}
 
-	async function railResolve(id: string) {
+	// Resolve/reopen — both directions hit the same sidecar-only PATCH.
+	async function railResolve(id: string, resolved: boolean) {
 		if (!selected) return;
 		try {
-			await patchComment(selected, id, { resolved: true });
+			await patchComment(selected, id, { resolved });
 		} catch (e) {
 			setRailError(e instanceof Error ? e.message : String(e));
 			return;
@@ -189,14 +226,20 @@ export function App() {
 		refreshComments();
 	}
 
-	// Delete removes the sidecar entry now; the span itself disappears on the
-	// doc's next save (spec) — so simply refetch both. The doc refetch is
-	// skipped while the buffer is dirty (it would drop unsaved edits).
+	// Delete with a CLEAN buffer uses the combined endpoint: the span and the
+	// sidecar entry go in ONE commit, and the doc refetch picks up the stripped
+	// body immediately. A dirty buffer can't send the doc (its base hash is
+	// stale by definition) → sidecar-only, the span leaves on the next save,
+	// and no refetch (it would drop unsaved edits).
 	async function railDelete(id: string) {
 		if (!selected) return;
 		if (!window.confirm("Delete this comment thread?")) return;
 		try {
-			await deleteComment(selected, id);
+			await deleteComment(
+				selected,
+				id,
+				live.current.dirty ? undefined : (doc?.hash ?? undefined),
+			);
 		} catch (e) {
 			setRailError(e instanceof Error ? e.message : String(e));
 			return;
@@ -263,6 +306,7 @@ export function App() {
 		}
 		setError(null);
 		setBranch(action.name);
+		refreshMeta();
 		try {
 			const t = await getTree();
 			setTree(t);
@@ -279,6 +323,40 @@ export function App() {
 	function requestBranch(action: BranchAction) {
 		if (live.current.dirty) setPendingBranch(action);
 		else void switchTo(action);
+	}
+
+	// --- M4-2: protected main (item 7) --------------------------------------
+	// The draft model applies whenever meta names a main and we're on it.
+	const onMain = Boolean(meta?.main && branch === meta.main);
+
+	// The one draft-starting seam Edit and read-mode comments share on main.
+	// No prompt — the header's branch line names the new branch. startDraft
+	// checks the draft out server-side; switchTo's checkout of the branch we
+	// already sit on is a no-op that reuses the whole refresh (branch, meta,
+	// tree, doc). False (after the error banner) = don't proceed.
+	async function draftFirst(): Promise<boolean> {
+		const path = live.current.selected;
+		if (!path) return false;
+		try {
+			const { current } = await startDraft(path);
+			await switchTo({ kind: "switch", name: current });
+			return true;
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e));
+			return false;
+		}
+	}
+
+	// The Edit gate: on main, draft before the mode flip — DocView awaits
+	// this and only flips on true (it stays dumb: no error handling of its
+	// own). Off main, the pre-edit sync runs as before; a fresh draft skips
+	// it — the checkout just made us current.
+	async function beforeEdit(): Promise<boolean> {
+		if (!onMain) {
+			void runSync();
+			return true;
+		}
+		return draftFirst();
 	}
 
 	// --- file ops: one commit each server-side; every op refreshes the tree.
@@ -301,7 +379,16 @@ export function App() {
 		try {
 			switch (op.kind) {
 				case "create-doc":
+					// Protected main (item 7): a new doc is a body write — the
+					// draft starts first so the create commit lands on it and
+					// the card carries the chip. Folders stay on main (not a
+					// body write — spec).
+					if (onMain) setBranch((await startDraft(op.path)).current);
 					await createDoc(op.path);
+					break;
+				case "create-folder":
+					// The tree grows a folder; nothing gets selected.
+					await createFolder(op.path);
 					break;
 				case "move-doc":
 					await moveDoc(op.from, op.to);
@@ -321,6 +408,7 @@ export function App() {
 			setError(e instanceof Error ? e.message : String(e));
 			return;
 		}
+		refreshMeta();
 		try {
 			const t = await getTree();
 			setTree(t);
@@ -330,6 +418,67 @@ export function App() {
 			else if (op.kind === "move-folder" && s?.startsWith(`${op.from}/`))
 				setSelected(op.to + s.slice(op.from.length));
 			else if (s && !treeHas(t, s)) setSelected(null);
+		} catch {
+			// keep prior state — quiet
+		}
+	}
+
+	// --- M4-2: ghost cards, the recycle bin, the draft pill ----------------
+
+	// A draft-only doc card: check out its branch, then open it. The dirty
+	// guard mirrors runFileOp — a checkout never strands unsaved edits.
+	async function openGhost(path: string, branchName: string) {
+		if (live.current.dirty) {
+			setError("save or discard changes to the open document first");
+			return;
+		}
+		await switchTo({ kind: "switch", name: branchName });
+		setSelected(path);
+	}
+
+	// The draft pill's checkout (main → the branch touching the open doc).
+	function openDraft(branchName: string) {
+		if (live.current.dirty) {
+			setError("save or discard changes to the open document first");
+			return;
+		}
+		void switchTo({ kind: "switch", name: branchName });
+	}
+
+	// Merge (item 8): the sanctioned write back to main. A 409 shows the
+	// conflict banner — the draft is untouched and still checked out.
+	// Success reuses switchTo's refresh; the post-merge checkout is already
+	// on main, so the "switch" is a no-op that reloads branch, meta, tree,
+	// and the open doc on main's version. (Dirty buffers never get here —
+	// the button is disabled; a reload would drop them.)
+	async function runMerge() {
+		try {
+			await mergeDraft();
+		} catch (e) {
+			if (e instanceof SaveError && e.status === 409) setConflict(e.message);
+			else setError(e instanceof Error ? e.message : String(e));
+			return;
+		}
+		const mainName = meta?.main;
+		if (mainName) void switchTo({ kind: "switch", name: mainName });
+	}
+
+	// One restore commit per entry, sequentially; the first error surfaces
+	// after the loop, and tree + meta refresh either way (the bin must reflect
+	// what actually restored).
+	async function runRestore(items: DeletedDoc[]) {
+		let failure: string | null = null;
+		for (const d of items) {
+			try {
+				await restoreDoc(d.path, d.sha);
+			} catch (e) {
+				failure ??= e instanceof Error ? e.message : String(e);
+			}
+		}
+		setError(failure);
+		try {
+			setTree(await getTree());
+			setMeta(await getMeta());
 		} catch {
 			// keep prior state — quiet
 		}
@@ -349,22 +498,68 @@ export function App() {
 					? "Synced"
 					: "Saved";
 
+	// The global Merge gate (item 8): a draft branch with unmerged doc changes.
+	// Render-only here — batch E wires the click.
+	const changedDocs = meta
+		? Object.values(meta.drafts)
+				.flat()
+				.filter((e) => e.branch === meta.current).length
+		: 0;
+	const canMerge = Boolean(
+		meta?.main && meta.current !== meta.main && changedDocs > 0,
+	);
+
+	// The doc-head inputs (item 3): per-doc meta, the branch line, and the
+	// draft pill's target — only on main, when a draft elsewhere touches the
+	// open doc.
+	const docMeta = selected ? meta?.docs[selected] : undefined;
+	const draftBranch =
+		selected &&
+		meta?.main &&
+		meta.current === meta.main &&
+		(meta.drafts[selected]?.length ?? 0) > 0
+			? (meta.drafts[selected][0].branch ?? null)
+			: null;
+
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
 			<div className="layout">
 				<aside className="sidebar" aria-label="Documents">
+					{/* Two-row head (item 11): brand + "+", then branch + Merge. */}
 					<div className="side-head">
-						<span className="brand">fragmt</span>
-						<div className="side-head-spacer" />
-						<NewDocButton onFileOp={runFileOp} />
-						<BranchMenu current={branch} onAction={requestBranch} />
+						<div className="side-head-row">
+							<span className="brand">fragmt</span>
+							<div className="side-head-spacer" />
+							<NewDocButton onFileOp={runFileOp} />
+						</div>
+						<div className="side-head-row side-head-branch">
+							<BranchMenu current={branch} onAction={requestBranch} />
+							<button
+								type="button"
+								className="iconbtn"
+								disabled={!canMerge || dirty}
+								title={
+									canMerge
+										? dirty
+											? "save or discard changes to the open document first"
+											: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
+										: undefined
+								}
+								onClick={() => void runMerge()}
+							>
+								Merge
+							</button>
+						</div>
 					</div>
 					<Sidebar
 						tree={tree}
 						selected={selected}
 						onSelect={setSelected}
 						onFileOp={runFileOp}
+						meta={meta}
+						onOpenGhost={(path, branchName) => void openGhost(path, branchName)}
+						onRestore={(items) => void runRestore(items)}
 					/>
 					{error && (
 						<p className="label-meta" style={{ padding: "0 16px 16px" }}>
@@ -382,6 +577,8 @@ export function App() {
 						onSaved={(d) => {
 							setDoc(d);
 							setSynced(false);
+							// A save is a commit — versions/drafts/bin moved.
+							refreshMeta();
 						}}
 						onReload={reloadSelected}
 						onDirtyChange={setDirty}
@@ -401,7 +598,19 @@ export function App() {
 						}}
 						conflict={conflict}
 						onDismissConflict={() => setConflict(null)}
-						onBeforeEdit={() => void runSync()}
+						onBeforeEdit={beforeEdit}
+						// Protected main (item 7): read-mode comments draft
+						// first — DocView awaits this before the combined POST
+						// (undefined off main: no interception).
+						onDraftFirst={onMain ? draftFirst : undefined}
+						docMeta={docMeta}
+						branch={branch}
+						led={led}
+						ledLabel={ledLabel}
+						draftBranch={draftBranch}
+						onOpenDraft={() => draftBranch && openDraft(draftBranch)}
+						docs={docs}
+						onSelectDoc={setSelected}
 					/>
 				</main>
 				{/* The rail is a layout sibling of <main> (right margin column);
@@ -416,9 +625,12 @@ export function App() {
 						onClose={() => setRailOpen(false)}
 						focus={spanFocus}
 						onReply={(id, body) => railReply(id, body)}
-						onResolve={(id) => void railResolve(id)}
+						onResolve={(id) => void railResolve(id, true)}
+						onReopen={(id) => void railResolve(id, false)}
 						onDelete={(id) => void railDelete(id)}
 						error={railError}
+						docs={docs}
+						onOpenDoc={setSelected}
 					/>
 				)}
 			</div>
