@@ -102,9 +102,16 @@ export function EditorPane({
 	});
 	// The tiptap-markdown override of setContent parses markdown; the plain
 	// `content` option would be read as HTML. Loading a doc resets dirty —
-	// the setContent dispatch would otherwise count as a change.
+	// the setContent dispatch would otherwise count as a change. setContent
+	// is a whole-doc replace that maps the caret to the END, so the
+	// Edit-flip focus() would scroll the end into view; reset the selection
+	// to the doc start right after it (position 0 clamps to the first valid
+	// text position) and the caret matches the visible top. A selection-only
+	// command never sets docChanged (dirty stays false), and it is safe in
+	// read mode — the non-editable view stays focusable.
 	useEffect(() => {
 		editor?.commands.setContent(markdown);
+		editor?.commands.setTextSelection(0);
 		setDirty(false);
 	}, [editor, markdown]);
 

@@ -520,6 +520,15 @@ export function App() {
 		(meta.drafts[selected]?.length ?? 0) > 0
 			? (meta.drafts[selected][0].branch ?? null)
 			: null;
+	// The pill's flip side (M4-3): on a NON-main branch that touches the
+	// open doc — the header's non-clickable "on draft" badge. Per-doc
+	// semantics: a branch that doesn't touch the open doc shows nothing.
+	const onDraft = Boolean(
+		selected &&
+			meta?.main &&
+			meta.current !== meta.main &&
+			(meta.drafts[selected] ?? []).some((e) => e.branch === meta.current),
+	);
 
 	return (
 		<>
@@ -609,6 +618,7 @@ export function App() {
 						ledLabel={ledLabel}
 						draftBranch={draftBranch}
 						onOpenDraft={() => draftBranch && openDraft(draftBranch)}
+						onDraft={onDraft}
 						docs={docs}
 						onSelectDoc={setSelected}
 					/>

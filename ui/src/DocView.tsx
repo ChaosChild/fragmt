@@ -80,6 +80,7 @@ export function DocView({
 	ledLabel,
 	draftBranch,
 	onOpenDraft,
+	onDraft,
 	docs,
 	onSelectDoc,
 }: {
@@ -120,6 +121,9 @@ export function DocView({
 	/** The branch a draft pill would check out; null = no pill (App computes). */
 	draftBranch: string | null;
 	onOpenDraft: () => void;
+	/** On a non-main branch touching THIS doc — the pill's non-clickable
+	 *  flip side, the "on draft" badge (App computes; M4-3). */
+	onDraft: boolean;
 	/** The tree's docs — the editor's @ menu and link-click doc set (M4-2). */
 	docs: AtDoc[];
 	/** An in-doc @ link resolved to a tree doc — navigate in-app (App). */
@@ -368,13 +372,16 @@ export function DocView({
 						</div>
 					</div>
 					{/* The draft pill (item 3): only on main, when a draft elsewhere
-					    touches this doc — click checks the draft out (App). */}
+					    touches this doc — click checks the draft out (App). Its flip
+					    side (M4-3): on a draft branch touching THIS doc, a
+					    NON-clickable "on draft" badge (span — nothing to click). */}
 					{draftBranch && (
 						<button type="button" className="draft-pill" onClick={onOpenDraft}>
 							<Pencil aria-hidden="true" />
 							draft exists — open
 						</button>
 					)}
+					{onDraft && <span className="draft-pill on-draft">on draft</span>}
 					<div className="doc-actions">
 						{editing ? (
 							<>
