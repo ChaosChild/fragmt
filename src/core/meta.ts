@@ -1,3 +1,4 @@
+import { loadConfig } from "./config.js";
 import { readDoc } from "./docs.js";
 import { currentBranch, git, listBranches, logCommits } from "./git.js";
 
@@ -31,6 +32,9 @@ export interface RepoMeta {
 	drafts: Record<string, DraftEntry[]>;
 	/** Deletions reachable from HEAD, latest first, deduped by path. */
 	deleted: DeletedDoc[];
+	/** email → GitHub username (avatar resolution) — the config map verbatim,
+	 * {} when the repo has no map. */
+	authors: Record<string, string>;
 }
 
 /** The main branch name: "main" → "master" → null (rev-parse --verify). */
@@ -198,11 +202,23 @@ export async function repoMeta(
 		}
 	}
 
+	// The authors map (avatar resolution): the config verbatim. RepoMeta has
+	// only repoRoot/docsRoot — the config is read here, the same loader the
+	// CLI uses for docsRoot; any config problem just means no map ({}) —
+	// never a failed meta walk over a cosmetic feature.
+	let authors: Record<string, string> = {};
+	try {
+		authors = loadConfig(repoRoot).authors ?? {};
+	} catch {
+		// no config / malformed — no authors map
+	}
+
 	return {
 		main,
 		current: await currentBranch(repoRoot),
 		docs,
 		drafts,
 		deleted,
+		authors,
 	};
 }

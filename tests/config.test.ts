@@ -80,3 +80,56 @@ test("initRepo rejects a docs root that escapes the repo", () => {
 test("initRepo rejects a nonexistent docs root", () => {
 	expect(() => initRepo(root, "nope")).toThrow(ConfigError);
 });
+
+// --- M4-3: optional authors map (email → GitHub username) ------------------
+
+test("loadConfig parses the authors map", () => {
+	writeFileSync(
+		configPath(root),
+		JSON.stringify({
+			docsRoot: ".",
+			authors: { "a@example.com": "alice", "b@example.com": "bob-gh" },
+		}),
+	);
+	expect(loadConfig(root)).toEqual({
+		docsRoot: ".",
+		authors: { "a@example.com": "alice", "b@example.com": "bob-gh" },
+	});
+});
+
+test("loadConfig drops invalid authors entries silently", () => {
+	writeFileSync(
+		configPath(root),
+		JSON.stringify({
+			docsRoot: ".",
+			authors: {
+				"a@example.com": "alice",
+				"empty@example.com": "",
+				"num@example.com": 42,
+				"nil@example.com": null,
+			},
+		}),
+	);
+	expect(loadConfig(root)).toEqual({
+		docsRoot: ".",
+		authors: { "a@example.com": "alice" },
+	});
+});
+
+test("loadConfig: absent authors stays undefined; a non-object is ignored", () => {
+	writeConfig(root, ".");
+	expect(loadConfig(root).authors).toBeUndefined();
+
+	writeFileSync(
+		configPath(root),
+		JSON.stringify({ docsRoot: ".", authors: ["a@example.com"] }),
+	);
+	expect(loadConfig(root).authors).toBeUndefined();
+	expect(loadConfig(root)).toEqual({ docsRoot: "." });
+
+	writeFileSync(
+		configPath(root),
+		JSON.stringify({ docsRoot: ".", authors: "nope" }),
+	);
+	expect(loadConfig(root).authors).toBeUndefined();
+});

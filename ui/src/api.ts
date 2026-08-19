@@ -152,6 +152,30 @@ export const checkoutBranch = (name: string) =>
 		body: JSON.stringify({ name }),
 	});
 
+/** Own fetch (mergeDraft's pattern): the 409 unmerged body carries `unmerged`,
+ *  not `error` — callers branch on SaveError.status to re-confirm a force
+ *  delete. encodeURIComponent keeps slashed names (drafts/x) one segment. */
+export async function deleteBranch(
+	name: string,
+	force = false,
+): Promise<{ ok: boolean }> {
+	const res = await fetch(
+		`/api/branches/${encodeURIComponent(name)}${force ? "?force=1" : ""}`,
+		{ method: "DELETE" },
+	);
+	if (!res.ok) {
+		let message = `delete failed (${res.status})`;
+		try {
+			const body = (await res.json()) as { error?: string };
+			if (body.error) message = body.error;
+		} catch {
+			// non-JSON error body — keep the generic message
+		}
+		throw new SaveError(res.status, message);
+	}
+	return (await res.json()) as { ok: boolean };
+}
+
 export const sync = () => request<SyncResult>("/api/sync", { method: "POST" });
 
 // --- M4-2: repo meta, drafts, merge, restore -------------------------------
@@ -183,6 +207,8 @@ export interface RepoMeta {
 	docs: Record<string, DocMeta>;
 	drafts: Record<string, DraftEntry[]>;
 	deleted: DeletedDoc[];
+	/** email → GitHub username (avatar resolution) — the config map verbatim. */
+	authors: Record<string, string>;
 }
 
 export const getMeta = () => request<RepoMeta>("/api/meta");

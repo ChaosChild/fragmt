@@ -192,3 +192,25 @@ test("deleted: delete-commit sha + date, latest first, deduped by path", async (
 		},
 	]);
 });
+
+test("authors: the config map verbatim in RepoMeta; {} without a config", async () => {
+	const root = repo("main");
+	write(root, "docs/a.md", "# a\n");
+	commit(root, "A <a@example.com>", "seed");
+
+	writeFileSync(
+		join(root, ".fragmt.json"),
+		JSON.stringify({
+			docsRoot: "docs",
+			authors: { "a@example.com": "alice-gh", "x@example.com": "x" },
+		}),
+	);
+	expect((await repoMeta(root, "docs")).authors).toEqual({
+		"a@example.com": "alice-gh",
+		"x@example.com": "x",
+	});
+
+	// No config (or an unreadable one) never fails the walk — just no map.
+	rmSync(join(root, ".fragmt.json"));
+	expect((await repoMeta(root, "docs")).authors).toEqual({});
+});

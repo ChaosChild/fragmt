@@ -23,7 +23,8 @@ export type FileOp =
 
 export type BranchAction =
 	| { kind: "switch"; name: string }
-	| { kind: "create"; name: string };
+	| { kind: "create"; name: string }
+	| { kind: "delete"; name: string };
 
 /** Docs must end in .md (core rule) — keep free-form input forgiving. */
 function toDocPath(input: string): string {
@@ -106,8 +107,8 @@ function MenuPopover({
 
 /**
  * The sidebar-head branch control: reads as metadata ("on main"), opens a
- * small menu to switch or create a branch. Performing the switch (and the
- * unsaved-changes guard) is App's business.
+ * small menu to switch, create, or delete a branch. Performing the action
+ * (and the unsaved-changes guard on switches) is App's business.
  */
 export function BranchMenu({
 	current,
@@ -156,18 +157,35 @@ export function BranchMenu({
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				{failed && <p className="menu-empty">branches unavailable</p>}
 				{(branches ?? []).map((b) => (
-					<button
-						key={b}
-						type="button"
-						className="menu-item"
-						aria-current={b === current ? "true" : undefined}
-						onClick={() => {
-							menu.close();
-							if (b !== current) onAction({ kind: "switch", name: b });
-						}}
-					>
-						{b}
-					</button>
+					// One row, two targets: the name switches, the trash deletes
+					// (never offered on the current branch — the server refuses it).
+					<span key={b} className="menu-row">
+						<button
+							type="button"
+							className="menu-item"
+							aria-current={b === current ? "true" : undefined}
+							onClick={() => {
+								menu.close();
+								if (b !== current) onAction({ kind: "switch", name: b });
+							}}
+						>
+							{b}
+						</button>
+						{b !== current && (
+							<button
+								type="button"
+								className="tool-btn"
+								title="Delete branch"
+								aria-label={`Delete branch ${b}`}
+								onClick={() => {
+									menu.close();
+									onAction({ kind: "delete", name: b });
+								}}
+							>
+								<Trash2 aria-hidden="true" />
+							</button>
+						)}
+					</span>
 				))}
 				<form className="popover-form" onSubmit={submit}>
 					<label htmlFor="branch-name">New branch</label>

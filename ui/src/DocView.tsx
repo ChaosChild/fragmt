@@ -12,15 +12,25 @@ import type { AtDoc } from "./editor/at";
 import { shortDate } from "./Sidebar";
 
 /**
- * The email-parallel avatar (item 3): the keyless GitHub noreply heuristic —
- * `123456+user@` or `user@` → avatars.githubusercontent.com/<user>?s=76; a
- * load error or non-matching email falls back to the author's initials.
+ * The email-parallel avatar (item 3): the config authors map first (email →
+ * GitHub username, App passes it from meta), then the keyless GitHub noreply
+ * heuristic — `123456+user@` or `user@` — either way
+ * avatars.githubusercontent.com/<user>?s=76; a load error or non-matching
+ * email falls back to the author's initials.
  */
-function Avatar({ author, email }: { author: string; email: string }) {
+function Avatar({
+	author,
+	email,
+	authors,
+}: {
+	author: string;
+	email: string;
+	authors: Record<string, string>;
+}) {
 	const [broken, setBroken] = useState(false);
-	const user = /^(\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(
-		email,
-	)?.[2];
+	const user =
+		authors[email] ||
+		/^(\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(email)?.[2];
 	if (user && !broken) {
 		return (
 			<img
@@ -83,6 +93,7 @@ export function DocView({
 	onDraft,
 	docs,
 	onSelectDoc,
+	authors,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
@@ -124,6 +135,8 @@ export function DocView({
 	/** On a non-main branch touching THIS doc — the pill's non-clickable
 	 *  flip side, the "on draft" badge (App computes; M4-3). */
 	onDraft: boolean;
+	/** email → GitHub username — Avatar's first lookup (App, from meta). */
+	authors: Record<string, string>;
 	/** The tree's docs — the editor's @ menu and link-click doc set (M4-2). */
 	docs: AtDoc[];
 	/** An in-doc @ link resolved to a tree doc — navigate in-app (App). */
@@ -350,6 +363,7 @@ export function DocView({
 					<Avatar
 						author={docMeta?.author ?? ""}
 						email={docMeta?.authorEmail ?? ""}
+						authors={authors}
 					/>
 					<div className="dh-main">
 						<div className="dh-author">{docMeta?.author ?? "—"}</div>

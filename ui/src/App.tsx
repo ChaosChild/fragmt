@@ -8,6 +8,7 @@ import {
 	createFolder,
 	type DeletedDoc,
 	type DocResponse,
+	deleteBranch,
 	deleteComment,
 	deleteDoc,
 	deleteFolder,
@@ -319,10 +320,45 @@ export function App() {
 	}
 
 	// The branch-switch guard: unsaved edits block the switch with the
-	// save-or-discard banner (DocView), never a silent loss.
+	// save-or-discard banner (DocView), never a silent loss. Deletion skips
+	// the guard — it never touches the worktree or the checked-out branch.
 	function requestBranch(action: BranchAction) {
+		if (action.kind === "delete") {
+			void runDeleteBranch(action.name);
+			return;
+		}
 		if (live.current.dirty) setPendingBranch(action);
 		else void switchTo(action);
+	}
+
+	// Branch deletion (M4-3): confirm → DELETE; an unmerged 409 asks again
+	// before the force delete. The server refuses the current branch, so the
+	// worktree is never touched — no dirty guard. BranchMenu refetches its
+	// list on open; meta and the branch line refresh here.
+	async function runDeleteBranch(name: string) {
+		if (!window.confirm(`Delete branch "${name}"?`)) return;
+		try {
+			await deleteBranch(name);
+		} catch (e) {
+			if (e instanceof SaveError && e.status === 409) {
+				if (!window.confirm(`"${name}" has unmerged commits. Force-delete?`))
+					return;
+				try {
+					await deleteBranch(name, true);
+				} catch (e2) {
+					setError(e2 instanceof Error ? e2.message : String(e2));
+					return;
+				}
+			} else {
+				setError(e instanceof Error ? e.message : String(e));
+				return;
+			}
+		}
+		setError(null);
+		refreshMeta();
+		getBranches()
+			.then((r) => setBranch(r.current))
+			.catch(() => {});
 	}
 
 	// --- M4-2: protected main (item 7) --------------------------------------
@@ -619,6 +655,7 @@ export function App() {
 						draftBranch={draftBranch}
 						onOpenDraft={() => draftBranch && openDraft(draftBranch)}
 						onDraft={onDraft}
+						authors={meta?.authors ?? {}}
 						docs={docs}
 						onSelectDoc={setSelected}
 					/>

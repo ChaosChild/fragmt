@@ -1844,6 +1844,16 @@ button.comment-quote:hover {
 	box-shadow: var(--glass-shadow);
 	backdrop-filter: blur(6px);
 }
+/* A branch row: the switch target grows, the delete icon keeps its 32px. */
+.menu-row {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+.menu-row .menu-item {
+	flex: 1;
+	min-width: 0;
+}
 .menu-item {
 	display: flex;
 	align-items: center;

@@ -14,6 +14,7 @@ import {
 	currentBranch,
 	DocNotFoundError,
 	DocPathError,
+	deleteBranch,
 	deleteDoc,
 	deleteFolder,
 	deleteThread,
@@ -410,6 +411,34 @@ export function createApp(ctx: ServerContext): Hono {
 			await checkoutBranch(ctx.repoRoot, body.name);
 			return c.json({ current: await currentBranch(ctx.repoRoot) });
 		} catch (e) {
+			return respondGitError(c, e);
+		}
+	});
+
+	// `:name` is single-segment by design — slashed names (drafts/x) arrive
+	// percent-encoded (%2F) and stay one segment for the router; Hono decodes
+	// the param value for us.
+	app.delete("/api/branches/:name", async (c) => {
+		const name = c.req.param("name");
+		if (badBranchName(name))
+			return c.json({ error: "invalid branch name" }, 400);
+		try {
+			if (name === (await currentBranch(ctx.repoRoot)))
+				return c.json({ error: "switch away first" }, 400);
+			await deleteBranch(
+				ctx.repoRoot,
+				name,
+				c.req.query("force") !== undefined,
+			);
+			return c.json({ ok: true });
+		} catch (e) {
+			// Unmerged without force is a client-decidable state, not an error:
+			// git's own words ride the 409 so the UI can ask about a force delete.
+			if (
+				e instanceof GitError &&
+				/not (fully )?merged/i.test(`${e.stdout}\n${e.stderr}`)
+			)
+				return c.json({ unmerged: true, error: e.message }, 409);
 			return respondGitError(c, e);
 		}
 	});
