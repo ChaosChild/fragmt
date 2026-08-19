@@ -16,6 +16,7 @@ import {
 	setTitle,
 } from "./api";
 import { displayTitle } from "./display";
+import { parentFolder } from "./dnd";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 import type { AtDoc } from "./editor/at";
 import { MenuPopover, useMenu } from "./Menus";
@@ -391,29 +392,35 @@ export function DocView({
 								<FolderInput aria-hidden="true" />
 							</button>
 							<MenuPopover anchor={moveMenu.anchor} popRef={moveMenu.popRef}>
-								<button
-									type="button"
-									className="menu-item"
-									onClick={() => {
-										moveMenu.close();
-										onMoveDoc("");
-									}}
-								>
-									/ (root)
-								</button>
-								{folders.map((f) => (
+								{/* The current folder is a guaranteed "already exists"
+								    409 — never offered (same rule as the drag guard). */}
+								{parentFolder(selected ?? "") !== "" && (
 									<button
-										key={f}
 										type="button"
 										className="menu-item"
 										onClick={() => {
 											moveMenu.close();
-											onMoveDoc(f);
+											onMoveDoc("");
 										}}
 									>
-										{f}
+										/ (root)
 									</button>
-								))}
+								)}
+								{folders
+									.filter((f) => f !== parentFolder(selected ?? ""))
+									.map((f) => (
+										<button
+											key={f}
+											type="button"
+											className="menu-item"
+											onClick={() => {
+												moveMenu.close();
+												onMoveDoc(f);
+											}}
+										>
+											{f}
+										</button>
+									))}
 							</MenuPopover>
 						</span>
 						<button

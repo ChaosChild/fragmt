@@ -807,14 +807,31 @@ export function App() {
 								: requestDeleteFolder(item.path, name)
 						}
 					/>
-					{error && (
-						<p className="label-meta" style={{ padding: "0 16px 16px" }}>
-							{error}
-						</p>
-					)}
 					<SidebarResizeHandle onWidth={applySidebarW} />
 				</aside>
 				<main className="main">
+					{/* App-level failures (file ops, sync, branch commands) say
+					    what went wrong where the user is looking — a failed move
+					    must not read as "nothing happened". */}
+					{error && (
+						<div
+							className="conflict-banner"
+							role="alert"
+							style={{ margin: "12px 24px 0" }}
+						>
+							<div>
+								<strong>Something failed</strong>
+								{error}
+							</div>
+							<button
+								type="button"
+								className="iconbtn subtle dismiss"
+								onClick={() => setError(null)}
+							>
+								Dismiss
+							</button>
+						</div>
+					)}
 					<DocView
 						doc={doc}
 						selected={selected}
