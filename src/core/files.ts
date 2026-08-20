@@ -1,12 +1,13 @@
 import {
 	existsSync,
 	mkdirSync,
+	readdirSync,
 	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { commitAs } from "./commit.js";
 import { canonicalBody, DocNotFoundError, resolveDocPath } from "./docs.js";
 import { git } from "./git.js";
@@ -34,12 +35,14 @@ function repoRel(repoRoot: string, abs: string): string {
 
 /** Unwind a failed move: the fs rename back, plus unstaging — `git add`
  *  stages what it can before refusing an ignored path, so the source
- *  deletion would otherwise sit in the index. Best-effort: never masks the
- *  original error. */
+ *  deletion would otherwise sit in the index (a keep-`.gitkeep` staged in
+ *  the same failed commit unwinds the same way). Best-effort: never masks
+ *  the original error. */
 async function rollbackMove(
 	repoRoot: string,
 	fromAbs: string,
 	toAbs: string,
+	extraPaths: string[] = [],
 ): Promise<void> {
 	try {
 		renameSync(toAbs, fromAbs);
@@ -49,10 +52,34 @@ async function rollbackMove(
 			"--",
 			repoRel(repoRoot, fromAbs),
 			repoRel(repoRoot, toAbs),
+			...extraPaths,
 		]);
 	} catch {
 		// rollback is best-effort; the original error is the story
 	}
+}
+
+/**
+ * M4-4 dogfood round: when a move empties a folder of its last markdown, the
+ * M1 prune rule would drop it from every tree-derived surface — including as
+ * a drop target, so the move could not be undone in the UI (the 2026-08-20
+ * corpus.md dogfood: tests/fixtures vanished mid-drag-back). Same contract
+ * as createFolder: a committed `.gitkeep` keeps the folder visible. Returns
+ * the repo-relative keep path to fold into the move's commit, or null when
+ * the folder still has docs, already has a keep, or is the docsRoot root.
+ */
+function keepEmptiedFolder(
+	repoRoot: string,
+	docsRoot: string,
+	emptiedAbs: string,
+): string | null {
+	if (emptiedAbs === resolve(repoRoot, docsRoot)) return null;
+	const keep = join(emptiedAbs, ".gitkeep");
+	if (existsSync(keep)) return null;
+	const mdLeft = readdirSync(emptiedAbs).some((e) => e.endsWith(".md"));
+	if (mdLeft) return null;
+	writeFileSync(keep, "");
+	return repoRel(repoRoot, keep);
 }
 
 /** Create a doc (LF, exactly one trailing newline) in one commit. */
@@ -98,18 +125,28 @@ export async function moveDoc(
 	const user = await localUser(repoRoot);
 	mkdirSync(dirname(toAbs), { recursive: true });
 	renameSync(fromAbs, toAbs);
+	const keep = keepEmptiedFolder(repoRoot, docsRoot, dirname(fromAbs));
 	try {
 		const sha = await commitAs(
 			user,
 			{
-				files: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
+				files: keep
+					? [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs), keep]
+					: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
 				message: `Rename ${from} to ${to}`,
 			},
 			repoRoot,
 		);
 		return { sha };
 	} catch (e) {
-		await rollbackMove(repoRoot, fromAbs, toAbs);
+		await rollbackMove(
+			repoRoot,
+			fromAbs,
+			toAbs,
+			keep ? [keep] : [],
+		);
+		if (keep)
+			rmSync(join(dirname(fromAbs), ".gitkeep"), { force: true });
 		throw e;
 	}
 }
@@ -184,11 +221,14 @@ export async function renameFolder(
 	const user = await localUser(repoRoot);
 	mkdirSync(dirname(toAbs), { recursive: true });
 	renameSync(fromAbs, toAbs);
+	const keep = keepEmptiedFolder(repoRoot, docsRoot, dirname(fromAbs));
 	try {
 		const sha = await commitAs(
 			user,
 			{
-				files: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
+				files: keep
+					? [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs), keep]
+					: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
 				message: `Rename ${from} to ${to}`,
 			},
 			repoRoot,
@@ -196,7 +236,14 @@ export async function renameFolder(
 		return { sha };
 	} catch (e) {
 		// Same rollback as moveDoc — the subtree returns untouched.
-		await rollbackMove(repoRoot, fromAbs, toAbs);
+		await rollbackMove(
+			repoRoot,
+			fromAbs,
+			toAbs,
+			keep ? [keep] : [],
+		);
+		if (keep)
+			rmSync(join(dirname(fromAbs), ".gitkeep"), { force: true });
 		throw e;
 	}
 }

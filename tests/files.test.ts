@@ -68,6 +68,12 @@ function treePaths(node: ReturnType<typeof listTree>): string[] {
 	return [...self, ...(node.children ?? []).flatMap(treePaths)];
 }
 
+/** Every folder path in the tree — the drop-target surface. */
+function folderPaths(node: ReturnType<typeof listTree>): string[] {
+	const self = node.type === "dir" && node.path !== "" ? [node.path] : [];
+	return [...self, ...(node.children ?? []).flatMap(folderPaths)];
+}
+
 test("createDoc writes LF with one trailing newline as exactly one commit", async () => {
 	const root = repo();
 	seed(root);
@@ -106,6 +112,60 @@ test("moveDoc is one commit; content and history follow the rename", async () =>
 	expect(run(root, ["log", "--follow", "--format=%s", "b.md"])).toContain(
 		"Create a.md",
 	);
+});
+
+test("moveDoc empties the source folder — a .gitkeep keeps it visible and droppable", async () => {
+	const root = repo();
+	seed(root);
+	await createDoc(root, ".", "docs/a.md", "# A\n");
+
+	// The 2026-08-20 dogfood: moving the last doc out made tests/fixtures
+	// vanish from every tree surface — no drop target to undo with.
+	await moveDoc(root, ".", "docs/a.md", "b.md");
+
+	expect(count(root)).toBe(3); // still ONE commit for the whole move
+	expect(lastCommit(root)).toBe(`${AUTHOR}|Rename docs/a.md to b.md`);
+	expect(existsSync(join(root, "docs", ".gitkeep"))).toBe(true);
+	expect(run(root, ["show", "--name-only", "--format=", "HEAD"])).toContain(
+		"docs/.gitkeep",
+	);
+	// The folder stays in the tree — a visible, droppable undo target.
+	expect(folderPaths(listTree(root, "."))).toContain("docs");
+	expect(treePaths(listTree(root, "."))).toEqual(["b.md", "seed.md"]);
+});
+
+test("moveDoc leaves no .gitkeep when siblings remain or the source is root", async () => {
+	const root = repo();
+	seed(root);
+	await createDoc(root, ".", "docs/a.md", "# A\n");
+	await createDoc(root, ".", "docs/b.md", "# B\n");
+	await createDoc(root, ".", "root.md", "# R\n");
+
+	await moveDoc(root, ".", "docs/a.md", "docs/moved.md");
+	expect(existsSync(join(root, "docs", ".gitkeep"))).toBe(false);
+
+	await moveDoc(root, ".", "root.md", "docs/root.md");
+	expect(existsSync(join(root, ".gitkeep"))).toBe(false); // never at docsRoot
+});
+
+test("renameFolder keeps the emptied parent visible the same way", async () => {
+	const root = repo();
+	seed(root);
+	await createFolder(root, ".", "docs/a/inner");
+	await createDoc(root, ".", "docs/a/inner/only.md", "# Only\n");
+
+	// Moving the folder away empties docs/a — its keep lands in the same
+	// commit, and docs/a stays in the tree.
+	await renameFolder(root, ".", "docs/a/inner", "b/inner");
+
+	expect(count(root)).toBe(4);
+	expect(existsSync(join(root, "docs", "a", ".gitkeep"))).toBe(true);
+	expect(run(root, ["show", "--name-only", "--format=", "HEAD"])).toContain(
+		"docs/a/.gitkeep",
+	);
+	const folders = folderPaths(listTree(root, "."));
+	expect(folders).toContain("docs/a");
+	expect(folders).toContain("b/inner");
 });
 
 test("deleteDoc is one commit and the file is gone from disk and HEAD", async () => {
