@@ -220,6 +220,9 @@ export interface RepoMeta {
 	deleted: DeletedDoc[];
 	/** email → GitHub username (avatar resolution) — the config map verbatim. */
 	authors: Record<string, string>;
+	/** Non-null while a stood merge is being resolved (M4-4 b3) — resolution
+	 *  mode's on-switch; the full per-file detail is getMergeState. */
+	merge: { branch: string | null; remaining: number } | null;
 }
 
 export const getMeta = () => request<RepoMeta>("/api/meta");
@@ -233,21 +236,105 @@ export const startDraft = (docPath: string) =>
 	});
 
 /** Own fetch (saveDoc's pattern): the 409 conflict body carries `message`,
- *  not `error` — callers branch on SaveError.status to show the banner. */
+ *  not `error` — callers branch on SaveError.status to show the banner. A
+ *  conflict body throws MergeError instead (M4-4 b3): `stood` decides
+ *  resolution mode vs the honest terminal-reconcile fallback. */
+export class MergeError extends SaveError {
+	constructor(
+		status: number,
+		message: string,
+		readonly payload: {
+			merged: false;
+			conflict: true;
+			stood: boolean;
+			branch?: string;
+			files: string[];
+			message?: string;
+		},
+	) {
+		super(status, message);
+		this.name = "MergeError";
+	}
+}
+
 export async function mergeDraft(): Promise<{ sha: string }> {
 	const res = await fetch("/api/merge", { method: "POST" });
 	if (!res.ok) {
 		let message = `merge failed (${res.status})`;
+		let conflict: MergeError["payload"] | null = null;
 		try {
-			const body = (await res.json()) as { error?: string; message?: string };
+			const body = (await res.json()) as {
+				error?: string;
+				message?: string;
+				conflict?: boolean;
+				stood?: boolean;
+				branch?: string;
+				files?: string[];
+			};
 			message = body.error ?? body.message ?? message;
+			if (body.conflict)
+				conflict = {
+					merged: false,
+					conflict: true,
+					stood: Boolean(body.stood),
+					branch: body.branch,
+					files: body.files ?? [],
+					message: body.message,
+				};
 		} catch {
 			// non-JSON error body — keep the generic message
 		}
+		if (conflict) throw new MergeError(res.status, message, conflict);
 		throw new SaveError(res.status, message);
 	}
 	return (await res.json()) as { sha: string };
 }
+
+// --- M4-4 b3: merge resolution ---------------------------------------------
+
+/** Mirror of the core conflict types (src/core/conflict.ts via drafts.ts). */
+export type ConflictPart = { text: string } | { ours: string; theirs: string };
+export interface SidecarMergeSummary {
+	keptFromOurs: number;
+	keptFromTheirs: number;
+	resolvedCarried: number;
+	repliesMerged: number;
+}
+export type MergeFile =
+	| { path: string; kind: "doc"; parts: ConflictPart[] }
+	| { path: string; kind: "sidecar"; summary: SidecarMergeSummary }
+	| { path: string; kind: "other" };
+export type MergeState =
+	| { inMerge: false }
+	| {
+			inMerge: true;
+			branch: string | null;
+			files: MergeFile[];
+			remaining: number;
+	  };
+
+/** Full detail of the standing merge — `{inMerge:false}` when none stands. */
+export const getMergeState = () => request<MergeState>("/api/merge");
+
+/** Doc resolutions send the assembled text (content); sidecar resolutions one
+ *  of the three structural choices — exactly one field, the PUT's shape. */
+export const resolveMergeFile = (
+	path: string,
+	resolution: { content: string } | { choice: "merged" | "ours" | "theirs" },
+) =>
+	request<{ remaining: number }>("/api/merge/resolve", {
+		method: "PUT",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ path, ...resolution }),
+	});
+
+/** Finishes the standing merge — the merge commit. */
+export const concludeMerge = () =>
+	request<{ sha: string }>("/api/merge/conclude", { method: "POST" });
+
+/** Undoes the standing merge and returns to the draft branch. */
+export const abortMerge = () =>
+	request<{ ok: boolean }>("/api/merge/abort", { method: "POST" });
 
 export const restoreDoc = (path: string, sha: string) =>
 	request<{ sha: string }>("/api/restore", {

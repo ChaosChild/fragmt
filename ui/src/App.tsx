@@ -24,6 +24,7 @@ import {
 	getDoc,
 	getMeta,
 	getTree,
+	MergeError,
 	mergeDraft,
 	moveDoc,
 	patchComment,
@@ -46,6 +47,7 @@ import {
 	type FileOp,
 	NewDocButton,
 } from "./Menus";
+import { ResolutionView } from "./ResolutionView";
 import { Sidebar, SidebarResizeHandle } from "./Sidebar";
 import { readStoredSidebarWidth, storeSidebarWidth } from "./sidebar-geometry";
 
@@ -112,6 +114,10 @@ export function App() {
 	} | null>(null);
 	const [syncing, setSyncing] = useState(false);
 	const [conflict, setConflict] = useState<string | null>(null);
+	// M4-4 b3: the merge-conflict fallback (stood:false) — a distinct banner
+	// from the sync conflict: the merge was aborted server-side and the listed
+	// files must be reconciled in the terminal before merging again.
+	const [mergeConflict, setMergeConflict] = useState<string | null>(null);
 	const [ledRed, setLedRed] = useState(false);
 	// M4-3 b3: drag-resized sidebar width — applied as --sidebar-w on the
 	// .sidebar element itself (not :root), so the ≤768px drawer override
@@ -350,7 +356,15 @@ export function App() {
 		}
 	}, []);
 
+	// Resolution mode (M4-4 b3): meta.merge is the on-switch — on mount, on
+	// refresh, and after a stood merge (runMerge refreshes meta below). The
+	// main pane swaps to ResolutionView; the sidebar stays for context.
+	const inResolution = Boolean(meta?.merge);
+
 	useEffect(() => {
+		// Mid-merge the server's write guard would 409 every sync — no point
+		// spinning (or redding the LED) while the merge is resolved.
+		if (inResolution) return;
 		const id = setInterval(() => void runSync(), 60_000);
 		const onFocus = () => void runSync();
 		window.addEventListener("focus", onFocus);
@@ -358,7 +372,7 @@ export function App() {
 			clearInterval(id);
 			window.removeEventListener("focus", onFocus);
 		};
-	}, [runSync]);
+	}, [runSync, inResolution]);
 
 	// --- branches: switching reloads tree + open doc from the new branch.
 	async function switchTo(action: BranchAction) {
@@ -635,22 +649,71 @@ export function App() {
 		void switchTo({ kind: "switch", name: branchName });
 	}
 
-	// Merge (item 8): the sanctioned write back to main. A 409 shows the
-	// conflict banner — the draft is untouched and still checked out.
-	// Success reuses switchTo's refresh; the post-merge checkout is already
-	// on main, so the "switch" is a no-op that reloads branch, meta, tree,
-	// and the open doc on main's version. (Dirty buffers never get here —
-	// the button is disabled; a reload would drop them.)
+	// Merge (item 8): the sanctioned write back to main. A stood conflict
+	// (M4-4) flips the app into resolution mode — the merge stands on main and
+	// meta.merge (refreshed here) is the mode's on-switch; ResolutionView owns
+	// everything from there. A non-resolvable conflict aborts server-side and
+	// gets the honest merge-conflict banner (nothing changed; reconcile in the
+	// terminal, merge again). Success reuses switchTo's refresh; the
+	// post-merge checkout is already on main, so the "switch" is a no-op that
+	// reloads branch, meta, tree, and the open doc on main's version. (Dirty
+	// buffers never get here — the button is disabled; a reload would drop
+	// them.)
 	async function runMerge() {
+		let stood = false;
 		try {
 			await mergeDraft();
 		} catch (e) {
-			if (e instanceof SaveError && e.status === 409) setConflict(e.message);
-			else setError(e instanceof Error ? e.message : String(e));
+			if (e instanceof MergeError && e.payload.conflict) {
+				if (e.payload.stood) {
+					stood = true;
+				} else {
+					setMergeConflict(
+						`the merge was aborted and nothing changed. These files conflict and fragmt can't resolve them in-UI: ${e.payload.files.join(", ")}. Reconcile in your terminal, then merge again.`,
+					);
+					return;
+				}
+			} else if (e instanceof SaveError && e.status === 409) {
+				setConflict(e.message);
+				return;
+			} else {
+				setError(e instanceof Error ? e.message : String(e));
+				return;
+			}
+		}
+		if (stood) {
+			// The merge stands on main — flip the mode (meta.merge) and move the
+			// branch line; ResolutionView fetches its own detail on mount.
+			refreshMeta();
+			getBranches()
+				.then((r) => setBranch(r.current))
+				.catch(() => {});
 			return;
 		}
 		const mainName = meta?.main;
 		if (mainName) void switchTo({ kind: "switch", name: mainName });
+	}
+
+	// Exit resolution mode (M4-4 b3, concluded or aborted): everything
+	// reloads from wherever HEAD ended up — meta first (merge → null flips
+	// the mode off), then branch, tree, and the open doc (its pre-merge
+	// buffer is stale either way).
+	function mergeDone() {
+		refreshMeta();
+		getBranches()
+			.then((r) => setBranch(r.current))
+			.catch(() => {});
+		void (async () => {
+			try {
+				const t = await getTree();
+				setTree(t);
+				const s = live.current.selected;
+				if (s && treeHas(t, s)) setDoc(await getDoc(s));
+				else setSelected(firstDoc(t));
+			} catch {
+				// keep prior state — quiet
+			}
+		})();
 	}
 
 	// One restore commit per entry, sequentially; the first error surfaces
@@ -762,21 +825,25 @@ export function App() {
 						</div>
 						<div className="side-head-row side-head-branch">
 							<BranchMenu current={branch} onAction={requestBranch} />
-							<button
-								type="button"
-								className="iconbtn"
-								disabled={!canMerge || dirty}
-								title={
-									canMerge
-										? dirty
-											? "save or discard changes to the open document first"
-											: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
-										: undefined
-								}
-								onClick={() => void runMerge()}
-							>
-								Merge
-							</button>
+							{/* Resolution mode owns the merge act — the global button
+							    hides until the standing merge finishes or aborts. */}
+							{!inResolution && (
+								<button
+									type="button"
+									className="iconbtn"
+									disabled={!canMerge || dirty}
+									title={
+										canMerge
+											? dirty
+												? "save or discard changes to the open document first"
+												: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
+											: undefined
+									}
+									onClick={() => void runMerge()}
+								>
+									Merge
+								</button>
+							)}
 						</div>
 					</div>
 					<Sidebar
@@ -806,7 +873,8 @@ export function App() {
 				<main className="main">
 					{/* App-level failures (file ops, sync, branch commands) say
 					    what went wrong where the user is looking — a failed move
-					    must not read as "nothing happened". */}
+					    must not read as "nothing happened". The merge-conflict
+					    fallback (M4-4 b3) is its own banner, never the sync one. */}
 					{error && (
 						<div
 							className="conflict-banner"
@@ -826,60 +894,85 @@ export function App() {
 							</button>
 						</div>
 					)}
-					<DocView
-						doc={doc}
-						selected={selected}
-						// A successful save commits locally — synced flips back
-						// to false: the LED reads Saved (amber), not Synced;
-						// the next sync confirms it.
-						onSaved={(d) => {
-							setDoc(d);
-							setSynced(false);
-							// A save is a commit — versions/drafts/bin moved.
-							refreshMeta();
-						}}
-						onReload={reloadSelected}
-						onDirtyChange={setDirty}
-						commentCount={threads.length}
-						onOpenComments={() => setRailOpen(true)}
-						onCommentsChanged={refreshComments}
-						onSpanClick={(id) => {
-							setRailOpen(true);
-							setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
-						}}
-						pendingAction={pendingAction}
-						onPendingActionCancel={() => setPendingAction(null)}
-						conflict={conflict}
-						onDismissConflict={() => setConflict(null)}
-						onBeforeEdit={beforeEdit}
-						// Protected main (item 7): read-mode comments draft
-						// first — DocView awaits this before the combined POST
-						// (undefined off main: no interception).
-						onDraftFirst={onMain ? draftFirst : undefined}
-						docMeta={docMeta}
-						branch={branch}
-						led={led}
-						ledLabel={ledLabel}
-						draftBranch={draftBranch}
-						onOpenDraft={() => draftBranch && openDraft(draftBranch)}
-						onDraft={onDraft}
-						authors={meta?.authors ?? {}}
-						docs={docs}
-						onSelectDoc={onDocLink}
-						onSelectFolder={onSelectFolderLink}
-						pendingAnchor={pendingAnchor}
-						onAnchorConsumed={clearAnchor}
-						folders={moveDest.folders}
-						rootMoveValid={moveDest.rootValid}
-						onBeforeRename={beforeRename}
-						onMoveDoc={requestMoveDoc}
-						onDeleteDoc={requestDeleteDoc}
-						onRenamed={onRenamed}
-					/>
+					{mergeConflict && (
+						<div
+							className="conflict-banner"
+							role="alert"
+							style={{ margin: "12px 24px 0" }}
+						>
+							<div>
+								<strong>Merge conflict</strong>
+								{mergeConflict}
+							</div>
+							<button
+								type="button"
+								className="iconbtn subtle dismiss"
+								onClick={() => setMergeConflict(null)}
+							>
+								Dismiss
+							</button>
+						</div>
+					)}
+					{inResolution ? (
+						<ResolutionView onDone={mergeDone} />
+					) : (
+						<DocView
+							doc={doc}
+							selected={selected}
+							// A successful save commits locally — synced flips back
+							// to false: the LED reads Saved (amber), not Synced;
+							// the next sync confirms it.
+							onSaved={(d) => {
+								setDoc(d);
+								setSynced(false);
+								// A save is a commit — versions/drafts/bin moved.
+								refreshMeta();
+							}}
+							onReload={reloadSelected}
+							onDirtyChange={setDirty}
+							commentCount={threads.length}
+							onOpenComments={() => setRailOpen(true)}
+							onCommentsChanged={refreshComments}
+							onSpanClick={(id) => {
+								setRailOpen(true);
+								setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
+							}}
+							pendingAction={pendingAction}
+							onPendingActionCancel={() => setPendingAction(null)}
+							conflict={conflict}
+							onDismissConflict={() => setConflict(null)}
+							onBeforeEdit={beforeEdit}
+							// Protected main (item 7): read-mode comments draft
+							// first — DocView awaits this before the combined POST
+							// (undefined off main: no interception).
+							onDraftFirst={onMain ? draftFirst : undefined}
+							docMeta={docMeta}
+							branch={branch}
+							led={led}
+							ledLabel={ledLabel}
+							draftBranch={draftBranch}
+							onOpenDraft={() => draftBranch && openDraft(draftBranch)}
+							onDraft={onDraft}
+							authors={meta?.authors ?? {}}
+							docs={docs}
+							onSelectDoc={onDocLink}
+							onSelectFolder={onSelectFolderLink}
+							pendingAnchor={pendingAnchor}
+							onAnchorConsumed={clearAnchor}
+							folders={moveDest.folders}
+							rootMoveValid={moveDest.rootValid}
+							onBeforeRename={beforeRename}
+							onMoveDoc={requestMoveDoc}
+							onDeleteDoc={requestDeleteDoc}
+							onRenamed={onRenamed}
+						/>
+					)}
 				</main>
 				{/* The rail is a layout sibling of <main> (right margin column);
-				    the head carries the app's sync LED + theme (review decision 2). */}
-				{selected && (
+				    the head carries the app's sync LED + theme (review decision 2).
+				    Hidden in resolution mode — the doc pane is taken over and its
+				    comments are mid-merge anyway. */}
+				{selected && !inResolution && (
 					<CommentsRail
 						threads={threads}
 						liveIds={liveIds}

@@ -2104,3 +2104,161 @@ button.comment-quote:hover {
 .recycle-bin.drop-target .folder-row {
 	color: var(--danger);
 }
+
+/* ── M4-4 b3: merge resolution — the main-pane takeover ───────── */
+.resolve-pane {
+	width: 100%;
+	max-width: var(--reading-max);
+	margin: 0 auto;
+	padding: var(--space-8) var(--space-8) var(--space-12);
+}
+.resolve-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: var(--space-3);
+	margin-bottom: var(--space-5);
+	flex-wrap: wrap;
+}
+.resolve-title {
+	font-family: var(--font-serif);
+	font-size: 2rem;
+	font-weight: 600;
+	line-height: 1.08;
+	letter-spacing: -0.02em;
+	color: var(--fg);
+	margin: 0 0 6px;
+}
+/* The branch name reads as code, not prose. */
+.resolve-title span {
+	font-family: var(--font-mono);
+	font-size: 0.72em;
+	color: var(--muted);
+	font-weight: 500;
+}
+/* One card per conflicting file — the surface family of the sidebar cards,
+   raised off the pane. */
+.resolve-file {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--card-shadow);
+	padding: var(--space-4) var(--space-5) var(--space-5);
+	margin-bottom: var(--space-4);
+}
+.resolve-file.done {
+	opacity: 0.55;
+	box-shadow: none;
+}
+.resolve-file-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-3);
+	margin-bottom: var(--space-3);
+}
+.resolve-path {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	color: var(--fg);
+	overflow-wrap: anywhere;
+}
+.resolve-staged {
+	font-family: var(--font-mono);
+	font-size: 9px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--success);
+	border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
+	border-radius: 3px;
+	padding: 0 4px;
+	line-height: 1.5;
+	flex-shrink: 0;
+}
+.resolve-summary {
+	font-size: 13px;
+	color: var(--muted);
+	margin: 0 0 var(--space-3);
+}
+/* A hunk card: the pick buttons, then the chosen/edited text. */
+.hunk {
+	border: 1px solid var(--border-soft);
+	border-radius: var(--radius);
+	padding: var(--space-3);
+	margin-bottom: var(--space-3);
+}
+.hunk-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+	margin-bottom: var(--space-2);
+}
+.hunk-side {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	letter-spacing: 0.02em;
+	color: var(--fg);
+	background: var(--pane);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 4px 10px;
+	cursor: pointer;
+}
+.hunk-side:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+.hunk-side:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+/* Picked = the accent, plainly (the same family as .doc-card.active). */
+.hunk-side.picked {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--accent-on);
+}
+.hunk-side.picked:hover {
+	background: var(--accent-hover);
+	color: var(--accent-on);
+}
+.hunk-text,
+.hunk-textarea {
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	line-height: 1.55;
+	background: var(--pane);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--space-3);
+	margin: 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 40vh;
+	overflow-y: auto;
+	width: 100%;
+	color: inherit;
+}
+.hunk-textarea:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.resolve-preview {
+	margin-top: var(--space-4);
+}
+.resolve-preview pre {
+	background: var(--pane);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--space-4);
+	overflow-x: auto;
+	max-height: 40vh;
+	overflow-y: auto;
+}
+.resolve-preview pre code {
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}

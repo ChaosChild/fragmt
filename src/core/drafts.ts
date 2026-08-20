@@ -215,8 +215,10 @@ function mergeBranchFromMsg(repoRoot: string): string | null {
 	return m ? m[1] : null;
 }
 
-/** Currently-unmerged paths, repo-root-relative POSIX (one spawn per call). */
-async function unmergedPaths(repoRoot: string): Promise<string[]> {
+/** Currently-unmerged paths, repo-root-relative POSIX (one spawn per call).
+ *  Exported for the b3 resolve route's membership check — the unmerged set is
+ *  the containment guard (paths come from git, never the user). */
+export async function unmergedPaths(repoRoot: string): Promise<string[]> {
 	const out = await git(repoRoot, ["diff", "--name-only", "--diff-filter=U"]);
 	return out ? out.split("\n") : [];
 }

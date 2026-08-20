@@ -5,10 +5,12 @@ import { getRequestListener } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono } from "hono";
 import {
+	abortMerge,
 	addReply,
 	addThread,
 	addThreadWithDoc,
 	checkoutBranch,
+	concludeMerge,
 	createBranch,
 	createDoc,
 	createFolder,
@@ -24,8 +26,11 @@ import {
 	GitError,
 	GitIdentityError,
 	gitAllowList,
+	inMerge,
 	listBranches,
 	listTree,
+	MergeUnresolvedError,
+	mergeState,
 	mergeToMain,
 	moveDoc,
 	OnMainBranchError,
@@ -35,6 +40,8 @@ import {
 	renameFolder,
 	repoMeta,
 	resolveDocPath,
+	resolveMergeDoc,
+	resolveMergeSidecar,
 	restoreDoc,
 	StaleDocError,
 	setResolved,
@@ -42,6 +49,7 @@ import {
 	startDraft,
 	sync,
 	ThreadNotFoundError,
+	unmergedPaths,
 	writeComments,
 	writeDoc,
 } from "../core/index.js";
@@ -61,6 +69,26 @@ const UI_DIST = fileURLToPath(new URL("../../ui/dist", import.meta.url));
 /** Build the Hono app. Thin: parse request → call core → serialize. No fs/git here. */
 export function createApp(ctx: ServerContext): Hono {
 	const app = new Hono();
+
+	// M4-4 b3: the write guard — a standing merge owns every write. Registered
+	// before all write routes (incl. the comment fall-through below), so a
+	// stray save/draft/checkout/comment mid-merge 409s instead of racing the
+	// resolution. This is load-bearing: commitAs unconditionally `git add`s,
+	// so an ordinary write would stage a half-resolution into an unrelated
+	// commit. /api/merge* is exempt — those routes manage the merge itself.
+	app.use("*", async (c, next) => {
+		if (
+			c.req.method !== "GET" &&
+			c.req.method !== "HEAD" &&
+			!c.req.path.startsWith("/api/merge") &&
+			inMerge(ctx.repoRoot)
+		)
+			return c.json(
+				{ error: "a merge is in progress — finish or abort it first" },
+				409,
+			);
+		return next();
+	});
 
 	// M4-3 b7: the .gitignore filter — one ls-files spawn per refresh builds
 	// the allow-list of everything git considers part of the repo. Every
@@ -552,7 +580,10 @@ export function createApp(ctx: ServerContext): Hono {
 	app.post("/api/merge", async (c) => {
 		try {
 			const result = await mergeToMain(ctx.repoRoot, ctx.docsRoot);
-			// The conflict is a returned value, not a throw — map it to 409.
+			// The conflict is a returned value, not a throw — map it to 409 with
+			// the b2 shape verbatim: stood:true {branch, files} (the UI enters
+			// resolution mode) or stood:false {files, message} (the honest
+			// terminal-reconcile fallback).
 			if (!result.merged) return c.json(result, 409);
 			return c.json(result);
 		} catch (e) {
@@ -560,6 +591,79 @@ export function createApp(ctx: ServerContext): Hono {
 				return c.json({ error: "nothing to merge — already on main" }, 400);
 			return respondGitError(c, e);
 		}
+	});
+
+	// --- M4-4 b3: the standing merge's resolution surface --------------------
+
+	// Full detail (hunks for docs, summaries for sidecars); the object itself
+	// when nothing stands — {inMerge:false}, not an error (meta's summary is
+	// the on-switch, this is the payload).
+	app.get("/api/merge", async (c) =>
+		c.json(await mergeState(ctx.repoRoot, ctx.docsRoot)),
+	);
+
+	app.put("/api/merge/resolve", async (c) => {
+		const body = await jsonBody(c);
+		if (body === null) return c.json({ error: "invalid request body" }, 400);
+		if (typeof body.path !== "string" || body.path === "")
+			return c.json({ error: "path is required" }, 400);
+		const hasContent = body.content !== undefined;
+		const hasChoice = body.choice !== undefined;
+		if (hasContent === hasChoice)
+			return c.json(
+				{ error: "exactly one of content or choice is required" },
+				400,
+			);
+		if (hasContent && typeof body.content !== "string")
+			return c.json({ error: "content must be a string" }, 400);
+		if (
+			hasChoice &&
+			!["merged", "ours", "theirs"].includes(body.choice as string)
+		)
+			return c.json({ error: "choice must be merged, ours, or theirs" }, 400);
+		if (!inMerge(ctx.repoRoot))
+			return c.json({ error: "no merge is in progress" }, 409);
+		// Containment: paths are repo-root-relative POSIX straight from git, and
+		// membership in the LIVE unmerged set is the check — a stale UI file
+		// list (resolved elsewhere) can never reach the disk.
+		if (!(await unmergedPaths(ctx.repoRoot)).includes(body.path))
+			return c.json({ error: "path is not part of the standing merge" }, 409);
+		try {
+			if (hasContent)
+				await resolveMergeDoc(ctx.repoRoot, body.path, body.content as string);
+			else
+				await resolveMergeSidecar(
+					ctx.repoRoot,
+					body.path,
+					body.choice as "merged" | "ours" | "theirs",
+				);
+		} catch (e) {
+			return respondGitError(c, e);
+		}
+		return c.json({ remaining: (await unmergedPaths(ctx.repoRoot)).length });
+	});
+
+	app.post("/api/merge/conclude", async (c) => {
+		if (!inMerge(ctx.repoRoot))
+			return c.json({ error: "no merge is in progress" }, 409);
+		try {
+			return c.json(await concludeMerge(ctx.repoRoot));
+		} catch (e) {
+			if (e instanceof MergeUnresolvedError)
+				return c.json({ error: e.message }, 409);
+			return respondGitError(c, e);
+		}
+	});
+
+	app.post("/api/merge/abort", async (c) => {
+		if (!inMerge(ctx.repoRoot))
+			return c.json({ error: "no merge is in progress" }, 409);
+		try {
+			await abortMerge(ctx.repoRoot);
+		} catch (e) {
+			return respondGitError(c, e);
+		}
+		return c.json({ ok: true });
 	});
 
 	app.post("/api/restore", async (c) => {
