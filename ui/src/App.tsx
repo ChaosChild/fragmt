@@ -39,7 +39,7 @@ import {
 import { CommentsRail } from "./CommentsRail";
 import { DocView } from "./DocView";
 import { displayTitle } from "./display";
-import { type DragItem, moveDestinations, movedPath } from "./dnd";
+import { type DragItem, isNoOpDrop, moveDestinations, movedPath } from "./dnd";
 import type { AtDoc } from "./editor/at";
 import {
 	type BranchAction,
@@ -854,14 +854,17 @@ export function App() {
 						expandFolder={expandFolder}
 						onOpenGhost={(path, branchName) => void openGhost(path, branchName)}
 						onRestore={(items) => void runRestore(items)}
-						// Drag & drop (M4-3 b5): the sidebar's dropTargetValid has
-						// already no-opped same-parent and self-subtree drops, so every
-						// arrival here is a real move/delete through the batch-4 flows.
-						onDropItem={(item: DragItem, folder: string) =>
+						// Drag & drop (M4-3 b5 + M4-4 dogfood round): dropTargetValid
+						// blocks self-subtree drops; a drop back on the item's own
+						// parent is a silent no-op (isNoOpDrop) — the peaceful
+						// cancel — so anything reaching the move/delete flows is a
+						// real op.
+						onDropItem={(item: DragItem, folder: string) => {
+							if (isNoOpDrop(item, folder)) return;
 							item.type === "doc"
 								? moveDocTo(item.path, folder)
-								: requestMoveFolder(item.path, folder)
-						}
+								: requestMoveFolder(item.path, folder);
+						}}
 						onDropBin={(item: DragItem, name: string) =>
 							item.type === "doc"
 								? deleteDocAt(item.path, name)

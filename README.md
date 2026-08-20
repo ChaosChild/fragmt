@@ -308,7 +308,7 @@ isomorphic-git. Tiptap was chosen over BlockNote because it survived the
 ## Development
 
 ```sh
-npm run dev:server   # API on :4400
+npm run dev:server   # API on :4400 (no watch — branch ops in the managed repo would restart a watcher mid-request)
 npm run dev:ui       # UI on :5173, proxies /api
 npm run typecheck
 npm test

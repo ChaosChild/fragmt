@@ -29,8 +29,9 @@
 		"ui/dist"
 	],
 	"scripts": {
-		"dev": "tsx watch src/cli/index.ts serve",
-		"dev:server": "tsx watch src/cli/index.ts serve --port 4400",
+		"dev": "tsx src/cli/index.ts serve",
+		"dev:server": "tsx src/cli/index.ts serve --port 4400",
+		"dev:server:watch": "tsx watch src/cli/index.ts serve --port 4400",
 		"dev:ui": "vite dev ui",
 		"typecheck": "tsc --noEmit && tsc --noEmit -p ui",
 		"lint": "biome check .",

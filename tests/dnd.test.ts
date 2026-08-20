@@ -1,17 +1,20 @@
-// M4-3 b5 drag & drop: the pure guards — drop validity (same-parent no-ops,
-// folder self/subtree refusals, bin-accepts-all) and the moved-path
-// computation. M4-4 b1 adds the collision-aware layer: targetOccupied (the
-// server's existsSync 409 mirrored client-side), dropAllowed (the dragover
-// decision Sidebar wires), and moveDestinations (the picker's pre-filtered
-// list). The HTML5 wiring in Sidebar.tsx is pointer-only by design (the
-// header icons are the keyboard path); these are its decision functions, so
-// the event layer stays thin.
+// M4-3 b5 drag & drop: the pure guards — drop validity (folder self/subtree
+// refusals, bin-accepts-all) and the moved-path computation. M4-4 b1 adds
+// the collision-aware layer: targetOccupied (the server's existsSync 409
+// mirrored client-side), dropAllowed (the dragover decision Sidebar wires),
+// and moveDestinations (the picker's pre-filtered list). The M4-4 dogfood
+// round amends M4-3's same-parent rule: a drop back on the item's own folder
+// is ALLOWED (highlighted, accepted) and no-ops silently — the blocked
+// cursor stranded the dragger with no peaceful exit. The HTML5 wiring in
+// Sidebar.tsx is pointer-only by design (the header icons are the keyboard
+// path); these are its decision functions, so the event layer stays thin.
 import { describe, expect, test } from "vitest";
 import type { TreeNode } from "../ui/src/api.js";
 import {
 	basename,
 	dropAllowed,
 	dropTargetValid,
+	isNoOpDrop,
 	moveDestinations,
 	movedPath,
 	parentFolder,
@@ -51,16 +54,18 @@ describe("dropTargetValid", () => {
 		).toBe(true);
 	});
 
-	test("doc into the folder it already sits in is a no-op", () => {
+	test("doc onto the folder it already sits in is the peaceful no-op", () => {
+		// M4-4 dogfood round: allowed (highlighted, droppable) — the drop
+		// handler no-ops it silently via isNoOpDrop.
 		expect(
 			dropTargetValid({ type: "doc", path: "notes/a.md" }, folder("notes")),
-		).toBe(false);
+		).toBe(true);
 	});
 
 	test('root follows the same rule (folder "")', () => {
-		// Already at root — no-op.
-		expect(dropTargetValid({ type: "doc", path: "a.md" }, root)).toBe(false);
-		expect(dropTargetValid({ type: "folder", path: "a" }, root)).toBe(false);
+		// Already at root — an accepted no-op.
+		expect(dropTargetValid({ type: "doc", path: "a.md" }, root)).toBe(true);
+		expect(dropTargetValid({ type: "folder", path: "a" }, root)).toBe(true);
 		// Nested — a real move to top level.
 		expect(dropTargetValid({ type: "doc", path: "notes/a.md" }, root)).toBe(
 			true,
@@ -97,9 +102,9 @@ describe("dropTargetValid", () => {
 		);
 	});
 
-	test("a folder into its current parent is a no-op; elsewhere is valid", () => {
+	test("a folder onto its current parent is the same peaceful no-op", () => {
 		expect(dropTargetValid({ type: "folder", path: "a/b" }, folder("a"))).toBe(
-			false,
+			true,
 		);
 		expect(dropTargetValid({ type: "folder", path: "a/b" }, folder("c"))).toBe(
 			true,
@@ -182,14 +187,22 @@ describe("dropAllowed", () => {
 		);
 	});
 
-	test("structural refusals still refuse (checked before occupancy)", () => {
-		// Same-parent no-op…
+	test("home is always allowed — the occupant is the dragged item itself", () => {
+		// notes holds notes/a.md, but that IS the dragged doc: the drop
+		// lands as a silent no-op, not a collision.
 		expect(
 			dropAllowed({ type: "doc", path: "notes/a.md" }, folder("notes"), tree),
-		).toBe(false);
-		// …and a folder into its own subtree, occupied or not.
+		).toBe(true);
+	});
+
+	test("structural refusals still refuse (checked before occupancy)", () => {
+		// A folder into its own subtree, occupied or not…
 		expect(
 			dropAllowed({ type: "folder", path: "notes" }, folder("notes/x"), tree),
+		).toBe(false);
+		// …and into itself.
+		expect(
+			dropAllowed({ type: "folder", path: "notes" }, folder("notes"), tree),
 		).toBe(false);
 	});
 
@@ -199,6 +212,25 @@ describe("dropAllowed", () => {
 
 	test("no drag in flight: nothing is a target", () => {
 		expect(dropAllowed(null, folder("archive"), tree)).toBe(false);
+	});
+});
+
+describe("isNoOpDrop", () => {
+	test("a drop back on the item's own folder does nothing", () => {
+		expect(isNoOpDrop({ type: "doc", path: "notes/a.md" }, "notes")).toBe(true);
+		expect(isNoOpDrop({ type: "folder", path: "a/b" }, "a")).toBe(true);
+	});
+
+	test("a root item dropped on root does nothing", () => {
+		expect(isNoOpDrop({ type: "doc", path: "a.md" }, "")).toBe(true);
+	});
+
+	test("a real move is not a no-op", () => {
+		expect(isNoOpDrop({ type: "doc", path: "notes/a.md" }, "archive")).toBe(
+			false,
+		);
+		expect(isNoOpDrop({ type: "doc", path: "notes/a.md" }, "")).toBe(false);
+		expect(isNoOpDrop({ type: "folder", path: "a/b" }, "c")).toBe(false);
 	});
 });
 

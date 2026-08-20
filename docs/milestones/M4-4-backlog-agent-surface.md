@@ -93,3 +93,13 @@ New `src/cli/agent.ts` dispatched from `main()` (`src/cli/index.ts`: `agent` pos
 ## Order
 
 Batches run sequentially (O1): 1 → 2 → 3 → 4 → 5 → 6, full gates (`typecheck · lint · biome ci · test`) green between batches, `dist` rebuilt after 3, one `m4-4` branch → one PR, owner retests on :4400 before merge.
+
+## Dogfood round (2026-08-20, PR #7)
+
+Three finds from the first post-merge dogfooding:
+
+1. **UI Merge "Failed to fetch" (the merge had succeeded).** `npm run dev:server` ran `tsx watch`, and the merge's `git checkout main` rewrites the very `src/**` the watcher observes — the restart killed the connection racing the response/follow-up refresh (and, in the same race, the post-merge `push --delete` of the branch never made it out). `dev`/`dev:server` now run plain `tsx` — the dogfood posture; `dev:server:watch` keeps the restart loop for src development. Production `fragmt serve` never watched.
+2. **The origin folder is the peaceful cancel.** M4-3's `dropTargetValid` blocked same-parent destinations — mid-drag, the natural "put it back" was refused with the blocked cursor, and the only accepting targets were the root and the bin (an accidental root drop followed; the emptied source folder then vanished, closing the in-UI undo). Amended: a drop back on the item's own folder or the root highlights and lands as a **silent no-op** (`isNoOpDrop`, checked where drops funnel in App); Escape also natively ends a drag at any time. Subtree and collision refusals unchanged; the picker still omits the current folder.
+3. **A folder emptied by a move no longer vanishes.** The M1 prune rule dropped a folder with no `.md` beneath it from every tree-derived surface — including as a drop target — so the move couldn't be undone in the UI (the recycle bin covers deletions, not moves). `moveDoc`/`renameFolder` now commit a `.gitkeep` into the emptied parent **in the same commit** (createFolder's marker, same contract; rolled back with the move on commit failure), and the tree's keep rule is chain-complete — a kept child folder keeps its parent (this also fixed a latent one-level bug in M4-3 b6's created-folder chains: `createFolder("a/b")` left `a` pruned).
+
+Cleanup from the same session: the stray root `corpus.md` left by the accidental drop (identical to `tests/fixtures/corpus.md`) deleted in its own commit.

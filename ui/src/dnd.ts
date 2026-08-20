@@ -46,10 +46,12 @@ export function movedPath(
 }
 
 /**
- * Whether a drop on `target` does anything. No-ops — the destination equals
- * the item's current parent — and self-moves — a folder into itself or its
- * own subtree — return false so the caller can decline the dragover (blocked
- * cursor) and stay silent on drop. The bin accepts everything.
+ * Whether a drop on `target` is structurally sound. Self-moves — a folder
+ * into itself or its own subtree — return false so the caller can decline
+ * the dragover (blocked cursor) and stay silent on drop. The bin accepts
+ * everything. A drop back on the item's own parent is VALID here: it's the
+ * natural "put it back" gesture, and the drop handler no-ops it silently
+ * (M4-4 dogfood round — the M4-3 blocked-cursor rule stranded the dragger).
  */
 export function dropTargetValid(
 	drag: DragItem | null,
@@ -58,7 +60,6 @@ export function dropTargetValid(
 	if (!drag) return false;
 	if (target.kind === "bin") return true;
 	const dest = target.kind === "root" ? "" : target.path;
-	if (dest === parentFolder(drag.path)) return false;
 	if (drag.type === "folder") {
 		if (dest === drag.path) return false;
 		if (dest.startsWith(`${drag.path}/`)) return false;
@@ -95,11 +96,14 @@ export function targetOccupied(
 }
 
 /**
- * The dragover guard Sidebar actually asks (M4-4 b1): structural validity
- * (dropTargetValid) AND the destination not already holding a child named
- * like the dragged item — an occupied target never highlights and never
- * preventDefaults, so the browser shows the blocked cursor and the drop
- * can't land. The bin still accepts everything (deletes never collide).
+ * The dragover guard Sidebar actually asks (M4-4 b1 + dogfood round):
+ * structural validity (dropTargetValid), then the destination not already
+ * holding a DIFFERENT child named like the dragged item — an occupied target
+ * never highlights and never preventDefaults, so the browser shows the
+ * blocked cursor and the drop can't land. The item's own parent is always
+ * allowed: the "occupant" there is the dragged item itself, and the drop is
+ * a silent no-op (isNoOpDrop) — the peaceful way out of a drag. The bin
+ * still accepts everything (deletes never collide).
  */
 export function dropAllowed(
 	drag: DragItem | null,
@@ -109,7 +113,13 @@ export function dropAllowed(
 	if (!dropTargetValid(drag, target)) return false;
 	if (target.kind === "bin") return true;
 	const dest = target.kind === "root" ? "" : target.path;
+	if (drag !== null && dest === parentFolder(drag.path)) return true;
 	return drag !== null && !targetOccupied(tree, dest, basename(drag.path));
+}
+
+/** A drop that would "move" the item where it already lives — do nothing. */
+export function isNoOpDrop(item: DragItem, folder: string): boolean {
+	return movedPath(item.type, item.path, folder) === item.path;
 }
 
 /**
