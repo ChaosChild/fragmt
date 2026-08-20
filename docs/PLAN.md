@@ -12,7 +12,7 @@
 - HTTP server: Hono
 - License: MIT
 
-Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M4-2](milestones/M4-2-drafting-model.md) · [M4-3](milestones/M4-3-backlog-remediation.md) · [M4-4](milestones/M4-4-backlog-agent-surface.md) · [M5](milestones/M5-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
+Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M4-2](milestones/M4-2-drafting-model.md) · [M4-3](milestones/M4-3-backlog-remediation.md) · [M4-4](milestones/M4-4-backlog-agent-surface.md) · [M5](milestones/M5-distributables-install.md) · [M6](milestones/M6-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
 
 ## Build status
 
@@ -36,7 +36,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - **Deferred:** `docs/app.html` doc cards show author/version/last-edit/snippet, but M1's `/api/tree` carries none and there's no git layer until M2. Cards render the visual with available data; a git-log metadata API is a v1.x addition.
 - **Shipped:** M4-3 backlog remediation — the post-M4-2 dogfooding items in seven subagent batches: edit-flip scroll/menu-cap/on-draft-badge quick fixes; the `authors` config map resolving real emails to GitHub avatars; branch deletion (`-d`, confirm `-D` for unmerged); sidebar geometry (16px guide-line indent, min row width with scroll-not-clip, indicators after the name, resizable, always-visible bin); file actions on the breadcrumb name under a frontmatter-`title` model (the filename never changes — links are the currency) with the corner-icon machinery deleted; navbar drag & drop (rows → folders, → "/" root, → bin); link completion (heading slugs + anchors incl. `doc.md#frag`, folder links incl. empty ones, `GET /api/raw/*` for non-md, dead-link note); and `.gitignore` respected across every tree-derived surface via one `ls-files` allow-list (tracked wins). Spec: [M4-3](milestones/M4-3-backlog-remediation.md). 216 tests (sync suite's pre-existing Windows timeout flake fixed with honest 20s limits).
 - **Shipped:** M4-4 backlog remediation 2 + the agent surface — collision-aware drag & drop and move-picker targets (client tree consult); the merge-conflict resolution engine (stand-conflicted merge, `parseConflicts` hunk editor with ours/theirs/edit, structural `mergeSidecars` under the approved survival rules, conclude-merge `git commit --no-edit`, a one-middleware write-guard while `MERGE_HEAD` stands, honest abort fallback for non-doc conflicts); and the agent surface: `fragmt agent status · comment · draft` (AXI-style TOON output, `help[]` hints, exit codes 0/1/2) with `--author` identity, the delimited AGENTS.md block on `init` (create/append/refresh, nothing outside the markers), the `agents` config list + UI agent chip. MCP dropped from the plan — the CLI is the agent contract, HTTP stays UI-private. /api/meta performance stays deferred with measurements recorded in BACKLOG.md. Spec: [M4-4](milestones/M4-4-backlog-agent-surface.md); five reviewed subagent batches + docs. 287 tests.
-- **Next:** M5 (dogfood hardening) — run fragmt on this repo's own docs daily and fix whatever bites.
+- **Next:** M5 (distributables & install) — published npm package, GitHub Releases on tags, an installed-first quickstart; then M6 (dogfood hardening) closes v1.
 
 ## M0 — Environment prep
 
@@ -144,9 +144,19 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - [x] AGENTS.md block (create/append/replace on init) + `agents` config + UI agent chip
 - [x] Docs: PLAN/BACKLOG/README (perf evidence recorded, agent item graduates, MCP line updated)
 
-## <span data-c="d13d457e-564a-4e9d-9bc5-f5239144f512">M5 — Dogfood hardening</span>
+## M5 — Distributables & install
 
-**Goal:** the definition of done, literally exercised. **Proves:** v1 is done.
+**Goal:** fragmt installs without cloning this repo — a published npm package, GitHub Releases on tags, and a quickstart that starts from `npx fragmt`. **Proves:** anyone can run v1 on their own clone in under a minute. Renumbered into place 2026-08-20 (dogfood hardening moved to M6; the publish-readiness work migrated here). Spec: [M5](milestones/M5-distributables-install.md) (scope recorded; detail locks in a Lavish round when picked up).
+
+- [ ] Publish readiness: shebang on the emitted bin, `files` allowlist ships `dist/` + `ui/dist/`, `npm publish --dry-run` + `npm pack` clean
+- [ ] `npm publish` — `npx fragmt@latest init && serve` works on a clean clone
+- [ ] GitHub Releases: tag → CI release workflow, notes from the milestone record
+- [ ] README quickstart rewritten for the installed path (`npx`/global first, from-source second)
+- [ ] Versioning policy (semver, tags = milestones) in CONTRIBUTING/README
+
+## <span data-c="d13d457e-564a-4e9d-9bc5-f5239144f512">M6 — Dogfood hardening</span>
+
+**Goal:** the definition of done, literally exercised. **Proves:** v1 is done. Was M5 until the 2026-08-20 renumber; publish readiness lives in M5 now.
 
 - [ ] Run fragmt on this repo's own docs daily
 - [ ] Fix whatever bites during daily use
@@ -158,7 +168,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 | Item | Deferred to |
 | --- | --- |
 | MCP server | dropped — the agent surface is the AXI-conformant `fragmt agent` CLI (M4-4); the HTTP API stays UI-private |
-| Search UI, doc ordering, conflict-resolution UI | v1.x, when they hurt |
+| Search UI, doc ordering, draft diff view | v1.x, when they hurt |
 | PR create/review in UI, auth/multi-user | v2 |
 | Import (Notion/Confluence), agent-in-UI chat | roadmap |
 | Table column alignment | accepted loss (spike) |
