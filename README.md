@@ -67,7 +67,8 @@ markdown and its full git history.
 | M4-2 — dogfood polish (cards, headers, protected main, merge) | shipped |
 | M4-3 — backlog remediation (header file actions, titles, drag & drop, links, gitignore) | shipped |
 | M4-4 — backlog 2 + agent surface (merge resolution in-UI, `fragmt agent` CLI, AGENTS.md) | shipped |
-| M5 — dogfood hardening | specced |
+| M5 — distributables & install (npm publish, GitHub Releases, npx-first) | specced |
+| M6 — dogfood hardening | specced |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
 WYSIWYG editor, and save — each save is a git commit under your local git
