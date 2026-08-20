@@ -12,7 +12,7 @@
 - HTTP server: Hono
 - License: MIT
 
-Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M4-2](milestones/M4-2-drafting-model.md) · [M4-3](milestones/M4-3-backlog-remediation.md) · [M5](milestones/M5-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
+Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M4-2](milestones/M4-2-drafting-model.md) · [M4-3](milestones/M4-3-backlog-remediation.md) · [M4-4](milestones/M4-4-backlog-agent-surface.md) · [M5](milestones/M5-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
 
 ## Build status
 
@@ -35,7 +35,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
   - Known first-save behavior: the editor's serializer is canonical — hand-wrapped paragraphs collapse to one line, `~` gets escaped (`\~`), blank lines are inserted after headings. Steady-state saves are minimal-diff (verified: five checkbox ticks → five changed lines).
 - **Deferred:** `docs/app.html` doc cards show author/version/last-edit/snippet, but M1's `/api/tree` carries none and there's no git layer until M2. Cards render the visual with available data; a git-log metadata API is a v1.x addition.
 - **Shipped:** M4-3 backlog remediation — the post-M4-2 dogfooding items in seven subagent batches: edit-flip scroll/menu-cap/on-draft-badge quick fixes; the `authors` config map resolving real emails to GitHub avatars; branch deletion (`-d`, confirm `-D` for unmerged); sidebar geometry (16px guide-line indent, min row width with scroll-not-clip, indicators after the name, resizable, always-visible bin); file actions on the breadcrumb name under a frontmatter-`title` model (the filename never changes — links are the currency) with the corner-icon machinery deleted; navbar drag & drop (rows → folders, → "/" root, → bin); link completion (heading slugs + anchors incl. `doc.md#frag`, folder links incl. empty ones, `GET /api/raw/*` for non-md, dead-link note); and `.gitignore` respected across every tree-derived surface via one `ls-files` allow-list (tracked wins). Spec: [M4-3](milestones/M4-3-backlog-remediation.md). 216 tests (sync suite's pre-existing Windows timeout flake fixed with honest 20s limits).
-- **Next:** M5 (dogfood hardening) — run fragmt on this repo's own docs daily and fix whatever bites; then M4-4 (the agentic design item).
+- **Next:** M4-4 (backlog remediation 2 + the agent surface) — collision-aware targets, the merge-conflict resolution engine, the `fragmt agent` CLI; then M5 (dogfood hardening).
 
 ## M0 — Environment prep
 
@@ -132,6 +132,17 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - [x] Link navigation completion: heading slugs + anchors (incl. `doc.md#frag`), folder links (empty folders just expand), non-md files via `GET /api/raw/*` in a new tab, dead links get an inline note
 - [x] `.gitignore` respected across every tree-derived surface (one `ls-files` allow-list per refresh; tracked wins)
 
+## M4-4 — Backlog remediation 2 + the agent surface
+
+**Goal:** clear the remaining backlog — collision-aware drag & drop, the full merge-conflict resolution engine (stand-conflicted merge, per-hunk editor, structural sidecar merge), and the agent surface: AXI-conformant `fragmt agent` CLI verbs with `--author` identity, an AGENTS.md block on `init`, the agent chip in the UI. **Proves:** the drag-over highlight never promises a refused drop; a conflicting merge resolves entirely in the tool; an agent reads state, replies, and merges via the CLI under its own identity. Implementation spec: [M4-4](milestones/M4-4-backlog-agent-surface.md) (decisions locked in three Lavish rounds, 2026-08-20; /api/meta performance stays deferred with measured evidence recorded in BACKLOG.md; MCP dropped — the CLI is the agent contract).
+
+- [ ] Collision-aware targets: `targetOccupied` tree consult — no promised-refused drops, picker filters colliding destinations
+- [ ] Merge resolution core: `parseConflicts`, `mergeSidecars` (approved survival rules), stand-conflicted `mergeToMain`, resolve/conclude/abort, `MERGE_HEAD` state
+- [ ] Merge resolution server + UI: write-guard middleware, five routes, ResolutionView (hunk cards ours/theirs/edit, sidecar take-merged/ours/theirs), honest abort fallback
+- [ ] Agent CLI: `fragmt agent status · comment · draft` — TOON output, exit codes, `help[]` hints, `--author` identity
+- [ ] AGENTS.md block (create/append/replace on init) + `agents` config + UI agent chip
+- [ ] Docs: PLAN/BACKLOG/README (perf evidence recorded, agent item graduates, MCP line updated)
+
 ## <span data-c="d13d457e-564a-4e9d-9bc5-f5239144f512">M5 — Dogfood hardening</span>
 
 **Goal:** the definition of done, literally exercised. **Proves:** v1 is done.
@@ -145,7 +156,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 | Item | Deferred to |
 | --- | --- |
-| MCP server | v1.1 (first thing after v1) |
+| MCP server | dropped — the agent surface is the AXI-conformant `fragmt agent` CLI (M4-4); the HTTP API stays UI-private |
 | Search UI, doc ordering, conflict-resolution UI | v1.x, when they hurt |
 | PR create/review in UI, auth/multi-user | v2 |
 | Import (Notion/Confluence), agent-in-UI chat | roadmap |
