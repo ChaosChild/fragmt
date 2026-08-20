@@ -38,7 +38,7 @@ import {
 import { CommentsRail } from "./CommentsRail";
 import { DocView } from "./DocView";
 import { displayTitle } from "./display";
-import { type DragItem, movedPath } from "./dnd";
+import { type DragItem, moveDestinations, movedPath } from "./dnd";
 import type { AtDoc } from "./editor/at";
 import {
 	type BranchAction,
@@ -88,21 +88,6 @@ function docItems(node: TreeNode | null, meta: RepoMeta | null): AtDoc[] {
 					path: c.path,
 				});
 			else walk(c);
-		}
-	};
-	if (node) walk(node);
-	return out;
-}
-
-/** Every folder path in the tree — the header move picker's list (M4-3 b4). */
-function folderPaths(node: TreeNode | null): string[] {
-	const out: string[] = [];
-	const walk = (n: TreeNode) => {
-		for (const c of n.children ?? []) {
-			if (c.type === "dir") {
-				out.push(c.path);
-				walk(c);
-			}
 		}
 	};
 	if (node) walk(node);
@@ -255,8 +240,17 @@ export function App() {
 	// clicks, the rail's reply @ mentions, and body linkification. Titles
 	// ride along from meta (M4-3 b4) — paths stay the identity.
 	const docs = useMemo(() => docItems(tree, meta), [tree, meta]);
-	// The header move picker's folder list (M4-3 b4).
-	const folders = useMemo(() => folderPaths(tree), [tree]);
+	// The header move picker's destinations (M4-3 b4, collision-aware M4-4
+	// b1): App pre-filters — the current parent and every folder already
+	// holding a child named like the doc are never offered, and root rides
+	// separately as `rootMoveValid` (a from-root doc has nowhere to move).
+	const moveDest = useMemo(
+		() =>
+			tree && selected
+				? moveDestinations(tree, selected)
+				: { folders: [], rootValid: false },
+		[tree, selected],
+	);
 	// The orphan rule, client-side: core's reconcileThreads check replicated
 	// against the RENDERED doc's markdown (doc.markdown is the exact string
 	// the editor renders from and is refreshed on every save). Smaller than
@@ -875,7 +869,8 @@ export function App() {
 						onSelectFolder={onSelectFolderLink}
 						pendingAnchor={pendingAnchor}
 						onAnchorConsumed={clearAnchor}
-						folders={folders}
+						folders={moveDest.folders}
+						rootMoveValid={moveDest.rootValid}
 						onBeforeRename={beforeRename}
 						onMoveDoc={requestMoveDoc}
 						onDeleteDoc={requestDeleteDoc}

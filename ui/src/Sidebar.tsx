@@ -9,7 +9,13 @@ import {
 } from "react";
 import type { DeletedDoc, DocMeta, RepoMeta, TreeNode } from "./api";
 import { displayTitle } from "./display";
-import { basename, currentDrag, type DragItem, dropTargetValid } from "./dnd";
+import {
+	basename,
+	currentDrag,
+	type DragItem,
+	type DropTarget,
+	dropAllowed,
+} from "./dnd";
 import { clampSidebarWidth } from "./sidebar-geometry";
 
 /**
@@ -31,6 +37,10 @@ interface SidebarDnd {
 	hover: (key: string | null) => void;
 	/** dragleave for `key`'s element — cleared only when the pointer truly left. */
 	leave: (e: ReactDragEvent<HTMLElement>, key: string) => void;
+	/** The dragover/drop guard for tree targets (M4-4 b1): structural
+	 *  validity plus collision — an occupied destination never highlights
+	 *  and never preventDefaults, so the drop can't land on it. */
+	canDrop: (drag: DragItem | null, target: DropTarget) => boolean;
 	/** A valid drop on a folder row, or on the list background (folder ""). */
 	dropInto: (item: DragItem, folder: string) => void;
 	/** A drop on the bin — App confirms and deletes. */
@@ -283,7 +293,7 @@ function renderNodes({
 			// cursor and no drop can land on it.
 			const key = `folder:${node.path}`;
 			const validHere = () =>
-				dropTargetValid(currentDrag.item, {
+				dnd.canDrop(currentDrag.item, {
 					kind: "folder",
 					path: node.path,
 				});
@@ -497,6 +507,10 @@ export function Sidebar({
 		},
 		dropInto: (item, folder) => onDropItem(item, folder),
 		dropBin: (item) => onDropBin(item, labelFor(item)),
+		// Collision-aware (M4-4 b1): checked against the real tree, not the
+		// ghost-merged one — draft-only docs sit on other branches, so they
+		// can't collide with anything on disk here.
+		canDrop: (drag, target) => tree !== null && dropAllowed(drag, target, tree),
 	};
 
 	const ghosts = useMemo(() => ghostMap(meta, tree), [meta, tree]);
@@ -515,7 +529,7 @@ export function Sidebar({
 			<ul
 				className={`doc-list${dropKey === "root" ? " drop-root" : ""}`}
 				onDragOver={(e) => {
-					if (!dropTargetValid(currentDrag.item, { kind: "root", path: "" }))
+					if (!dnd.canDrop(currentDrag.item, { kind: "root", path: "" }))
 						return;
 					e.preventDefault();
 					e.dataTransfer.dropEffect = "move";
@@ -524,8 +538,7 @@ export function Sidebar({
 				onDragLeave={(e) => dnd.leave(e, "root")}
 				onDrop={(e) => {
 					const item = currentDrag.item;
-					if (!item || !dropTargetValid(item, { kind: "root", path: "" }))
-						return;
+					if (!item || !dnd.canDrop(item, { kind: "root", path: "" })) return;
 					e.preventDefault();
 					setDropKey(null);
 					onDropItem(item, "");

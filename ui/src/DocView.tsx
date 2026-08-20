@@ -16,7 +16,6 @@ import {
 	setTitle,
 } from "./api";
 import { displayTitle } from "./display";
-import { parentFolder } from "./dnd";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 import type { AtDoc } from "./editor/at";
 import { MenuPopover, useMenu } from "./Menus";
@@ -108,6 +107,7 @@ export function DocView({
 	onAnchorConsumed,
 	authors,
 	folders,
+	rootMoveValid,
 	onBeforeRename,
 	onMoveDoc,
 	onDeleteDoc,
@@ -169,9 +169,13 @@ export function DocView({
 	pendingAnchor: string | null;
 	/** The pending anchor was consumed — App clears it. */
 	onAnchorConsumed: () => void;
-	/** Every folder path in the tree — the header move picker's list (the
-	 *  picker itself prepends "/ (root)" as ""). */
+	/** Collision-free move destinations (M4-4 b1, App pre-filters): every
+	 *  tree folder except the current parent and folders already holding a
+	 *  child named like this doc — a guaranteed 409 is never offered. */
 	folders: string[];
+	/** Root ("") is offerable — true only from a subfolder and only when
+	 *  root holds no same-named child (App computes; M4-4 b1). */
+	rootMoveValid: boolean;
 	/** Pre-rename gate (App): on main a title write is a doc-body write, so
 	 *  the draft starts (and checks out) first; false = App bannered and
 	 *  the box stays closed. The dirty gate is DocView's banner (below). */
@@ -392,9 +396,10 @@ export function DocView({
 								<FolderInput aria-hidden="true" />
 							</button>
 							<MenuPopover anchor={moveMenu.anchor} popRef={moveMenu.popRef}>
-								{/* The current folder is a guaranteed "already exists"
-								    409 — never offered (same rule as the drag guard). */}
-								{parentFolder(selected ?? "") !== "" && (
+								{/* App pre-filters (M4-4 b1): folders here are collision-free
+								    already — the current parent and occupied folders never
+								    arrive, and root rides on rootMoveValid. */}
+								{rootMoveValid && (
 									<button
 										type="button"
 										className="menu-item"
@@ -406,21 +411,22 @@ export function DocView({
 										/ (root)
 									</button>
 								)}
-								{folders
-									.filter((f) => f !== parentFolder(selected ?? ""))
-									.map((f) => (
-										<button
-											key={f}
-											type="button"
-											className="menu-item"
-											onClick={() => {
-												moveMenu.close();
-												onMoveDoc(f);
-											}}
-										>
-											{f}
-										</button>
-									))}
+								{folders.map((f) => (
+									<button
+										key={f}
+										type="button"
+										className="menu-item"
+										onClick={() => {
+											moveMenu.close();
+											onMoveDoc(f);
+										}}
+									>
+										{f}
+									</button>
+								))}
+								{folders.length === 0 && !rootMoveValid && (
+									<p className="menu-empty">no collision-free destination</p>
+								)}
 							</MenuPopover>
 						</span>
 						<button
