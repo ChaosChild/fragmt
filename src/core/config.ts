@@ -3,6 +3,8 @@ import { dirname, join, resolve } from "node:path";
 
 export interface Config {
 	docsRoot: string;
+	/** email → GitHub username (avatar resolution); absent when not configured. */
+	authors?: Record<string, string>;
 }
 
 /** Repo-level config file (always at the git repo root). */
@@ -47,7 +49,23 @@ export function loadConfig(repoRoot: string): Config {
 	if (typeof docsRoot !== "string") {
 		throw new ConfigError(`${file}: missing or invalid "docsRoot"`);
 	}
-	return { docsRoot };
+	// authors: optional email → GitHub username record. A non-object is
+	// ignored; entries whose value is not a non-empty string are dropped
+	// silently (the map is cosmetic, never worth failing the load).
+	const config: Config = { docsRoot };
+	const rawAuthors = (parsed as Record<string, unknown>).authors;
+	if (
+		typeof rawAuthors === "object" &&
+		rawAuthors !== null &&
+		!Array.isArray(rawAuthors)
+	) {
+		const authors: Record<string, string> = {};
+		for (const [email, user] of Object.entries(rawAuthors)) {
+			if (typeof user === "string" && user !== "") authors[email] = user;
+		}
+		config.authors = authors;
+	}
+	return config;
 }
 
 /** Write a fresh config. `order` is reserved, always `{}` in v1. */

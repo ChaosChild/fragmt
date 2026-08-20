@@ -1,3 +1,4 @@
+import { loadConfig } from "./config.js";
 import { readDoc } from "./docs.js";
 import { currentBranch, git, listBranches, logCommits } from "./git.js";
 
@@ -8,6 +9,9 @@ export interface DocMeta {
 	version: number;
 	/** First non-heading, non-empty, non-table body line, clamped to 110 chars. */
 	snippet: string;
+	/** Frontmatter `title` (the display-name model, M4-3 b4); null when the
+	 *  doc has none — the file name sans .md is the fallback. */
+	title: string | null;
 }
 
 export interface DraftEntry {
@@ -31,6 +35,9 @@ export interface RepoMeta {
 	drafts: Record<string, DraftEntry[]>;
 	/** Deletions reachable from HEAD, latest first, deduped by path. */
 	deleted: DeletedDoc[];
+	/** email → GitHub username (avatar resolution) — the config map verbatim,
+	 * {} when the repo has no map. */
+	authors: Record<string, string>;
 }
 
 /** The main branch name: "main" → "master" → null (rev-parse --verify). */
@@ -78,20 +85,33 @@ function toDocPath(repoRel: string, prefix: string): string | null {
 		: null;
 }
 
-/** Card snippet: first non-heading, non-empty, non-table body line (fs read; missing file → ""). */
-function snippet(repoRoot: string, docsRoot: string, docPath: string): string {
+/** The per-doc fs read's card extras (one read for both): the snippet (first
+ *  non-heading, non-empty, non-table body line) and the frontmatter title.
+ *  Missing file → empty snippet and no title (not on this branch's worktree). */
+function docExtras(
+	repoRoot: string,
+	docsRoot: string,
+	docPath: string,
+): { snippet: string; title: string | null } {
+	let frontmatter: Record<string, unknown>;
 	let body: string;
 	try {
-		body = readDoc(repoRoot, docsRoot, docPath).markdown;
+		const doc = readDoc(repoRoot, docsRoot, docPath);
+		frontmatter = doc.frontmatter;
+		body = doc.markdown;
 	} catch {
-		return ""; // not on this branch's worktree — no snippet
+		return { snippet: "", title: null }; // not on this branch's worktree
 	}
+	const title =
+		typeof frontmatter.title === "string" ? frontmatter.title : null;
+	let snippet = "";
 	for (const line of body.split("\n")) {
 		const t = line.trim();
 		if (!t || t.startsWith("#") || t.startsWith("|")) continue;
-		return t.slice(0, 110);
+		snippet = t.slice(0, 110);
+		break;
 	}
-	return "";
+	return { snippet, title };
 }
 
 /**
@@ -132,12 +152,14 @@ export async function repoMeta(
 					date: fields[3],
 					version: 1,
 					snippet: "",
+					title: null,
 				};
 		}
 	}
-	// One fs read per doc (the card snippet) — the walk above is git-only.
+	// One fs read per doc (snippet + frontmatter title) — the walk above is
+	// git-only.
 	for (const docPath of Object.keys(docs)) {
-		docs[docPath].snippet = snippet(repoRoot, docsRoot, docPath);
+		Object.assign(docs[docPath], docExtras(repoRoot, docsRoot, docPath));
 	}
 
 	// Walk 2 — per non-main branch, which docsRoot docs differ from main:
@@ -198,11 +220,23 @@ export async function repoMeta(
 		}
 	}
 
+	// The authors map (avatar resolution): the config verbatim. RepoMeta has
+	// only repoRoot/docsRoot — the config is read here, the same loader the
+	// CLI uses for docsRoot; any config problem just means no map ({}) —
+	// never a failed meta walk over a cosmetic feature.
+	let authors: Record<string, string> = {};
+	try {
+		authors = loadConfig(repoRoot).authors ?? {};
+	} catch {
+		// no config / malformed — no authors map
+	}
+
 	return {
 		main,
 		current: await currentBranch(repoRoot),
 		docs,
 		drafts,
 		deleted,
+		authors,
 	};
 }

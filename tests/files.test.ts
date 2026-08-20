@@ -213,3 +213,32 @@ test("folder ops: existing target → PathExistsError, missing folder → DocNot
 	// Only the successful createFolder committed.
 	expect(count(root)).toBe(2);
 });
+
+test("moves roll back when the commit fails (ignored destination)", async () => {
+	const root = repo();
+	seed(root);
+	// A destination git refuses to stage — `git add` errors on ignored
+	// paths, so commitAs throws AFTER the fs rename (the M4-3 dogfood
+	// stranded-file bug: the rename must unwind, not strand).
+	writeFileSync(join(root, ".gitignore"), "ignored/\n");
+	run(root, ["add", ".gitignore"]);
+	run(root, ["commit", "-q", "-m", "gitignore"]);
+	await createDoc(root, ".", "docs/a.md", "# A\n");
+	const before = count(root);
+
+	await expect(
+		moveDoc(root, ".", "docs/a.md", "ignored/a.md"),
+	).rejects.toThrow();
+	expect(existsSync(join(root, "docs/a.md"))).toBe(true);
+	expect(existsSync(join(root, "ignored/a.md"))).toBe(false);
+
+	await createFolder(root, ".", "docs/sub");
+	await expect(
+		renameFolder(root, ".", "docs/sub", "ignored/sub"),
+	).rejects.toThrow();
+	expect(existsSync(join(root, "docs/sub"))).toBe(true);
+
+	// Only the createFolder commit landed; the tree and index are clean.
+	expect(count(root)).toBe(before + 1);
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});

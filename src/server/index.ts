@@ -1,3 +1,4 @@
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { getRequestListener } from "@hono/node-server";
@@ -14,6 +15,7 @@ import {
 	currentBranch,
 	DocNotFoundError,
 	DocPathError,
+	deleteBranch,
 	deleteDoc,
 	deleteFolder,
 	deleteThread,
@@ -21,6 +23,7 @@ import {
 	docHash,
 	GitError,
 	GitIdentityError,
+	gitAllowList,
 	listBranches,
 	listTree,
 	mergeToMain,
@@ -31,9 +34,11 @@ import {
 	readDoc,
 	renameFolder,
 	repoMeta,
+	resolveDocPath,
 	restoreDoc,
 	StaleDocError,
 	setResolved,
+	setTitle,
 	startDraft,
 	sync,
 	ThreadNotFoundError,
@@ -48,6 +53,7 @@ export interface ServerContext {
 
 const DOCS_PREFIX = "/api/docs/";
 const FOLDERS_PREFIX = "/api/folders/";
+const RAW_PREFIX = "/api/raw/";
 
 /** Package-root `ui/dist`. Same depth from `src/server/` (tsx) and `dist/server/` (built). */
 const UI_DIST = fileURLToPath(new URL("../../ui/dist", import.meta.url));
@@ -56,7 +62,15 @@ const UI_DIST = fileURLToPath(new URL("../../ui/dist", import.meta.url));
 export function createApp(ctx: ServerContext): Hono {
 	const app = new Hono();
 
-	app.get("/api/tree", (c) => c.json(listTree(ctx.repoRoot, ctx.docsRoot)));
+	// M4-3 b7: the .gitignore filter — one ls-files spawn per refresh builds
+	// the allow-list of everything git considers part of the repo. Every
+	// tree-derived surface (sidebar, @ menu, move picker, link sets) reads
+	// this route, so all inherit the filter here. git unavailable → null →
+	// today's unfiltered walk (keep-prior-state).
+	app.get("/api/tree", async (c) => {
+		const allow = await gitAllowList(ctx.repoRoot, ctx.docsRoot);
+		return c.json(listTree(ctx.repoRoot, ctx.docsRoot, allow ?? undefined));
+	});
 
 	// --- M4: comment sidecar -------------------------------------------------
 	// Hono's `*` spans slashes only at the END of a pattern, so a nested
@@ -293,11 +307,33 @@ export function createApp(ctx: ServerContext): Hono {
 		}
 	});
 
+	// M4-3 b4: the doc PATCH is a two-way dispatch — {to} moves the file
+	// (M3), {title} writes the frontmatter title (rename, path unchanged).
+	// Exactly one action per call.
 	app.patch("/api/docs/*", async (c) => {
 		const from = tailPath(c, DOCS_PREFIX);
 		if (from === undefined) return c.json({ error: "invalid doc path" }, 400);
 		const body = await jsonBody(c);
 		if (body === null) return c.json({ error: "invalid request body" }, 400);
+		const hasTo = body.to !== undefined;
+		const hasTitle = body.title !== undefined;
+		if (hasTo === hasTitle)
+			return c.json({ error: "exactly one of to or title is required" }, 400);
+		if (hasTitle) {
+			if (typeof body.title !== "string" || !body.title.trim())
+				return c.json({ error: "title must be a non-empty string" }, 400);
+			try {
+				const { sha } = await setTitle(
+					ctx.repoRoot,
+					ctx.docsRoot,
+					from,
+					body.title,
+				);
+				return c.json({ sha });
+			} catch (e) {
+				return respondFileError(c, e);
+			}
+		}
 		if (typeof body.to !== "string")
 			return c.json({ error: "to is required" }, 400);
 		try {
@@ -369,6 +405,57 @@ export function createApp(ctx: ServerContext): Hono {
 		}
 	});
 
+	// --- M4-3 b6: raw files (non-md link targets) ----------------------------
+
+	/** Extension → content type for /api/raw. html/svg serve as text/plain —
+	 *  repo content never executes in the app origin; anything unmapped is
+	 *  application/octet-stream with Content-Disposition (a download). */
+	const RAW_MIME: Record<string, string> = {
+		md: "text/markdown; charset=utf-8",
+		txt: "text/plain; charset=utf-8",
+		png: "image/png",
+		jpg: "image/jpeg",
+		jpeg: "image/jpeg",
+		gif: "image/gif",
+		webp: "image/webp",
+		svg: "text/plain; charset=utf-8",
+		pdf: "application/pdf",
+		json: "application/json",
+		csv: "text/csv",
+		html: "text/plain; charset=utf-8",
+		htm: "text/plain; charset=utf-8",
+	};
+
+	// The resolveDocPath containment guard (kind "raw" — no .md constraint),
+	// files-only: a directory or a missing path is a 404 like the doc routes.
+	// startServer's raw-URL `..` guard covers this prefix too (below).
+	app.get("/api/raw/*", (c) => {
+		let rawPath: string;
+		try {
+			rawPath = decodeURIComponent(c.req.path.slice(RAW_PREFIX.length));
+		} catch {
+			return c.json({ error: "invalid path" }, 400);
+		}
+		let abs: string;
+		try {
+			abs = resolveDocPath(ctx.repoRoot, ctx.docsRoot, rawPath, "raw");
+		} catch (e) {
+			if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
+			throw e;
+		}
+		if (!existsSync(abs) || !statSync(abs).isFile()) {
+			return c.json({ error: "not found" }, 404);
+		}
+		const bytes = new Uint8Array(readFileSync(abs));
+		const ext = abs.split(".").pop()?.toLowerCase() ?? "";
+		const mime = RAW_MIME[ext];
+		if (mime) return c.body(bytes, 200, { "content-type": mime });
+		return c.body(bytes, 200, {
+			"content-type": "application/octet-stream",
+			"content-disposition": "attachment",
+		});
+	});
+
 	app.get("/api/branches", async (c) =>
 		c.json({
 			current: await currentBranch(ctx.repoRoot),
@@ -410,6 +497,34 @@ export function createApp(ctx: ServerContext): Hono {
 			await checkoutBranch(ctx.repoRoot, body.name);
 			return c.json({ current: await currentBranch(ctx.repoRoot) });
 		} catch (e) {
+			return respondGitError(c, e);
+		}
+	});
+
+	// `:name` is single-segment by design — slashed names (drafts/x) arrive
+	// percent-encoded (%2F) and stay one segment for the router; Hono decodes
+	// the param value for us.
+	app.delete("/api/branches/:name", async (c) => {
+		const name = c.req.param("name");
+		if (badBranchName(name))
+			return c.json({ error: "invalid branch name" }, 400);
+		try {
+			if (name === (await currentBranch(ctx.repoRoot)))
+				return c.json({ error: "switch away first" }, 400);
+			await deleteBranch(
+				ctx.repoRoot,
+				name,
+				c.req.query("force") !== undefined,
+			);
+			return c.json({ ok: true });
+		} catch (e) {
+			// Unmerged without force is a client-decidable state, not an error:
+			// git's own words ride the 409 so the UI can ask about a force delete.
+			if (
+				e instanceof GitError &&
+				/not (fully )?merged/i.test(`${e.stdout}\n${e.stderr}`)
+			)
+				return c.json({ unmerged: true, error: e.message }, 409);
 			return respondGitError(c, e);
 		}
 	});
@@ -551,7 +666,11 @@ function badBranchName(name: string): boolean {
  * we cannot tell what it would mean downstream.
  */
 function isTraversalAttempt(url: string): boolean {
-	if (![DOCS_PREFIX, FOLDERS_PREFIX].some((prefix) => url.startsWith(prefix)))
+	if (
+		![DOCS_PREFIX, FOLDERS_PREFIX, RAW_PREFIX].some((prefix) =>
+			url.startsWith(prefix),
+		)
+	)
 		return false;
 	try {
 		return decodeURIComponent(url).includes("..");
@@ -561,8 +680,9 @@ function isTraversalAttempt(url: string): boolean {
 }
 
 /**
- * Start the HTTP server. A raw-URL guard rejects `..` in doc/folder requests
- * before the framework's spec-compliant URL normalization collapses the segments
+ * Start the HTTP server. A raw-URL guard rejects `..` in doc/folder/raw
+ * requests before the framework's spec-compliant URL normalization collapses
+ * the segments
  * (without this, literal `/api/docs/../LICENSE` normalizes to a 404 instead of
  * the spec-required 400). The rest is delegated to @hono/node-server unchanged.
  */

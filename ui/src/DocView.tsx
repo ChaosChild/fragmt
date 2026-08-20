@@ -1,4 +1,11 @@
-import { Check, MessageSquare, Pencil, X } from "lucide-react";
+import {
+	Check,
+	FolderInput,
+	MessageSquare,
+	Pencil,
+	Trash2,
+	X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
 	addComment,
@@ -6,21 +13,35 @@ import {
 	type DocResponse,
 	SaveError,
 	saveDoc,
+	setTitle,
 } from "./api";
+import { displayTitle } from "./display";
+import { parentFolder } from "./dnd";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 import type { AtDoc } from "./editor/at";
+import { MenuPopover, useMenu } from "./Menus";
 import { shortDate } from "./Sidebar";
 
 /**
- * The email-parallel avatar (item 3): the keyless GitHub noreply heuristic —
- * `123456+user@` or `user@` → avatars.githubusercontent.com/<user>?s=76; a
- * load error or non-matching email falls back to the author's initials.
+ * The email-parallel avatar (item 3): the config authors map first (email →
+ * GitHub username, App passes it from meta), then the keyless GitHub noreply
+ * heuristic — `123456+user@` or `user@` — either way
+ * avatars.githubusercontent.com/<user>?s=76; a load error or non-matching
+ * email falls back to the author's initials.
  */
-function Avatar({ author, email }: { author: string; email: string }) {
+function Avatar({
+	author,
+	email,
+	authors,
+}: {
+	author: string;
+	email: string;
+	authors: Record<string, string>;
+}) {
 	const [broken, setBroken] = useState(false);
-	const user = /^(\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(
-		email,
-	)?.[2];
+	const user =
+		authors[email] ||
+		/^(\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(email)?.[2];
 	if (user && !broken) {
 		return (
 			<img
@@ -67,9 +88,8 @@ export function DocView({
 	onOpenComments,
 	onCommentsChanged,
 	onSpanClick,
-	pendingBranch,
-	onPendingBranchCancel,
-	onPendingBranchGo,
+	pendingAction,
+	onPendingActionCancel,
 	conflict,
 	onDismissConflict,
 	onBeforeEdit,
@@ -80,8 +100,18 @@ export function DocView({
 	ledLabel,
 	draftBranch,
 	onOpenDraft,
+	onDraft,
 	docs,
 	onSelectDoc,
+	onSelectFolder,
+	pendingAnchor,
+	onAnchorConsumed,
+	authors,
+	folders,
+	onBeforeRename,
+	onMoveDoc,
+	onDeleteDoc,
+	onRenamed,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
@@ -96,10 +126,11 @@ export function DocView({
 	onCommentsChanged: () => void;
 	/** A comment highlight was activated in the doc — jump the rail to it. */
 	onSpanClick: (id: string) => void;
-	/** A branch switch waiting on the save-or-discard choice (M3). */
-	pendingBranch: string | null;
-	onPendingBranchCancel: () => void;
-	onPendingBranchGo: () => void;
+	/** An action blocked on the save-or-discard choice — a branch switch or
+	 *  a header file op (M3, generalized M4-3 b4); the headline names it and
+	 *  `go` runs after Save/Discard (App clears its state). */
+	pendingAction: { headline: string; go: () => void } | null;
+	onPendingActionCancel: () => void;
 	/** Sync conflict message (M3) — the calm banner, never a merge UI. */
 	conflict: string | null;
 	onDismissConflict: () => void;
@@ -120,10 +151,39 @@ export function DocView({
 	/** The branch a draft pill would check out; null = no pill (App computes). */
 	draftBranch: string | null;
 	onOpenDraft: () => void;
+	/** On a non-main branch touching THIS doc — the pill's non-clickable
+	 *  flip side, the "on draft" badge (App computes; M4-3). */
+	onDraft: boolean;
+	/** email → GitHub username — Avatar's first lookup (App, from meta). */
+	authors: Record<string, string>;
 	/** The tree's docs — the editor's @ menu and link-click doc set (M4-2). */
 	docs: AtDoc[];
-	/** An in-doc @ link resolved to a tree doc — navigate in-app (App). */
-	onSelectDoc: (path: string) => void;
+	/** An in-doc link resolved to a tree doc — navigate in-app (App); the
+	 *  #fragment rides along and scrolls after the new doc renders (M4-3 b6). */
+	onSelectDoc: (path: string, anchor?: string) => void;
+	/** An in-doc link resolved to a tree folder — App expands it in the
+	 *  sidebar and selects its first doc (M4-3 b6). */
+	onSelectFolder: (path: string) => void;
+	/** A cross-doc #fragment waiting to scroll after the doc loads (App owns
+	 *  it; EditorPane consumes it). */
+	pendingAnchor: string | null;
+	/** The pending anchor was consumed — App clears it. */
+	onAnchorConsumed: () => void;
+	/** Every folder path in the tree — the header move picker's list (the
+	 *  picker itself prepends "/ (root)" as ""). */
+	folders: string[];
+	/** Pre-rename gate (App): on main a title write is a doc-body write, so
+	 *  the draft starts (and checks out) first; false = App bannered and
+	 *  the box stays closed. The dirty gate is DocView's banner (below). */
+	onBeforeRename: () => Promise<boolean>;
+	/** Move to a tree folder ("" = docsRoot root) — App runs the dirty guard
+	 *  and the existing move op; selection follows the new path. */
+	onMoveDoc: (folder: string) => void;
+	/** Delete the open doc — App runs the dirty guard, the confirm, and the
+	 *  existing delete op; the display name rides along for the confirm. */
+	onDeleteDoc: (displayName: string) => void;
+	/** A title landed — App reloads the doc (frontmatter changed) + meta. */
+	onRenamed: () => void;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -139,16 +199,40 @@ export function DocView({
 	// Discard must drop the edited buffer: the editor stays mounted across
 	// the mode flip, so bumping the key remounts it fresh from doc.markdown.
 	const [resetCount, setResetCount] = useState(0);
+	// M4-3 b4 header file actions: the move picker's anchored popover, the
+	// rename box, and its blocked-on-dirty state (the local flavor of
+	// pendingAction — the box opens after the choice).
+	const moveMenu = useMenu();
+	const [renaming, setRenaming] = useState(false);
+	const [renameValue, setRenameValue] = useState("");
+	const [renameError, setRenameError] = useState<string | null>(null);
+	const [renameBusy, setRenameBusy] = useState(false);
+	const [pendingRename, setPendingRename] = useState(false);
+	// M4-3 b6: the dead-link note's payload — a relative .md link that matched
+	// nothing in the tree. Cleared on doc change (the note describes the open
+	// doc's links) and by its Dismiss button.
+	const [linkNotFound, setLinkNotFound] = useState<string | null>(null);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `selected` is the change trigger — the note describes the open doc's links and clears with it.
+	useEffect(() => {
+		setLinkNotFound(null);
+	}, [selected]);
+	const renameRef = useRef<HTMLInputElement>(null);
 	const editorRef = useRef<EditorPaneHandle>(null);
 	const paneRef = useRef<HTMLDivElement>(null);
 
 	// The confirm banners render at the top of the pane — bring them into view
 	// when one appears, otherwise a mid-document Esc raises it unseen.
 	useEffect(() => {
-		if (confirmingCancel || pendingBranch) {
+		if (confirmingCancel || pendingAction || pendingRename) {
 			paneRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
 		}
-	}, [confirmingCancel, pendingBranch]);
+	}, [confirmingCancel, pendingAction, pendingRename]);
+
+	// The rename box opens focused with its initial value selected (and
+	// re-selects on refocus).
+	useEffect(() => {
+		if (renaming) renameRef.current?.select();
+	}, [renaming]);
 
 	const conflictBanner = conflict && (
 		<div className="conflict-banner" role="alert">
@@ -178,12 +262,180 @@ export function DocView({
 	const segs = selected.split("/");
 	const file = segs[segs.length - 1];
 	const dir = segs.slice(0, -1).join(" / ");
-	const breadcrumb = (
-		<nav className="breadcrumb" aria-label="Breadcrumb">
-			{dir ? `${dir} / ` : ""}
-			<span>{file}</span>
-		</nav>
-	);
+	// The display-name model (M4-3 b4): frontmatter title, else the basename
+	// sans .md — the sidebar cards and the @ menu resolve the same way.
+	const displayName = displayTitle(doc?.frontmatter.title, file);
+
+	// --- header file actions (M4-3 b4) --------------------------------------
+	// Rename gates in the spec's order: a dirty buffer raises the
+	// save-or-discard banner first (the branch-switch mechanism, local here
+	// because the box opens afterwards), then App's gate — on main the title
+	// write is a doc-body write, so a draft starts first. The file path
+	// never changes; only the frontmatter title does.
+	function requestRename() {
+		if (!doc) return;
+		if (dirty) {
+			setPendingRename(true);
+			return;
+		}
+		void proceedRename();
+	}
+
+	async function proceedRename() {
+		if (!doc || !(await onBeforeRename())) return;
+		setRenameValue(displayName);
+		setRenameError(null);
+		setRenaming(true);
+	}
+
+	function closeRename() {
+		setRenaming(false);
+		setRenameError(null);
+	}
+
+	async function submitRename() {
+		if (!doc || renameBusy) return;
+		const title = renameValue.trim();
+		if (!title) {
+			closeRename(); // empty input = cancel
+			return;
+		}
+		setRenameBusy(true);
+		setRenameError(null);
+		try {
+			await setTitle(doc.path, title);
+		} catch (e) {
+			// The box stays open — the error sits inline next to the input.
+			setRenameError(e instanceof Error ? e.message : String(e));
+			return;
+		} finally {
+			setRenameBusy(false);
+		}
+		closeRename();
+		onRenamed();
+	}
+
+	const docBar =
+		renaming && doc ? (
+			<form
+				className="rename-form"
+				onSubmit={(e) => {
+					e.preventDefault();
+					void submitRename();
+				}}
+			>
+				<input
+					ref={renameRef}
+					value={renameValue}
+					onChange={(e) => setRenameValue(e.target.value)}
+					onFocus={(e) => e.target.select()}
+					onKeyDown={(e) => {
+						if (e.key === "Escape") closeRename();
+					}}
+					aria-label="Document title"
+					disabled={renameBusy}
+				/>
+				<button
+					type="submit"
+					className="tool-btn"
+					aria-label="Confirm rename"
+					title="Confirm rename"
+					disabled={renameBusy}
+				>
+					<Check aria-hidden="true" />
+				</button>
+				<button
+					type="button"
+					className="tool-btn"
+					aria-label="Cancel rename"
+					title="Cancel rename"
+					onClick={closeRename}
+					disabled={renameBusy}
+				>
+					<X aria-hidden="true" />
+				</button>
+				{renameError && (
+					<span className="rename-error" role="alert">
+						{renameError}
+					</span>
+				)}
+			</form>
+		) : (
+			<div className="doc-bar-main">
+				<nav className="breadcrumb" aria-label="Breadcrumb">
+					{dir ? `${dir} / ` : ""}
+					<span>{displayName}</span>
+				</nav>
+				{/* Read AND edit mode (M4-3 b4): the three file actions live on
+			    the breadcrumb line itself; each is a ≥32px target with an
+			    aria-label. */}
+				{doc && (
+					<>
+						<button
+							type="button"
+							className="tool-btn"
+							aria-label="Rename document"
+							title="Rename"
+							onClick={requestRename}
+						>
+							<Pencil aria-hidden="true" />
+						</button>
+						<span className="menu-wrap" ref={moveMenu.wrapRef}>
+							<button
+								type="button"
+								className="tool-btn"
+								aria-label="Move document"
+								title="Move"
+								aria-expanded={moveMenu.open}
+								onClick={moveMenu.toggle}
+							>
+								<FolderInput aria-hidden="true" />
+							</button>
+							<MenuPopover anchor={moveMenu.anchor} popRef={moveMenu.popRef}>
+								{/* The current folder is a guaranteed "already exists"
+								    409 — never offered (same rule as the drag guard). */}
+								{parentFolder(selected ?? "") !== "" && (
+									<button
+										type="button"
+										className="menu-item"
+										onClick={() => {
+											moveMenu.close();
+											onMoveDoc("");
+										}}
+									>
+										/ (root)
+									</button>
+								)}
+								{folders
+									.filter((f) => f !== parentFolder(selected ?? ""))
+									.map((f) => (
+										<button
+											key={f}
+											type="button"
+											className="menu-item"
+											onClick={() => {
+												moveMenu.close();
+												onMoveDoc(f);
+											}}
+										>
+											{f}
+										</button>
+									))}
+							</MenuPopover>
+						</span>
+						<button
+							type="button"
+							className="tool-btn"
+							aria-label="Delete document"
+							title="Delete"
+							onClick={() => onDeleteDoc(displayName)}
+						>
+							<Trash2 aria-hidden="true" />
+						</button>
+					</>
+				)}
+			</div>
+		);
 
 	// The one PUT seam both save paths share (M2): sends the buffer with
 	// DocView's base hash; on success the doc state/hash refresh through
@@ -278,19 +530,26 @@ export function DocView({
 		setResetCount((c) => c + 1);
 	}
 
-	// A blocked branch switch: same save-or-discard shape as requestCancel,
-	// but confirming performs the switch instead of just exiting (M3).
-	const pendingBanner = pendingBranch && (
+	// The shared save-or-discard banner: Keep editing keeps the buffer;
+	// Discard or a successful Save clears it and continues with `onGo`.
+	// One shape, three users — a blocked branch switch (App's pendingAction),
+	// a blocked header file op (same), and a blocked rename (the box opens
+	// afterwards, so its continue is local).
+	const guardBanner = (
+		headline: string,
+		onKeep: () => void,
+		onGo: () => void,
+	) => (
 		<div className="conflict-banner" role="alert">
 			<div>
-				<strong>Switch to {pendingBranch}?</strong>
+				<strong>{headline}?</strong>
 				This document has unsaved changes.
 			</div>
 			<div className="doc-actions">
 				<button
 					type="button"
 					className="iconbtn subtle dismiss"
-					onClick={onPendingBranchCancel}
+					onClick={onKeep}
 				>
 					Keep editing
 				</button>
@@ -299,7 +558,7 @@ export function DocView({
 					className="iconbtn"
 					onClick={() => {
 						discardAndClose();
-						onPendingBranchGo();
+						onGo();
 					}}
 				>
 					Discard
@@ -310,7 +569,7 @@ export function DocView({
 					disabled={saving}
 					onClick={() =>
 						void handleSave().then((ok) => {
-							if (ok) onPendingBranchGo();
+							if (ok) onGo();
 						})
 					}
 				>
@@ -319,6 +578,20 @@ export function DocView({
 			</div>
 		</div>
 	);
+	const pendingBanner =
+		pendingAction &&
+		guardBanner(
+			pendingAction.headline,
+			onPendingActionCancel,
+			pendingAction.go,
+		);
+	const pendingRenameBanner =
+		pendingRename &&
+		guardBanner(
+			"Rename this document",
+			() => setPendingRename(false),
+			() => void proceedRename(),
+		);
 
 	// The doc-head meta line (item 3): "vN · branch · saved <time>" in read
 	// mode, "editing vN · branch" in edit mode, then the sync LED + word —
@@ -340,12 +613,31 @@ export function DocView({
 	// identically in both modes (M2 pixel parity).
 	return (
 		<div className={editing ? "editor-pane" : "doc-pane"} ref={paneRef}>
-			<div className="doc-bar">{breadcrumb}</div>
+			<div className="doc-bar">{docBar}</div>
+			{/* Dead-link note (M4-3 b6): a relative link that looks like a doc but
+			    matches nothing — said plainly under the breadcrumb, dismissable,
+			    never a tab hijack. Same visual family as the conflict banner. */}
+			{linkNotFound && (
+				<div className="conflict-banner" role="status">
+					<div>
+						<strong>Link not found</strong>
+						{linkNotFound}
+					</div>
+					<button
+						type="button"
+						className="iconbtn subtle dismiss"
+						onClick={() => setLinkNotFound(null)}
+					>
+						Dismiss
+					</button>
+				</div>
+			)}
 			{doc && (
 				<header className="doc-head">
 					<Avatar
 						author={docMeta?.author ?? ""}
 						email={docMeta?.authorEmail ?? ""}
+						authors={authors}
 					/>
 					<div className="dh-main">
 						<div className="dh-author">{docMeta?.author ?? "—"}</div>
@@ -368,13 +660,16 @@ export function DocView({
 						</div>
 					</div>
 					{/* The draft pill (item 3): only on main, when a draft elsewhere
-					    touches this doc — click checks the draft out (App). */}
+					    touches this doc — click checks the draft out (App). Its flip
+					    side (M4-3): on a draft branch touching THIS doc, a
+					    NON-clickable "on draft" badge (span — nothing to click). */}
 					{draftBranch && (
 						<button type="button" className="draft-pill" onClick={onOpenDraft}>
 							<Pencil aria-hidden="true" />
 							draft exists — open
 						</button>
 					)}
+					{onDraft && <span className="draft-pill on-draft">on draft</span>}
 					<div className="doc-actions">
 						{editing ? (
 							<>
@@ -436,6 +731,7 @@ export function DocView({
 			)}
 			{conflictBanner}
 			{pendingBanner}
+			{pendingRenameBanner}
 			{confirmingCancel && (
 				<div className="conflict-banner" role="alert">
 					<div>
@@ -489,7 +785,12 @@ export function DocView({
 					onSpanClick={onSpanClick}
 					docPath={selected ?? doc.path}
 					docs={docs}
+					folders={folders}
 					onSelectDoc={onSelectDoc}
+					onSelectFolder={onSelectFolder}
+					onLinkNotFound={setLinkNotFound}
+					anchor={pendingAnchor}
+					onAnchorConsumed={onAnchorConsumed}
 				/>
 			) : null}
 		</div>

@@ -1,4 +1,4 @@
-import { GitBranch, Move, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Plus, Trash2 } from "lucide-react";
 import {
 	type FormEvent,
 	type MouseEvent as ReactMouseEvent,
@@ -12,7 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { getBranches } from "./api";
 
-/** Every file operation the sidebar menus can request (App performs it). */
+/** Every file operation the sidebar menus / doc head can request (App performs it). */
 export type FileOp =
 	| { kind: "create-doc"; path: string }
 	| { kind: "create-folder"; path: string }
@@ -23,7 +23,8 @@ export type FileOp =
 
 export type BranchAction =
 	| { kind: "switch"; name: string }
-	| { kind: "create"; name: string };
+	| { kind: "create"; name: string }
+	| { kind: "delete"; name: string };
 
 /** Docs must end in .md (core rule) — keep free-form input forgiving. */
 function toDocPath(input: string): string {
@@ -38,8 +39,9 @@ function toPath(input: string): string {
 /**
  * Open/closed state for a small anchored popover. Tracks the anchor button
  * (for placement) and closes on outside pointerdown or Escape (DESIGN §8).
+ * Shared by the sidebar menus and the doc head's move picker (M4-3 b4).
  */
-function useMenu() {
+export function useMenu() {
 	const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
 	const wrapRef = useRef<HTMLSpanElement>(null);
 	const popRef = useRef<HTMLDivElement>(null);
@@ -78,7 +80,7 @@ function useMenu() {
  * backdrop-filter is a containing block for fixed descendants and would
  * otherwise clip/misplace it.
  */
-function MenuPopover({
+export function MenuPopover({
 	anchor,
 	popRef,
 	children,
@@ -106,8 +108,8 @@ function MenuPopover({
 
 /**
  * The sidebar-head branch control: reads as metadata ("on main"), opens a
- * small menu to switch or create a branch. Performing the switch (and the
- * unsaved-changes guard) is App's business.
+ * small menu to switch, create, or delete a branch. Performing the action
+ * (and the unsaved-changes guard on switches) is App's business.
  */
 export function BranchMenu({
 	current,
@@ -156,18 +158,35 @@ export function BranchMenu({
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				{failed && <p className="menu-empty">branches unavailable</p>}
 				{(branches ?? []).map((b) => (
-					<button
-						key={b}
-						type="button"
-						className="menu-item"
-						aria-current={b === current ? "true" : undefined}
-						onClick={() => {
-							menu.close();
-							if (b !== current) onAction({ kind: "switch", name: b });
-						}}
-					>
-						{b}
-					</button>
+					// One row, two targets: the name switches, the trash deletes
+					// (never offered on the current branch — the server refuses it).
+					<span key={b} className="menu-row">
+						<button
+							type="button"
+							className="menu-item"
+							aria-current={b === current ? "true" : undefined}
+							onClick={() => {
+								menu.close();
+								if (b !== current) onAction({ kind: "switch", name: b });
+							}}
+						>
+							{b}
+						</button>
+						{b !== current && (
+							<button
+								type="button"
+								className="tool-btn"
+								title="Delete branch"
+								aria-label={`Delete branch ${b}`}
+								onClick={() => {
+									menu.close();
+									onAction({ kind: "delete", name: b });
+								}}
+							>
+								<Trash2 aria-hidden="true" />
+							</button>
+						)}
+					</span>
 				))}
 				<form className="popover-form" onSubmit={submit}>
 					<label htmlFor="branch-name">New branch</label>
@@ -275,136 +294,5 @@ export function NewDocButton({ onFileOp }: { onFileOp: (op: FileOp) => void }) {
 				)}
 			</MenuPopover>
 		</span>
-	);
-}
-
-/**
- * Per-row file actions (docs and folders), inline in the card corner left
- * of the version chip (dogfood revision of item 1 — the outside kebab
- * left a dead column beside the card and squashed its text): two small
- * icons — rename/move opens the new-path form, delete asks once — each a
- * focusable ≥32px button revealed on row hover/focus (§5: never
- * hover-only).
- */
-export function RowActions({
-	kind,
-	path,
-	name,
-	onFileOp,
-}: {
-	kind: "doc" | "folder";
-	path: string;
-	name: string;
-	onFileOp: (op: FileOp) => void;
-}) {
-	const move = useMenu();
-	const del = useMenu();
-	const [to, setTo] = useState(path);
-	const inputId = `move-${path.replaceAll("/", "-")}`;
-	const inputRef = useRef<HTMLInputElement>(null);
-	// Prefill the form with the current path when the popover opens, and
-	// land focus in it (M2-2 image-form pattern).
-	useEffect(() => {
-		if (move.open) {
-			setTo(path);
-			inputRef.current?.focus();
-		}
-	}, [move.open, path]);
-
-	return (
-		<>
-			<span className="menu-wrap" ref={move.wrapRef}>
-				<button
-					type="button"
-					className="tool-btn"
-					title="Rename / move"
-					aria-label={`Rename or move ${name}`}
-					aria-expanded={move.open}
-					onClick={move.toggle}
-				>
-					<Move aria-hidden="true" />
-				</button>
-				<MenuPopover anchor={move.anchor} popRef={move.popRef}>
-					<form
-						className="popover-form"
-						onSubmit={(e) => {
-							e.preventDefault();
-							if (!to.trim()) return;
-							const dest = kind === "doc" ? toDocPath(to) : toPath(to);
-							move.close();
-							onFileOp(
-								kind === "doc"
-									? { kind: "move-doc", from: path, to: dest }
-									: { kind: "move-folder", from: path, to: dest },
-							);
-						}}
-					>
-						<label htmlFor={inputId}>New path</label>
-						<input
-							id={inputId}
-							ref={inputRef}
-							value={to}
-							onChange={(e) => setTo(e.target.value)}
-						/>
-						<div className="popover-actions">
-							<button
-								type="button"
-								className="iconbtn subtle"
-								onClick={move.close}
-							>
-								Cancel
-							</button>
-							<button type="submit" className="iconbtn primary">
-								Move
-							</button>
-						</div>
-					</form>
-				</MenuPopover>
-			</span>
-			<span className="menu-wrap" ref={del.wrapRef}>
-				<button
-					type="button"
-					className="tool-btn"
-					title="Delete"
-					aria-label={`Delete ${name}`}
-					aria-expanded={del.open}
-					onClick={del.toggle}
-				>
-					<Trash2 aria-hidden="true" />
-				</button>
-				<MenuPopover anchor={del.anchor} popRef={del.popRef}>
-					<form
-						className="popover-form"
-						onSubmit={(e) => {
-							e.preventDefault();
-							del.close();
-							onFileOp(
-								kind === "doc"
-									? { kind: "delete-doc", path }
-									: { kind: "delete-folder", path },
-							);
-						}}
-					>
-						<p className="menu-note">
-							Delete <strong>{name}</strong>
-							{kind === "folder" ? " and everything in it" : ""}? The removal is
-							committed.
-						</p>
-						<div className="popover-actions">
-							<button
-								type="button"
-								className="iconbtn subtle"
-								onClick={del.close}
-							>
-								Cancel
-							</button>
-							<button type="submit" className="iconbtn danger">
-								Delete
-							</button>
-						</div>
-					</form>
-				</MenuPopover>
-			</span>
-		</>
 	);
 }

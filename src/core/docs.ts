@@ -43,14 +43,15 @@ export interface Doc {
  * Resolve a docsRoot-relative path and enforce it stays under docsRoot and
  * (for docs) ends with .md. Shared by readDoc (M1), writeDoc (M2), and the
  * files.ts ops (M3). Trust boundary — the server maps violations to 400.
- * Folder ops pass kind "folder" to allow a path without the .md extension;
- * the traversal rules are identical for both kinds.
+ * Folder ops pass kind "folder" and the raw-file route passes kind "raw"
+ * (M4-3 b6) to allow a path without the .md extension; the traversal rules
+ * are identical for all kinds.
  */
 export function resolveDocPath(
 	repoRoot: string,
 	docsRoot: string,
 	docPath: string,
-	kind: "doc" | "folder" = "doc",
+	kind: "doc" | "folder" | "raw" = "doc",
 ): string {
 	const docsAbs = resolve(repoRoot, docsRoot);
 	const target = resolve(docsAbs, docPath);
@@ -170,4 +171,59 @@ export async function writeDoc(
 		repoRoot,
 	);
 	return { sha, hash: docHash(normalized) };
+}
+
+/**
+ * Set/overwrite the frontmatter `title` — the display-name model (M4-3 b4).
+ * The FILE PATH NEVER CHANGES, so every existing link keeps resolving; the
+ * name decouples from the filename. The raw YAML is edited line-wise, never
+ * re-serialized: a top-level `title:` line is replaced in place (position
+ * kept), an absent one appends at the fence's end, and every other key keeps
+ * its bytes. The body reattaches through the writeDoc discipline (LF, one
+ * trailing newline, fence gap preserved) and the write follows the same
+ * order: traversal, existence, git identity — all before any disk write.
+ * One commit: `Rename <docPath> to <title>`.
+ */
+export async function setTitle(
+	repoRoot: string,
+	docsRoot: string,
+	docPath: string,
+	title: string,
+): Promise<{ sha: string }> {
+	const value = title.trim();
+	if (!value) throw new DocPathError("title must be a non-empty string");
+	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		throw new DocNotFoundError(docPath);
+	}
+	const user = await localUser(repoRoot);
+	const parsed = matter(readFileSync(abs, "utf8"), {});
+	const body = canonicalBody(parsed.content);
+	// JSON string form: a valid YAML double-quoted scalar, so colons, quotes,
+	// and hashes in the title round-trip through gray-matter verbatim.
+	const line = `title: ${JSON.stringify(value)}`;
+	// gray-matter's `matter` runs from just after the opening fence to just
+	// before the "\n---" closer — writeDoc's `---${matter}\n---` reattach is
+	// byte-exact, and the line edit keeps that shape.
+	const gap = parsed.content.match(/^\n+/)?.[0] ?? "";
+	const front = parsed.matter
+		? `---${editTitleLine(parsed.matter, line)}\n---\n${gap}`
+		: `---\n${line}\n---\n`;
+	writeFileSync(abs, `${front}${body}`);
+	const repoRel = relative(repoRoot, abs).split(sep).join("/");
+	const sha = await commitAs(
+		user,
+		{ files: [repoRel], message: `Rename ${docPath} to ${value}` },
+		repoRoot,
+	);
+	return { sha };
+}
+
+/** Replace the top-level `title:` line in place, or append it at the end. */
+function editTitleLine(rawFrontmatter: string, line: string): string {
+	const lines = rawFrontmatter.split("\n");
+	const at = lines.findIndex((l) => /^title:/.test(l));
+	if (at === -1) lines.push(line);
+	else lines[at] = line;
+	return lines.join("\n");
 }

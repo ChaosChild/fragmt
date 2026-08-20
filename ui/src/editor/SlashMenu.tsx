@@ -108,6 +108,17 @@ export function SlashMenuView<T extends MenuItem>({
 		return () => registerKeydown(() => false);
 	}, [registerKeydown]);
 
+	// Keyboard selection follows inside the capped, scrollable menu (the
+	// container's max-height made it an overflow box). `block: "nearest"`
+	// scrolls the minimum, so the fixed, viewport-fitted menu never drags
+	// `.main` along. Runs after render — the item's DOM only reflects the
+	// handler's state update once it lands.
+	useEffect(() => {
+		menuRef.current
+			?.querySelectorAll("button")
+			[selected]?.scrollIntoView({ block: "nearest" });
+	}, [selected]);
+
 	return (
 		<div
 			ref={menuRef}

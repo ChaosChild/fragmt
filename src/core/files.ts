@@ -9,6 +9,7 @@ import {
 import { dirname, join, relative, sep } from "node:path";
 import { commitAs } from "./commit.js";
 import { canonicalBody, DocNotFoundError, resolveDocPath } from "./docs.js";
+import { git } from "./git.js";
 import { localUser } from "./identity.js";
 
 /** Target path already exists — the server maps this to 409. */
@@ -29,6 +30,29 @@ export class PathExistsError extends Error {}
 /** Repo-root-relative POSIX path — the shape commitAs stages and commits. */
 function repoRel(repoRoot: string, abs: string): string {
 	return relative(repoRoot, abs).split(sep).join("/");
+}
+
+/** Unwind a failed move: the fs rename back, plus unstaging — `git add`
+ *  stages what it can before refusing an ignored path, so the source
+ *  deletion would otherwise sit in the index. Best-effort: never masks the
+ *  original error. */
+async function rollbackMove(
+	repoRoot: string,
+	fromAbs: string,
+	toAbs: string,
+): Promise<void> {
+	try {
+		renameSync(toAbs, fromAbs);
+		await git(repoRoot, [
+			"reset",
+			"--quiet",
+			"--",
+			repoRel(repoRoot, fromAbs),
+			repoRel(repoRoot, toAbs),
+		]);
+	} catch {
+		// rollback is best-effort; the original error is the story
+	}
 }
 
 /** Create a doc (LF, exactly one trailing newline) in one commit. */
@@ -53,7 +77,10 @@ export async function createDoc(
 	return { sha };
 }
 
-/** Move/rename a doc in one commit; both ends pass the containment guard. */
+/** Move/rename a doc in one commit; both ends pass the containment guard.
+ *  The rename happens before the commit (the M3 seam needs the fs move), so
+ *  a failed commit rolls the rename back — the doc is never stranded at its
+ *  destination with no commit recording the move. */
 export async function moveDoc(
 	repoRoot: string,
 	docsRoot: string,
@@ -71,15 +98,20 @@ export async function moveDoc(
 	const user = await localUser(repoRoot);
 	mkdirSync(dirname(toAbs), { recursive: true });
 	renameSync(fromAbs, toAbs);
-	const sha = await commitAs(
-		user,
-		{
-			files: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
-			message: `Rename ${from} to ${to}`,
-		},
-		repoRoot,
-	);
-	return { sha };
+	try {
+		const sha = await commitAs(
+			user,
+			{
+				files: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
+				message: `Rename ${from} to ${to}`,
+			},
+			repoRoot,
+		);
+		return { sha };
+	} catch (e) {
+		await rollbackMove(repoRoot, fromAbs, toAbs);
+		throw e;
+	}
 }
 
 /** Delete a doc in one commit. Missing path → DocNotFoundError (server: 404). */
@@ -152,15 +184,21 @@ export async function renameFolder(
 	const user = await localUser(repoRoot);
 	mkdirSync(dirname(toAbs), { recursive: true });
 	renameSync(fromAbs, toAbs);
-	const sha = await commitAs(
-		user,
-		{
-			files: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
-			message: `Rename ${from} to ${to}`,
-		},
-		repoRoot,
-	);
-	return { sha };
+	try {
+		const sha = await commitAs(
+			user,
+			{
+				files: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
+				message: `Rename ${from} to ${to}`,
+			},
+			repoRoot,
+		);
+		return { sha };
+	} catch (e) {
+		// Same rollback as moveDoc — the subtree returns untouched.
+		await rollbackMove(repoRoot, fromAbs, toAbs);
+		throw e;
+	}
 }
 
 /**

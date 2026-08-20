@@ -92,10 +92,11 @@ export async function mergeBranch(
 	await git(repoRoot, ["merge", name, "--no-edit"]);
 }
 
-/** Delete a merged local branch. */
+/** Delete a local branch; force skips the merged check (`-D`). */
 export async function deleteBranch(
 	repoRoot: string,
 	name: string,
+	force = false,
 ): Promise<void> {
-	await git(repoRoot, ["branch", "-d", name]);
+	await git(repoRoot, ["branch", force ? "-D" : "-d", name]);
 }

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type CSSProperties,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import {
 	type CommentFile,
 	type CommentThread,
@@ -8,6 +15,7 @@ import {
 	createFolder,
 	type DeletedDoc,
 	type DocResponse,
+	deleteBranch,
 	deleteComment,
 	deleteDoc,
 	deleteFolder,
@@ -29,6 +37,8 @@ import {
 } from "./api";
 import { CommentsRail } from "./CommentsRail";
 import { DocView } from "./DocView";
+import { displayTitle } from "./display";
+import { type DragItem, movedPath } from "./dnd";
 import type { AtDoc } from "./editor/at";
 import {
 	type BranchAction,
@@ -36,7 +46,8 @@ import {
 	type FileOp,
 	NewDocButton,
 } from "./Menus";
-import { Sidebar } from "./Sidebar";
+import { Sidebar, SidebarResizeHandle } from "./Sidebar";
+import { readStoredSidebarWidth, storeSidebarWidth } from "./sidebar-geometry";
 
 function firstDoc(node: TreeNode): string | null {
 	for (const child of node.children ?? []) {
@@ -52,14 +63,46 @@ function treeHas(node: TreeNode, path: string): boolean {
 	return (node.children ?? []).some((c) => c.path === path || treeHas(c, path));
 }
 
-/** The tree's docs as {title, path} — the @ menus' items and linkify's set. */
-function docItems(node: TreeNode | null): AtDoc[] {
+/** The tree node for a folder path (docsRoot-relative), or null. */
+function findDir(node: TreeNode, path: string): TreeNode | null {
+	if (!path) return null;
+	for (const c of node.children ?? []) {
+		if (c.type !== "dir") continue;
+		if (c.path === path) return c;
+		const found = findDir(c, path);
+		if (found) return found;
+	}
+	return null;
+}
+
+/** The tree's docs as {title, path} — the @ menus' items and linkify's set.
+ *  Titles come from meta (the display-name model, M4-3 b4); paths stay the
+ *  identity and the link hrefs. */
+function docItems(node: TreeNode | null, meta: RepoMeta | null): AtDoc[] {
 	const out: AtDoc[] = [];
 	const walk = (n: TreeNode) => {
 		for (const c of n.children ?? []) {
 			if (c.type === "doc")
-				out.push({ title: c.name.replace(/\.md$/i, ""), path: c.path });
+				out.push({
+					title: displayTitle(meta?.docs[c.path]?.title, c.name),
+					path: c.path,
+				});
 			else walk(c);
+		}
+	};
+	if (node) walk(node);
+	return out;
+}
+
+/** Every folder path in the tree — the header move picker's list (M4-3 b4). */
+function folderPaths(node: TreeNode | null): string[] {
+	const out: string[] = [];
+	const walk = (n: TreeNode) => {
+		for (const c of n.children ?? []) {
+			if (c.type === "dir") {
+				out.push(c.path);
+				walk(c);
+			}
 		}
 	};
 	if (node) walk(node);
@@ -75,10 +118,26 @@ export function App() {
 	// M3: branches, sync, file ops.
 	const [branch, setBranch] = useState<string | null>(null);
 	const [dirty, setDirty] = useState(false);
-	const [pendingBranch, setPendingBranch] = useState<BranchAction | null>(null);
+	// The save-or-discard guard's payload (M3, generalized M4-3 b4): any
+	// action blocked on the choice — a branch switch, a header move/delete.
+	// DocView renders the banner; `go` runs after Save/Discard and clears.
+	const [pendingAction, setPendingAction] = useState<{
+		headline: string;
+		go: () => void;
+	} | null>(null);
 	const [syncing, setSyncing] = useState(false);
 	const [conflict, setConflict] = useState<string | null>(null);
 	const [ledRed, setLedRed] = useState(false);
+	// M4-3 b3: drag-resized sidebar width — applied as --sidebar-w on the
+	// .sidebar element itself (not :root), so the ≤768px drawer override
+	// keeps owning the width there. Persisted on pointerup only.
+	const [sidebarW, setSidebarW] = useState<number | null>(() =>
+		readStoredSidebarWidth(),
+	);
+	const applySidebarW = (width: number, commit: boolean) => {
+		setSidebarW(width);
+		if (commit) storeSidebarWidth(width);
+	};
 	// M4-2: repo meta (cards, drafts, recycle bin). Refetched on load, branch
 	// switches, file ops, and saves — a failure is quiet (the UI falls back to
 	// version-less cards).
@@ -104,6 +163,15 @@ export function App() {
 	const [spanFocus, setSpanFocus] = useState<{ id: string; n: number } | null>(
 		null,
 	);
+	// M4-3 b6 link completion: a cross-doc #fragment waiting for the new doc
+	// to render (EditorPane scrolls + consumes it), and a folder link's
+	// expand request (the sidebar owns its collapsed set; `n` re-arms repeats).
+	const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
+	const clearAnchor = useCallback(() => setPendingAnchor(null), []);
+	const [expandFolder, setExpandFolder] = useState<{
+		path: string;
+		n: number;
+	} | null>(null);
 
 	// Latest selected/dirty for the stable interval/focus sync callback.
 	const live = useRef({ selected, dirty });
@@ -184,8 +252,11 @@ export function App() {
 
 	const threads: CommentThread[] = Object.values(commentFile.comments);
 	// The flat doc list (M4-2): one source for the editor's @ menu, its link
-	// clicks, the rail's reply @ mentions, and body linkification.
-	const docs = useMemo(() => docItems(tree), [tree]);
+	// clicks, the rail's reply @ mentions, and body linkification. Titles
+	// ride along from meta (M4-3 b4) — paths stay the identity.
+	const docs = useMemo(() => docItems(tree, meta), [tree, meta]);
+	// The header move picker's folder list (M4-3 b4).
+	const folders = useMemo(() => folderPaths(tree), [tree]);
 	// The orphan rule, client-side: core's reconcileThreads check replicated
 	// against the RENDERED doc's markdown (doc.markdown is the exact string
 	// the editor renders from and is refreshed on every save). Smaller than
@@ -318,11 +389,61 @@ export function App() {
 		}
 	}
 
-	// The branch-switch guard: unsaved edits block the switch with the
-	// save-or-discard banner (DocView), never a silent loss.
+	// The save-or-discard guard (M3, generalized M4-3 b4): unsaved edits
+	// block the action with the banner (DocView), never a silent loss. The
+	// header file actions route through the same gate.
+	function guardAction(headline: string, run: () => void) {
+		if (live.current.dirty) {
+			setPendingAction({
+				headline,
+				go: () => {
+					setPendingAction(null);
+					run();
+				},
+			});
+			return;
+		}
+		run();
+	}
+
+	// Branch switches pass through the guard; deletion skips it — it never
+	// touches the worktree or the checked-out branch.
 	function requestBranch(action: BranchAction) {
-		if (live.current.dirty) setPendingBranch(action);
-		else void switchTo(action);
+		if (action.kind === "delete") {
+			void runDeleteBranch(action.name);
+			return;
+		}
+		guardAction(`Switch to ${action.name}`, () => void switchTo(action));
+	}
+
+	// Branch deletion (M4-3): confirm → DELETE; an unmerged 409 asks again
+	// before the force delete. The server refuses the current branch, so the
+	// worktree is never touched — no dirty guard. BranchMenu refetches its
+	// list on open; meta and the branch line refresh here.
+	async function runDeleteBranch(name: string) {
+		if (!window.confirm(`Delete branch "${name}"?`)) return;
+		try {
+			await deleteBranch(name);
+		} catch (e) {
+			if (e instanceof SaveError && e.status === 409) {
+				if (!window.confirm(`"${name}" has unmerged commits. Force-delete?`))
+					return;
+				try {
+					await deleteBranch(name, true);
+				} catch (e2) {
+					setError(e2 instanceof Error ? e2.message : String(e2));
+					return;
+				}
+			} else {
+				setError(e instanceof Error ? e.message : String(e));
+				return;
+			}
+		}
+		setError(null);
+		refreshMeta();
+		getBranches()
+			.then((r) => setBranch(r.current))
+			.catch(() => {});
 	}
 
 	// --- M4-2: protected main (item 7) --------------------------------------
@@ -359,23 +480,98 @@ export function App() {
 		return draftFirst();
 	}
 
+	// The pre-rename gate (M4-3 b4): the title write is a doc-body write, so
+	// on main the draft starts (and checks out) first — the doc path never
+	// changes, so the flow continues on the draft branch. DocView handles
+	// the dirty half with its own banner (the box opens after the choice).
+	async function beforeRename(): Promise<boolean> {
+		if (!onMain) return true;
+		return draftFirst();
+	}
+
+	// --- header file actions (M4-3 b4): rename/move/delete on the open doc.
+
+	// A title landed: the frontmatter changed, so the doc reloads and meta
+	// (sidebar cards, @ menu labels) refreshes. A local commit — the LED
+	// reads Saved, not Synced.
+	function onRenamed() {
+		setSynced(false);
+		reloadSelected();
+		refreshMeta();
+	}
+
+	// Move any doc (the header picker or a drag, M4-3 b5) into a tree folder
+	// ("" = docsRoot root): the guard first, then the existing move op —
+	// tree + meta refresh and selection follows the new path (runFileOp's
+	// flow).
+	function moveDocTo(from: string, folder: string) {
+		guardAction(
+			`Move to ${folder || "/ (root)"}`,
+			() =>
+				void runFileOp({
+					kind: "move-doc",
+					from,
+					to: movedPath("doc", from, folder),
+				}),
+		);
+	}
+
+	function requestMoveDoc(folder: string) {
+		const from = live.current.selected;
+		if (!from) return;
+		moveDocTo(from, folder);
+	}
+
+	// A folder move arrives only by drag (M4-3 b5 — the header actions are
+	// per-doc): the guard, then renameFolder keeping the basename. runFileOp's
+	// move-folder branch moves the open doc's selection along with the subtree.
+	function requestMoveFolder(from: string, folder: string) {
+		guardAction(
+			`Move folder to ${folder || "/ (root)"}`,
+			() =>
+				void runFileOp({
+					kind: "move-folder",
+					from,
+					to: movedPath("folder", from, folder),
+				}),
+		);
+	}
+
+	// Delete: the guard first, then the house confirm, then the existing
+	// delete op — selection clears (the path left the tree).
+	function deleteDocAt(path: string, displayName: string) {
+		guardAction("Delete this document", () => {
+			if (!window.confirm(`Delete "${displayName}"? The removal is committed.`))
+				return;
+			void runFileOp({ kind: "delete-doc", path });
+		});
+	}
+
+	function requestDeleteDoc(displayName: string) {
+		const path = live.current.selected;
+		if (!path) return;
+		deleteDocAt(path, displayName);
+	}
+
+	// The bin's folder drop (M4-3 b5): the dirty guard (an open doc may sit in
+	// the subtree), then a confirm that names the cost, then deleteFolder.
+	function requestDeleteFolder(path: string, name: string) {
+		guardAction(`Delete folder ${name}`, () => {
+			if (
+				!window.confirm(
+					`Delete folder "${name}" and everything in it? The removal is committed.`,
+				)
+			)
+				return;
+			void runFileOp({ kind: "delete-folder", path });
+		});
+	}
+
 	// --- file ops: one commit each server-side; every op refreshes the tree.
+	// The dirty guard lives at the entry points now (guardAction, M4-3 b4):
+	// the sidebar's NewDocButton ops never target the open doc, and the
+	// header's move/delete route through the banner before reaching here.
 	async function runFileOp(op: FileOp) {
-		const target =
-			op.kind === "move-doc" || op.kind === "move-folder"
-				? op.from
-				: op.kind === "delete-doc" || op.kind === "delete-folder"
-					? op.path
-					: null;
-		if (
-			target &&
-			live.current.dirty &&
-			(live.current.selected === target ||
-				live.current.selected?.startsWith(`${target}/`))
-		) {
-			setError("save or discard changes to the open document first");
-			return;
-		}
 		try {
 			switch (op.kind) {
 				case "create-doc":
@@ -484,6 +680,26 @@ export function App() {
 		}
 	}
 
+	// --- M4-3 b6: link-navigation callbacks ----------------------------------
+
+	// A doc link (optionally with a #fragment): navigate, and leave the
+	// fragment as the pending anchor — the new doc's EditorPane scrolls to it
+	// once the content and heading ids exist.
+	function onDocLink(path: string, anchor?: string) {
+		setSelected(path);
+		setPendingAnchor(anchor ?? null);
+	}
+
+	// A folder link: expand the sidebar path (ancestors + target), then select
+	// the folder's first doc if one exists — an empty .gitkeep folder just
+	// stays visible (the tree amendment); the selection is untouched then.
+	function onSelectFolderLink(path: string) {
+		setExpandFolder((f) => ({ path, n: (f?.n ?? 0) + 1 }));
+		const dir = tree ? findDir(tree, path) : null;
+		const first = dir ? firstDoc(dir) : null;
+		if (first) setSelected(first);
+	}
+
 	// LED + one-word status: amber = not synced yet (the word says which —
 	// Unsaved/Saved/Syncing), green = synced, red = error (conflict or sync
 	// failure; holds until the next clean sync).
@@ -520,12 +736,29 @@ export function App() {
 		(meta.drafts[selected]?.length ?? 0) > 0
 			? (meta.drafts[selected][0].branch ?? null)
 			: null;
+	// The pill's flip side (M4-3): on a NON-main branch that touches the
+	// open doc — the header's non-clickable "on draft" badge. Per-doc
+	// semantics: a branch that doesn't touch the open doc shows nothing.
+	const onDraft = Boolean(
+		selected &&
+			meta?.main &&
+			meta.current !== meta.main &&
+			(meta.drafts[selected] ?? []).some((e) => e.branch === meta.current),
+	);
 
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
 			<div className="layout">
-				<aside className="sidebar" aria-label="Documents">
+				<aside
+					className="sidebar"
+					aria-label="Documents"
+					style={
+						sidebarW === null
+							? undefined
+							: ({ "--sidebar-w": `${sidebarW}px` } as CSSProperties)
+					}
+				>
 					{/* Two-row head (item 11): brand + "+", then branch + Merge. */}
 					<div className="side-head">
 						<div className="side-head-row">
@@ -556,18 +789,49 @@ export function App() {
 						tree={tree}
 						selected={selected}
 						onSelect={setSelected}
-						onFileOp={runFileOp}
 						meta={meta}
+						expandFolder={expandFolder}
 						onOpenGhost={(path, branchName) => void openGhost(path, branchName)}
 						onRestore={(items) => void runRestore(items)}
+						// Drag & drop (M4-3 b5): the sidebar's dropTargetValid has
+						// already no-opped same-parent and self-subtree drops, so every
+						// arrival here is a real move/delete through the batch-4 flows.
+						onDropItem={(item: DragItem, folder: string) =>
+							item.type === "doc"
+								? moveDocTo(item.path, folder)
+								: requestMoveFolder(item.path, folder)
+						}
+						onDropBin={(item: DragItem, name: string) =>
+							item.type === "doc"
+								? deleteDocAt(item.path, name)
+								: requestDeleteFolder(item.path, name)
+						}
 					/>
-					{error && (
-						<p className="label-meta" style={{ padding: "0 16px 16px" }}>
-							{error}
-						</p>
-					)}
+					<SidebarResizeHandle onWidth={applySidebarW} />
 				</aside>
 				<main className="main">
+					{/* App-level failures (file ops, sync, branch commands) say
+					    what went wrong where the user is looking — a failed move
+					    must not read as "nothing happened". */}
+					{error && (
+						<div
+							className="conflict-banner"
+							role="alert"
+							style={{ margin: "12px 24px 0" }}
+						>
+							<div>
+								<strong>Something failed</strong>
+								{error}
+							</div>
+							<button
+								type="button"
+								className="iconbtn subtle dismiss"
+								onClick={() => setError(null)}
+							>
+								Dismiss
+							</button>
+						</div>
+					)}
 					<DocView
 						doc={doc}
 						selected={selected}
@@ -589,13 +853,8 @@ export function App() {
 							setRailOpen(true);
 							setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
 						}}
-						pendingBranch={pendingBranch?.name ?? null}
-						onPendingBranchCancel={() => setPendingBranch(null)}
-						onPendingBranchGo={() => {
-							const action = pendingBranch;
-							setPendingBranch(null);
-							if (action) void switchTo(action);
-						}}
+						pendingAction={pendingAction}
+						onPendingActionCancel={() => setPendingAction(null)}
 						conflict={conflict}
 						onDismissConflict={() => setConflict(null)}
 						onBeforeEdit={beforeEdit}
@@ -609,8 +868,18 @@ export function App() {
 						ledLabel={ledLabel}
 						draftBranch={draftBranch}
 						onOpenDraft={() => draftBranch && openDraft(draftBranch)}
+						onDraft={onDraft}
+						authors={meta?.authors ?? {}}
 						docs={docs}
-						onSelectDoc={setSelected}
+						onSelectDoc={onDocLink}
+						onSelectFolder={onSelectFolderLink}
+						pendingAnchor={pendingAnchor}
+						onAnchorConsumed={clearAnchor}
+						folders={folders}
+						onBeforeRename={beforeRename}
+						onMoveDoc={requestMoveDoc}
+						onDeleteDoc={requestDeleteDoc}
+						onRenamed={onRenamed}
 					/>
 				</main>
 				{/* The rail is a layout sibling of <main> (right margin column);
