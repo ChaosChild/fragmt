@@ -87,14 +87,16 @@ function newThread(
 /**
  * Write a sidecar and commit it. One commitAs per write, message
  * `Update comments for <docPath>`. Identity is read before anything touches
- * disk (createDoc pattern).
+ * disk (createDoc pattern); `who` (the b4 agent --author) overrides the local
+ * git identity for both the commit and the sidecar's author fields.
  */
 export async function writeComments(
 	repoRoot: string,
 	docPath: string,
 	file: CommentFile,
+	who?: { name: string; email: string },
 ): Promise<{ sha: string }> {
-	const user = await localUser(repoRoot);
+	const user = who ?? (await localUser(repoRoot));
 	const abs = writeSidecar(repoRoot, docPath, file);
 	const sha = await commitAs(
 		user,
@@ -127,8 +129,9 @@ export async function addReply(
 	docPath: string,
 	id: string,
 	body: string,
+	who?: { name: string; email: string },
 ): Promise<{ sha: string }> {
-	const user = await localUser(repoRoot);
+	const user = who ?? (await localUser(repoRoot));
 	const file = await readComments(repoRoot, docPath);
 	const thread = file.comments[id];
 	if (!thread) throw new ThreadNotFoundError(id);
@@ -137,7 +140,7 @@ export async function addReply(
 		body,
 		at: new Date().toISOString(),
 	});
-	return writeComments(repoRoot, docPath, file);
+	return writeComments(repoRoot, docPath, file, user);
 }
 
 /** Set a thread's resolved flag in one commit (the span stays — resolve ≠ delete). */
@@ -146,12 +149,13 @@ export async function setResolved(
 	docPath: string,
 	id: string,
 	resolved: boolean,
+	who?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const file = await readComments(repoRoot, docPath);
 	const thread = file.comments[id];
 	if (!thread) throw new ThreadNotFoundError(id);
 	thread.resolved = resolved;
-	return writeComments(repoRoot, docPath, file);
+	return writeComments(repoRoot, docPath, file, who);
 }
 
 /** Remove a sidecar entry in one commit. Missing thread → 404. */

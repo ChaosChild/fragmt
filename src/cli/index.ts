@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { findRepoRoot, initRepo, loadConfig } from "../core/index.js";
 import { createApp, startServer } from "../server/index.js";
+import { runAgent } from "./agent.js";
 
 /** Top-level usage text. Exported so tests can assert on it. */
 export const usage = `\
@@ -10,15 +11,26 @@ fragmt — git-native documentation environment
 Usage:
   fragmt init [--root <path>]
   fragmt serve [--port <n>]
+  fragmt agent [status]
+  fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--full]
+  fragmt agent draft <doc> [--merge]
   fragmt --help
 
 Commands:
   init   Adopt an existing docs repo (write .fragmt.json)
   serve  Start the local web server
+  agent  The agent surface: status, comment, draft (AXI-conformant)
 `;
 
 /** Parse argv and dispatch. Exits the process. */
 export async function main(argv: string[]): Promise<void> {
+	// The agent namespace carries its own strict flag set (thread/body/…), so
+	// it parses itself — main's parseArgs only knows the operator flags.
+	if (argv[0] === "agent") {
+		const repoRoot = resolveRepoRoot("agent");
+		process.exit(await runAgent(argv.slice(1), repoRoot));
+	}
+
 	const { values, positionals } = parseArgs({
 		args: argv,
 		options: {
