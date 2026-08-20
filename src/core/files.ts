@@ -139,14 +139,8 @@ export async function moveDoc(
 		);
 		return { sha };
 	} catch (e) {
-		await rollbackMove(
-			repoRoot,
-			fromAbs,
-			toAbs,
-			keep ? [keep] : [],
-		);
-		if (keep)
-			rmSync(join(dirname(fromAbs), ".gitkeep"), { force: true });
+		await rollbackMove(repoRoot, fromAbs, toAbs, keep ? [keep] : []);
+		if (keep) rmSync(join(dirname(fromAbs), ".gitkeep"), { force: true });
 		throw e;
 	}
 }
@@ -236,14 +230,8 @@ export async function renameFolder(
 		return { sha };
 	} catch (e) {
 		// Same rollback as moveDoc — the subtree returns untouched.
-		await rollbackMove(
-			repoRoot,
-			fromAbs,
-			toAbs,
-			keep ? [keep] : [],
-		);
-		if (keep)
-			rmSync(join(dirname(fromAbs), ".gitkeep"), { force: true });
+		await rollbackMove(repoRoot, fromAbs, toAbs, keep ? [keep] : []);
+		if (keep) rmSync(join(dirname(fromAbs), ".gitkeep"), { force: true });
 		throw e;
 	}
 }
