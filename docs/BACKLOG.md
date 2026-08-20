@@ -14,6 +14,10 @@ Cost estimate from the M4-3 investigation (2026-08-19): in-UI resolution means l
 
 M4-2's metadata endpoint feeds the cards and doc head from git-log walks: walk 1 is one spawn capped at 2000 commits; walk 3 (recycle bin) one spawn capped at 200; walk 2 (draft map) is one `for-each-ref` plus one `git log` per non-main branch — the real scaling axis is branch count. Refresh fires on discrete user actions (mount, branch ops, saves, file ops, restore), not on the sync timer. All ceilings are ponytail-marked in core. When it bites: `rev-list` per doc, or a cache invalidated by HEAD — a straight swap inside `repoMeta`.
 
+### Drag & drop collision-aware targets (2026-08-20, M4-3 dogfooding)
+
+Moving a doc onto a folder that already contains a file with the same name is refused cleanly server-side (409 "already exists", nothing moves) and the error shows in the banner — but the drag-over highlight promises a drop the server will refuse. The lazy fix when it bites: the tree is already client-side, so the picker and the drop-target validity check can consult it and simply not offer colliding destinations.
+
 ## Agent interaction
 
 ### The agent as a first-class user (2026-08-19, post-M4-2 dogfooding) — becomes M4-4
@@ -27,9 +31,3 @@ Scope a real design before v1.1:
 - **Protocol** — the HTTP API is the seam for the planned MCP server; what is missing for tool-shaped use (the M4-2 routes are a start)?
 - **Discovery** — how does an agent learn the rules (an in-repo conventions surface? exposed docs?) instead of having to read the source?
 - **Identity** — how do the changes and comments the agent makes show this? How do users, both human and machine, identify who has done what in the repo.
-
----
-
-## Graduated
-
-- **2026-08-19 → [M4-3](milestones/M4-3-backlog-remediation.md):** in-app link navigation (anchors, fragments, folder links, non-md files, dead links), card file actions → content header, recycle-bin always-visible, nested card width + resizable sidebar, draft badge in the doc header, author-avatar config mapping, edit-flip scroll, `@` menu height cap, branch deletion, `.gitignore` in the doc tree.

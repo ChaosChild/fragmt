@@ -64,6 +64,7 @@ markdown and its full git history.
 | M3 — files & branches | shipped |
 | M4 — inline comments | shipped |
 | M4-2 — dogfood polish (cards, headers, protected main, merge) | shipped |
+| M4-3 — backlog remediation (header file actions, titles, drag & drop, links, gitignore) | shipped |
 | M5 — dogfood hardening | specced |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
@@ -88,6 +89,23 @@ version, branch, and sync state, and a global **Merge** button lands a
 finished draft on main and deletes its branch (conflicts abort cleanly).
 Deletions are reversible from the sidebar's recycle bin, `@` references
 insert navigable doc links, and comment actions are one git commit each.
+
+**Docs carry human titles.** The name in the content header is the
+frontmatter `title:` when present, else the filename — and the same rule
+feeds the sidebar cards and the `@` menu. Renaming edits the title in one
+commit; the file itself is never renamed, so existing links keep working.
+Move and delete sit beside rename as header icons, and the whole file
+lifecycle is also draggable — rows onto folders (move), onto the tree
+background (move to the root), onto the bin (delete, with a confirm). The
+sidebar resizes, keeps nested cards readable at any depth, and respects
+`.gitignore` — ignored folders never appear on any tree-derived surface,
+while force-added tracked files still do. Links inside docs all go
+somewhere sane: in-app navigation with `#heading` anchors, folder links,
+non-markdown files served raw in a new tab, and a quiet note for dead
+ones. Dead draft branches delete from the dropdown (`-d`, asking twice
+before `-D` on unmerged), an optional `authors` map in `.fragmt.json`
+resolves avatars for real email addresses, and failures surface as a
+banner in the content pane — never silence.
 v1 is done when the author writes this project's own
 docs in the tool daily instead of in a text editor. Full detail, including
 what was deliberately cut, is in the [build plan](docs/PLAN.md).
@@ -142,13 +160,19 @@ surface:
 ```json
 {
 	"docsRoot": ".",
-	"order": {}
+	"order": {},
+	"authors": {
+		"you@example.com": "YourGitHubUsername"
+	}
 }
 ```
 
 - **`docsRoot`** — path, relative to the repo root, that fragmt treats as the
   documentation tree. `"."` means the entire repo.
 - **`order`** — reserved for explicit doc ordering (v1.x). Always `{}` for now.
+- **`authors`** — optional map of commit emails to GitHub usernames; avatars
+  resolve through it before the keyless `@users.noreply.github.com` heuristic.
+  Invalid entries are ignored; the whole key is optional.
 
 Parsing is strict: a malformed or incomplete config fails loudly with the file
 path rather than falling back to a silent default.
@@ -184,9 +208,12 @@ only, which also makes it the seam for the planned MCP server.
 // response: { "sha": "40-hex commit sha", "hash": "…" }   // new baseHash
 ```
 
-Tree rules: dot-folders, `node_modules`, and `dist` are skipped; directories
-with no markdown anywhere beneath them are pruned; directories sort before
-documents, both alphabetically and case-insensitively.
+Tree rules: dot-folders, `node_modules`, and `dist` are skipped; anything a
+`.gitignore` excludes disappears too (one `git ls-files` allow-list per
+refresh — tracked files always win over ignore rules); directories with no
+markdown anywhere beneath them are pruned, unless they hold a `.gitkeep`
+(a folder created for docs about to be written stays visible); directories
+sort before documents, both alphabetically and case-insensitively.
 
 Errors are typed rather than generic. A path that escapes `docsRoot` or does
 not end in `.md` is a **400**, including percent-encoded forms such as
