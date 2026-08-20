@@ -220,6 +220,8 @@ export interface RepoMeta {
 	deleted: DeletedDoc[];
 	/** email → GitHub username (avatar resolution) — the config map verbatim. */
 	authors: Record<string, string>;
+	/** Agent display names — the config list verbatim (the rail's agent chip). */
+	agents: string[];
 	/** Non-null while a stood merge is being resolved (M4-4 b3) — resolution
 	 *  mode's on-switch; the full per-file detail is getMergeState. */
 	merge: { branch: string | null; remaining: number } | null;

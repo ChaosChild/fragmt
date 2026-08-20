@@ -976,6 +976,7 @@ export function App() {
 					<CommentsRail
 						threads={threads}
 						liveIds={liveIds}
+						agents={meta?.agents ?? []}
 						led={led}
 						ledLabel={ledLabel}
 						open={railOpen}

@@ -10,3 +10,11 @@ export function displayTitle(title: unknown, name: string): string {
 		? title
 		: name.replace(/\.md$/i, "");
 }
+
+/**
+ * The agent chip's predicate (M4-4 b5): the config `agents` list is
+ * name-keyed — a comment author literally in the list gets the chip.
+ */
+export function isAgent(author: string, agents: string[]): boolean {
+	return agents.includes(author);
+}

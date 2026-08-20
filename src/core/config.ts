@@ -5,6 +5,8 @@ export interface Config {
 	docsRoot: string;
 	/** email → GitHub username (avatar resolution); absent when not configured. */
 	authors?: Record<string, string>;
+	/** Agent display names (the UI agent chip); absent when not configured. */
+	agents?: string[];
 }
 
 /** Repo-level config file (always at the git repo root). */
@@ -64,6 +66,15 @@ export function loadConfig(repoRoot: string): Config {
 			if (typeof user === "string" && user !== "") authors[email] = user;
 		}
 		config.authors = authors;
+	}
+	// agents: optional display-name list (the agent chip). A non-array is
+	// ignored; entries that are not non-empty strings drop silently — the
+	// same cosmetic-only stance as authors.
+	const rawAgents = (parsed as Record<string, unknown>).agents;
+	if (Array.isArray(rawAgents)) {
+		config.agents = rawAgents.filter(
+			(a): a is string => typeof a === "string" && a !== "",
+		);
 	}
 	return config;
 }

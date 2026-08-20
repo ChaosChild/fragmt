@@ -230,3 +230,19 @@ test("authors: the config map verbatim in RepoMeta; {} without a config", async 
 	rmSync(join(root, ".fragmt.json"));
 	expect((await repoMeta(root, "docs")).authors).toEqual({});
 });
+
+test("agents: the config list verbatim in RepoMeta; [] without a config", async () => {
+	const root = repo("main");
+	write(root, "docs/a.md", "# a\n");
+	commit(root, "A <a@example.com>", "seed");
+
+	writeFileSync(
+		join(root, ".fragmt.json"),
+		JSON.stringify({ docsRoot: "docs", agents: ["Claude", "Rex"] }),
+	);
+	expect((await repoMeta(root, "docs")).agents).toEqual(["Claude", "Rex"]);
+
+	// No config never fails the walk — just no agents.
+	rmSync(join(root, ".fragmt.json"));
+	expect((await repoMeta(root, "docs")).agents).toEqual([]);
+});

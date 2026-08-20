@@ -65,6 +65,7 @@ const meta = (over: {
 	drafts: over.drafts ?? {},
 	deleted: [],
 	authors: {},
+	agents: [],
 	merge: over.merge ?? null,
 });
 

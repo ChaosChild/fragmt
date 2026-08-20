@@ -1209,6 +1209,19 @@ body {
 	font-weight: 600;
 	color: var(--fg);
 }
+/* The agent chip (M4-4 b5): rides inside the author span when the name is
+   in meta's agents list — the draft-pill's warn tint, chip-sized. */
+.agent-chip {
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 400;
+	color: var(--warn);
+	background: var(--warn-soft);
+	border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+	border-radius: 4px;
+	padding: 1px 6px;
+	margin-left: 6px;
+}
 .comment-header .time {
 	color: var(--muted);
 	font-family: var(--font-mono);

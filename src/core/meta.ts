@@ -39,6 +39,9 @@ export interface RepoMeta {
 	/** email → GitHub username (avatar resolution) — the config map verbatim,
 	 *  {} when the repo has no map. */
 	authors: Record<string, string>;
+	/** Agent display names (the comment rail's agent chip) — the config list
+	 *  verbatim, [] when the repo has none. */
+	agents: string[];
 	/** Non-null while a merge fragmt stood is being resolved — summary only;
 	 *  the full per-file detail is mergeState (b3's GET /api/merge). */
 	merge: { branch: string | null; remaining: number } | null;
@@ -224,15 +227,19 @@ export async function repoMeta(
 		}
 	}
 
-	// The authors map (avatar resolution): the config verbatim. RepoMeta has
-	// only repoRoot/docsRoot — the config is read here, the same loader the
-	// CLI uses for docsRoot; any config problem just means no map ({}) —
-	// never a failed meta walk over a cosmetic feature.
+	// The authors map (avatar resolution) and the agents list (the agent
+	// chip): the config verbatim. RepoMeta has only repoRoot/docsRoot — the
+	// config is read here, the same loader the CLI uses for docsRoot; any
+	// config problem just means neither feature ({} / []) — never a failed
+	// meta walk over a cosmetic feature.
 	let authors: Record<string, string> = {};
+	let agents: string[] = [];
 	try {
-		authors = loadConfig(repoRoot).authors ?? {};
+		const config = loadConfig(repoRoot);
+		authors = config.authors ?? {};
+		agents = config.agents ?? [];
 	} catch {
-		// no config / malformed — no authors map
+		// no config / malformed — no authors map, no agents
 	}
 
 	// The merge summary (resolution mode's on-switch, b3): mergeState is one
@@ -248,6 +255,7 @@ export async function repoMeta(
 		drafts,
 		deleted,
 		authors,
+		agents,
 		merge: state.inMerge
 			? { branch: state.branch, remaining: state.remaining }
 			: null,

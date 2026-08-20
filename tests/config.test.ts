@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { AGENTS_BEGIN, AGENTS_BODY, AGENTS_END } from "../src/core/agents.js";
 import {
 	ConfigError,
 	configPath,
@@ -132,4 +133,50 @@ test("loadConfig: absent authors stays undefined; a non-object is ignored", () =
 		JSON.stringify({ docsRoot: ".", authors: "nope" }),
 	);
 	expect(loadConfig(root).authors).toBeUndefined();
+});
+
+// --- M4-4 b5: optional agents list (display names → the agent chip) --------
+
+test("initRepo writes the AGENTS.md block; a re-run refreshes it", () => {
+	mkdirSync(join(root, "docs"), { recursive: true });
+	initRepo(root, "docs");
+	const file = join(root, "AGENTS.md");
+	const fresh = readFileSync(file, "utf8");
+	expect(fresh).toBe(`${AGENTS_BEGIN}\n${AGENTS_BODY}${AGENTS_END}\n`);
+
+	// A stale block between the markers, foreign content around it.
+	writeFileSync(file, `# mine\n${AGENTS_BEGIN}\nstale copy\n${AGENTS_END}`);
+	expect(initRepo(root, "docs").alreadyInitialized).toBe(true);
+	expect(readFileSync(file, "utf8")).toBe(`# mine\n${fresh.slice(0, -1)}`);
+});
+
+test("loadConfig parses the agents list", () => {
+	writeFileSync(
+		configPath(root),
+		JSON.stringify({ docsRoot: ".", agents: ["Claude", "Rex"] }),
+	);
+	expect(loadConfig(root).agents).toEqual(["Claude", "Rex"]);
+});
+
+test("loadConfig drops invalid agents entries silently", () => {
+	writeFileSync(
+		configPath(root),
+		JSON.stringify({ docsRoot: ".", agents: ["Claude", 42, "", null] }),
+	);
+	expect(loadConfig(root).agents).toEqual(["Claude"]);
+});
+
+test("loadConfig: absent agents stays undefined; a non-array is ignored", () => {
+	writeConfig(root, ".");
+	expect(loadConfig(root).agents).toBeUndefined();
+
+	writeFileSync(configPath(root), JSON.stringify({ docsRoot: "." }));
+	expect(loadConfig(root).agents).toBeUndefined();
+	expect(loadConfig(root)).toEqual({ docsRoot: "." });
+
+	writeFileSync(
+		configPath(root),
+		JSON.stringify({ docsRoot: ".", agents: "nope" }),
+	);
+	expect(loadConfig(root).agents).toBeUndefined();
 });

@@ -1,6 +1,7 @@
 import { Check, Reply, RotateCcw, Trash2, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { CommentThread } from "./api";
+import { isAgent } from "./display";
 import { type AtDoc, filterAtDocs } from "./editor/at";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -74,6 +75,7 @@ function DocRefText({
 function ThreadCard({
 	thread,
 	orphan,
+	agents,
 	docs,
 	onOpenDoc,
 	onJump,
@@ -85,6 +87,8 @@ function ThreadCard({
 	thread: CommentThread;
 	/** No live data-c span in the rendered doc (M4 orphan rule). */
 	orphan: boolean;
+	/** Config agent display names (meta) — the agent chip (M4-4 b5). */
+	agents: string[];
 	/** The tree's docs — @ mentions and body linkification (M4-2). */
 	docs: AtDoc[];
 	onOpenDoc: (path: string) => void;
@@ -186,7 +190,12 @@ function ThreadCard({
 				</button>
 			)}
 			<div className="comment-header">
-				<span className="author">{thread.author}</span>
+				<span className="author">
+					{thread.author}
+					{isAgent(thread.author, agents) && (
+						<span className="agent-chip">agent</span>
+					)}
+				</span>
 				<span className="time">{timeAgo(thread.createdAt)}</span>
 			</div>
 			<div className="comment-body">
@@ -210,7 +219,12 @@ function ThreadCard({
 			{(expanded ? rest : rest.slice(-1)).map((reply) => (
 				<div className="comment-reply" key={reply.at}>
 					<div className="comment-header">
-						<span className="author">{reply.author}</span>
+						<span className="author">
+							{reply.author}
+							{isAgent(reply.author, agents) && (
+								<span className="agent-chip">agent</span>
+							)}
+						</span>
 						<span className="time">{timeAgo(reply.at)}</span>
 					</div>
 					<div className="comment-body">
@@ -357,6 +371,7 @@ function ThreadCard({
 export function CommentsRail({
 	threads,
 	liveIds,
+	agents,
 	led,
 	ledLabel,
 	open,
@@ -373,6 +388,8 @@ export function CommentsRail({
 	threads: CommentThread[];
 	/** Ids whose data-c span is present in the rendered doc (App's reconcile). */
 	liveIds: Set<string>;
+	/** Config agent display names (meta) — the agent chip (M4-4 b5). */
+	agents: string[];
 	led: "green" | "amber" | "red";
 	ledLabel: string;
 	open: boolean;
@@ -477,6 +494,7 @@ export function CommentsRail({
 							key={t.id}
 							thread={t}
 							orphan={!liveIds.has(t.id)}
+							agents={agents}
 							docs={docs}
 							onOpenDoc={onOpenDoc}
 							onJump={jumpToDoc}
@@ -506,6 +524,7 @@ export function CommentsRail({
 								key={t.id}
 								thread={t}
 								orphan={!liveIds.has(t.id)}
+								agents={agents}
 								docs={docs}
 								onOpenDoc={onOpenDoc}
 								onJump={jumpToDoc}
