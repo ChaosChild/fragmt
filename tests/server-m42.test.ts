@@ -111,7 +111,7 @@ test("POST /api/merge: 200 {sha}, branch gone, back on main; on main → 400", a
 	expect((await api("POST", "/api/merge")).status).toBe(400);
 });
 
-test("POST /api/merge: diverged main → 409 {conflict:true}, still on the draft, tree clean", async () => {
+test("POST /api/merge: diverged main → 409 {conflict:true, stood:true} — the merge stands for in-UI resolution", async () => {
 	await api("POST", "/api/draft", { docPath: "a.md" });
 	writeFileSync(join(root, "a.md"), "# draft\n");
 	execFileSync("git", ["commit", "-qam", "draft edit"], { cwd: root });
@@ -122,15 +122,29 @@ test("POST /api/merge: diverged main → 409 {conflict:true}, still on the draft
 
 	const res = await api("POST", "/api/merge");
 	expect(res.status).toBe(409);
-	const body = (await res.json()) as { conflict: boolean; message?: string };
-	expect(body.conflict).toBe(true);
-	expect(body.message ?? "").toMatch(/CONFLICT/);
+	const body = (await res.json()) as {
+		conflict: boolean;
+		stood: boolean;
+		branch: string;
+		files: string[];
+	};
+	expect(body).toEqual({
+		merged: false,
+		conflict: true,
+		stood: true,
+		branch: "drafts/a",
+		files: ["a.md"],
+	});
+	// Stood: HEAD is main with the conflict staged in the worktree (M4-4 b2;
+	// resolution routes are b3).
 	const branches = (await (await api("GET", "/api/branches")).json()) as {
 		current: string;
 	};
-	expect(branches.current).toBe("drafts/a");
+	expect(branches.current).toBe("main");
+	expect(readFileSync(join(root, "a.md"), "utf8")).toMatch(/<<<<<<< HEAD/);
+	// The standing merge is torn down raw (no abort route until b3).
+	gitOut(["merge", "--abort"]);
 	expect(gitOut(["status", "--porcelain"])).toBe("");
-	expect(readFileSync(join(root, "a.md"), "utf8")).toBe("# draft\n");
 });
 
 test("POST /api/restore: 200 {sha} + file back on disk; 409 when it exists; 400 on traversal", async () => {

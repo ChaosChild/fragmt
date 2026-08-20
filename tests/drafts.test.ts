@@ -148,26 +148,30 @@ test("mergeToMain: clean merge lands on main, branch deleted, sha returned; on m
 	await expect(mergeToMain(root)).rejects.toThrow(OnMainBranchError);
 });
 
-test("mergeToMain: conflict → aborted, tree clean, still on the draft", async () => {
+test("mergeToMain: conflict on a non-doc file → aborted (stood:false), tree clean, still on the draft", async () => {
 	const root = repo();
-	write(root, "docs/a.md", "# base\n");
+	write(root, "docs/a.md", "# a\n");
+	write(root, "README.md", "# base\n");
 	commit(root, "seed");
 	run(root, ["checkout", "-q", "-b", "drafts/c"]);
-	write(root, "docs/a.md", "# draft\n");
+	write(root, "README.md", "# draft\n");
 	commit(root, "draft edit");
 	run(root, ["checkout", "-q", "main"]);
-	write(root, "docs/a.md", "# main\n");
+	write(root, "README.md", "# main\n");
 	const mainHead = commit(root, "main edit");
 	run(root, ["checkout", "-q", "drafts/c"]);
 
-	const r = await mergeToMain(root);
+	const r = await mergeToMain(root, "docs");
 	expect(r.merged).toBe(false);
 	if (r.merged) throw new Error("expected a conflict");
 	expect(r.conflict).toBe(true);
+	expect(r.stood).toBe(false);
+	if (r.stood) throw new Error("expected the abort path");
+	expect(r.files).toEqual(["README.md"]);
 	expect(r.message).toMatch(/CONFLICT/);
 	expect(current(root)).toBe("drafts/c");
 	expect(run(root, ["status", "--porcelain"])).toBe("");
-	expect(readFileSync(join(root, "docs/a.md"), "utf8")).toBe("# draft\n");
+	expect(readFileSync(join(root, "README.md"), "utf8")).toBe("# draft\n");
 	expect(run(root, ["rev-parse", "main"])).toBe(mainHead);
 	expect(run(root, ["branch", "--list", "drafts/c"])).not.toBe("");
 });

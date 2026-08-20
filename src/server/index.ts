@@ -551,7 +551,7 @@ export function createApp(ctx: ServerContext): Hono {
 
 	app.post("/api/merge", async (c) => {
 		try {
-			const result = await mergeToMain(ctx.repoRoot);
+			const result = await mergeToMain(ctx.repoRoot, ctx.docsRoot);
 			// The conflict is a returned value, not a throw — map it to 409.
 			if (!result.merged) return c.json(result, 409);
 			return c.json(result);

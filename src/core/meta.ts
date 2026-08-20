@@ -1,5 +1,6 @@
 import { loadConfig } from "./config.js";
 import { readDoc } from "./docs.js";
+import { mergeState } from "./drafts.js";
 import { currentBranch, git, listBranches, logCommits } from "./git.js";
 
 export interface DocMeta {
@@ -36,8 +37,11 @@ export interface RepoMeta {
 	/** Deletions reachable from HEAD, latest first, deduped by path. */
 	deleted: DeletedDoc[];
 	/** email → GitHub username (avatar resolution) — the config map verbatim,
-	 * {} when the repo has no map. */
+	 *  {} when the repo has no map. */
 	authors: Record<string, string>;
+	/** Non-null while a merge fragmt stood is being resolved — summary only;
+	 *  the full per-file detail is mergeState (b3's GET /api/merge). */
+	merge: { branch: string | null; remaining: number } | null;
 }
 
 /** The main branch name: "main" → "master" → null (rev-parse --verify). */
@@ -231,6 +235,12 @@ export async function repoMeta(
 		// no config / malformed — no authors map
 	}
 
+	// The merge summary (resolution mode's on-switch, b3): mergeState is one
+	// existsSync (zero spawns) when no merge stands, and only walks files
+	// mid-merge. (meta ↔ drafts is a call-time-only import cycle: each side
+	// uses the other inside function bodies, never at module init.)
+	const state = await mergeState(repoRoot, docsRoot);
+
 	return {
 		main,
 		current: await currentBranch(repoRoot),
@@ -238,5 +248,8 @@ export async function repoMeta(
 		drafts,
 		deleted,
 		authors,
+		merge: state.inMerge
+			? { branch: state.branch, remaining: state.remaining }
+			: null,
 	};
 }
