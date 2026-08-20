@@ -14,8 +14,9 @@ by AI coding agents.
 
 **What this is not:** an open-source Notion clone (only the editing UX is
 Notion-style), and not a CMS. The emphasis is documentation. Nearest relative:
-Wiki.js — differentiated by being **agentic-ready from the ground up** (CLI, MCP
-server, and agent-in-the-UI are first-class citizens of one core library).
+Wiki.js — differentiated by being **agentic-ready from the ground up**: the
+agent surface is the CLI itself (`fragmt agent`), riding the same core library
+as the UI.
 
 ## Why
 
@@ -65,6 +66,7 @@ markdown and its full git history.
 | M4 — inline comments | shipped |
 | M4-2 — dogfood polish (cards, headers, protected main, merge) | shipped |
 | M4-3 — backlog remediation (header file actions, titles, drag & drop, links, gitignore) | shipped |
+| M4-4 — backlog 2 + agent surface (merge resolution in-UI, `fragmt agent` CLI, AGENTS.md) | shipped |
 | M5 — dogfood hardening | specced |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
@@ -106,6 +108,24 @@ ones. Dead draft branches delete from the dropdown (`-d`, asking twice
 before `-D` on unmerged), an optional `authors` map in `.fragmt.json`
 resolves avatars for real email addresses, and failures surface as a
 banner in the content pane — never silence.
+
+**Merge conflicts resolve in the tool.** When a draft's merge into main
+conflicts, the merge stands and the UI becomes a resolution view: per-hunk
+ours/theirs choices (or a free-edit box) for docs, a structural merge with
+one-click overrides for comment sidecars, and a single conclude-merge commit
+when everything is staged. While a merge stands, every other write is
+refused — the resolution owns the repo. Conflicts in files fragmt can't
+resolve (non-docs) abort cleanly with an honest message instead.
+
+**Agents are first-class users.** `fragmt agent` is an AXI-style CLI surface
+for AI coding agents: `status` reads branch/draft/merge state, `comment`
+lists and replies on threads (sidecars are never hand-edited), `draft`
+starts and merges — with token-lean output and next-step hints. Mutations
+take `--author "Your Name <you@example.invalid>"` so an agent's commits and
+comments carry its identity, and an optional `agents` list in
+`.fragmt.json` marks those authors with a chip in the UI. `fragmt init`
+also writes a delimited fragmt block into `AGENTS.md` (created if absent,
+appended if the file exists) teaching any agent the drafting rules.
 v1 is done when the author writes this project's own
 docs in the tool daily instead of in a text editor. Full detail, including
 what was deliberately cut, is in the [build plan](docs/PLAN.md).
@@ -142,15 +162,49 @@ repo it is run in.
 ```
 fragmt init [--root <path>]
 fragmt serve [--port <n>]
+fragmt agent [status]
+fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--full]
+fragmt agent draft <doc> [--merge]
 fragmt --help
 ```
 
 | Command | Notes |
 | --- | --- |
-| `init` | Must run inside a git clone. Writes `.fragmt.json` at the repo root and reports how many markdown files were adopted. Never overwrites an existing config — a second run prints `already initialized` and exits 0. |
+| `init` | Must run inside a git clone. Writes `.fragmt.json` at the repo root and reports how many markdown files were adopted. Never overwrites an existing config — a second run prints `already initialized` and exits 0. Also writes the fragmt block into `AGENTS.md` (see [Agents](#agents)). |
 | `init --root docs` | Scope fragmt to a subfolder instead of the whole repo. The path must be a directory inside the repo. |
 | `serve` | Requires `init` to have run. Binds a free port chosen by the OS and prints the URL. |
 | `serve --port 4400` | Pin the port. |
+
+The `agent` verbs are the machine surface — see [Agents](#agents).
+
+## Agents
+
+AI coding agents are first-class users. The contract is the `fragmt agent`
+CLI (AXI-style: token-lean output, aggregates inline, `help[]` next-step
+hints, errors on stdout, exit codes 0/1/2, no interactive prompts) — not the
+HTTP API, which stays the UI's private transport.
+
+| Verb | What it does |
+| --- | --- |
+| `fragmt agent status` | Branch, protected-main mark, draft map, merge state. |
+| `fragmt agent comment docs/x.md` | Lists threads (`id, author, resolved, replies`); `--thread <id>` shows detail with `--full` for untruncated bodies. |
+| `fragmt agent comment docs/x.md --thread <id> --body "…" --author "Z <z@ex.invalid>"` | Adds a reply as that author (one commit, sidecar updated atomically). |
+| `fragmt agent comment docs/x.md --thread <id> --resolve` | Resolves a thread. |
+| `fragmt agent draft docs/x.md` | Starts (or reuses) the doc's draft branch. |
+| `fragmt agent draft docs/x.md --merge` | Merges the draft into main. |
+
+Doc bodies are plain markdown — agents read and diff them directly; the CLI
+matters for drafts, comments, and merge state. New anchored comment threads
+stay a UI act (they need a text selection). Mutations accept `--author`
+(git-style `Name <address>`; a bare name gets a deterministic noreply
+address) so an agent's commits and comment replies carry its identity
+instead of the operator's — add the agent's display name to the `agents`
+list in `.fragmt.json` and the UI marks its comments with an `agent` chip.
+
+`fragmt init` writes the rules into `AGENTS.md` — the file is created if
+absent, or a delimited `<!-- fragmt:begin -->…<!-- fragmt:end -->` block is
+appended to an existing one; nothing outside the markers is ever touched,
+and re-running `init` refreshes the block.
 
 ## Configuration
 
@@ -163,7 +217,8 @@ surface:
 	"order": {},
 	"authors": {
 		"you@example.com": "YourGitHubUsername"
-	}
+	},
+	"agents": ["ZCode"]
 }
 ```
 
@@ -173,6 +228,9 @@ surface:
 - **`authors`** — optional map of commit emails to GitHub usernames; avatars
   resolve through it before the keyless `@users.noreply.github.com` heuristic.
   Invalid entries are ignored; the whole key is optional.
+- **`agents`** — optional list of agent display names; comments authored by
+  these names render with an `agent` chip in the UI. Invalid entries are
+  ignored.
 
 Parsing is strict: a malformed or incomplete config fails loudly with the file
 path rather than falling back to a silent default.
@@ -180,7 +238,8 @@ path rather than falling back to a silent default.
 ## HTTP API
 
 The UI never touches the filesystem — it talks to the server over this API
-only, which also makes it the seam for the planned MCP server.
+only. (The agent surface is the CLI, not this API — see
+[Agents](#agents).)
 
 | Method | Route | Returns |
 | --- | --- | --- |
