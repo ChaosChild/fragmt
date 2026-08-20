@@ -28,6 +28,14 @@ npm run dev:server   # API on :4400
 npm run dev:ui       # UI on :5173
 ```
 
+`dev:server` deliberately does **not** watch: the server runs inside the very
+repo it manages, so any branch switch or merge checkout changes the files
+under `src/` — a watching restart would kill in-flight requests mid-op (the
+UI merge button died exactly this way during dogfooding: "Failed to fetch"
+with the merge actually completed). Restart it manually after editing server
+code, or use `npm run dev:server:watch` when developing `src/` and not
+dogfooding branch operations.
+
 Run the CLI directly with `npx tsx src/cli/index.ts <command>`.
 
 ## Before you push

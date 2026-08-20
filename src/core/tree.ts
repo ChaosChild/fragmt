@@ -92,10 +92,16 @@ function buildDir(
 			if (allow !== undefined && !hasAllowedUnder(allow, childPath)) continue;
 			const node = buildDir(ent.name, childPath, join(abs, ent.name), allow);
 			// Prune directories with no .md anywhere beneath them — unless the
-			// dir carries a committed .gitkeep (createFolder's marker): a
-			// freshly created folder holds no docs yet and must not vanish from
-			// the operator's tree (M4-3 b6).
-			if (countDocs(node) > 0 || existsSync(join(abs, ent.name, ".gitkeep")))
+			// dir carries a committed .gitkeep (createFolder's marker, and the
+			// M4-4 dogfood keep for a folder emptied by a move), or a kept
+			// child folder: .gitkeep visibility must hold down the whole chain,
+			// or a nested keep (tests/fixtures) prunes its own parent.
+			const keptChild = (node.children ?? []).some((c) => c.type === "dir");
+			if (
+				countDocs(node) > 0 ||
+				keptChild ||
+				existsSync(join(abs, ent.name, ".gitkeep"))
+			)
 				dirs.push(node);
 		} else if (ent.isFile() && ent.name.toLowerCase().endsWith(".md")) {
 			// A file renders only when git considers it part of the repo
