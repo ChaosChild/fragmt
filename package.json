@@ -28,6 +28,9 @@
 		"dist",
 		"ui/dist"
 	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"dev": "tsx src/cli/index.ts serve",
 		"dev:server": "tsx src/cli/index.ts serve --port 4400",
