@@ -91,6 +91,25 @@ docs: correct the M3 branch-switch spec
 fix: reject encoded traversal in the doc-path guard
 ```
 
+## Releases & versioning
+
+- **Semver, milestone = minor** while in 0.x: M5 ships as v0.5.0, 1.0.0
+  lands when M6 closes v1. Minors may break during 0.x — that's what 0.x
+  means here.
+- **The ritual is one command.** On merged main:
+  `npm version <v> -m "<milestone>: <title>"` (creates the bump commit and
+  the tag), then `git push origin <tag>`. The
+  [release workflow](.github/workflows/release.yml) runs the full CI gate,
+  builds, publishes to npm with provenance, and cuts the GitHub Release with
+  auto-generated notes — paste the milestone's "Shipped" entry from
+  [docs/PLAN.md](docs/PLAN.md) into the release body when a summary matters.
+- **NPM_TOKEN rotation.** The granular npm token in the repository secret
+  expires after at most 90 days. A release failing with 401/OTP on the
+  publish step means rotate: mint a fresh token, update the `NPM_TOKEN`
+  secret, re-run the failed workflow.
+- **SAST.** CodeQL runs via Default setup (Settings → Advanced Security) —
+  every PR and main push is scanned; there is no workflow YAML to maintain.
+
 ## License
 
 Contributions are accepted under the MIT license — see [LICENSE](LICENSE).

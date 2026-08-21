@@ -54,7 +54,9 @@ markdown and its full git history.
 
 ## Status
 
-**Early — editing works.** Not published to npm yet; run it from source.
+**Early — editing works.** The npm publish that makes `npx fragmt` real is
+the current milestone — until the first tag lands, run it
+[from source](#development).
 
 | Milestone | State |
 | --- | --- |
@@ -67,7 +69,7 @@ markdown and its full git history.
 | M4-2 — dogfood polish (cards, headers, protected main, merge) | shipped |
 | M4-3 — backlog remediation (header file actions, titles, drag & drop, links, gitignore) | shipped |
 | M4-4 — backlog 2 + agent surface (merge resolution in-UI, `fragmt agent` CLI, AGENTS.md) | shipped |
-| M5 — distributables & install (npm publish, GitHub Releases, npx-first) | specced |
+| M5 — distributables & install (npm publish, GitHub Releases, npx-first) | in progress — machinery merged, first tag pending |
 | M6 — dogfood hardening | specced |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
@@ -133,30 +135,33 @@ what was deliberately cut, is in the [build plan](docs/PLAN.md).
 
 ## Quickstart
 
-Requires **Node 22+** and a git clone containing markdown.
+Requires **Node 22+** and a git clone containing markdown. Run both commands
+from inside the repo whose docs you want to edit:
 
 ```sh
-git clone https://github.com/ChaosChild/fragmt.git
-cd fragmt
-npm ci
-npm run build
-
-# adopt this repo's own docs, then browse them
-npx tsx src/cli/index.ts init
-npx tsx src/cli/index.ts serve --port 4400
+npx fragmt init
+npx fragmt serve
 ```
+
+A global install works the same: `npm i -g fragmt`, then `fragmt init` and
+`fragmt serve`.
 
 `init` prints what it adopted:
 
 ```
 Initialized fragmt
   docs root: .
-  14 markdown files
+  22 markdown files
 ```
 
-`serve` prints the URL to open. Point fragmt at your own docs by running the
-same two commands from inside any git clone — the tool always operates on the
-repo it is run in.
+`serve` prints the URL to open. The tool always operates on the repo it is
+run in — point it at your own docs by running the same two commands from
+inside any git clone.
+
+> **Platforms:** v0.x is tested on Windows; Linux and macOS verification is
+> the next milestone's opening act. Reports from those platforms are welcome.
+
+To run from source instead, see [Development](#development).
 
 ## CLI
 
@@ -306,6 +311,17 @@ isomorphic-git. Tiptap was chosen over BlockNote because it survived the
 [round-trip spike](docs/SPIKE.md).
 
 ## Development
+
+From source (the contributor path) — after this, `npx fragmt …` works like
+the installed one:
+
+```sh
+git clone https://github.com/ChaosChild/fragmt.git && cd fragmt
+npm ci && npm run build
+npx fragmt init && npx fragmt serve
+```
+
+The dev loop:
 
 ```sh
 npm run dev:server   # API on :4400 (no watch — branch ops in the managed repo would restart a watcher mid-request)
