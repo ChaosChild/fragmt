@@ -104,9 +104,14 @@ fix: reject encoded traversal in the doc-path guard
   auto-generated notes — paste the milestone's "Shipped" entry from
   [docs/PLAN.md](docs/PLAN.md) into the release body when a summary matters.
 - **NPM_TOKEN rotation.** The granular npm token in the repository secret
-  expires after at most 90 days. A release failing with 401/OTP on the
-  publish step means rotate: mint a fresh token, update the `NPM_TOKEN`
-  secret, re-run the failed workflow.
+  expires after at most 90 days. A release failing with **401** on the
+  publish step means the token expired (or was revoked): mint a fresh token,
+  update the `NPM_TOKEN` secret, re-run the failed workflow. A release
+  failing with **EOTP** means the npm account's 2FA is set to
+  "Authorization and writes" — publishes then demand a one-time password
+  even for tokens, which CI cannot supply. Keep the account on
+  "Authorization only" (2FA still guards every login; tokens alone authorize
+  writes) and re-run.
 - **SAST.** CodeQL runs via Default setup (Settings → Advanced Security) —
   every PR and main push is scanned; there is no workflow YAML to maintain.
 
