@@ -103,10 +103,19 @@ fix: reject encoded traversal in the doc-path guard
   builds, publishes to npm with provenance, and cuts the GitHub Release with
   auto-generated notes — paste the milestone's "Shipped" entry from
   [docs/PLAN.md](docs/PLAN.md) into the release body when a summary matters.
-- **NPM_TOKEN rotation.** The granular npm token in the repository secret
-  expires after at most 90 days. A release failing with 401/OTP on the
-  publish step means rotate: mint a fresh token, update the `NPM_TOKEN`
-  secret, re-run the failed workflow.
+- **NPM_TOKEN and 2FA.** npm's security model requires **2FA or a granular
+  token with the "Bypass two-factor authentication" checkbox enabled** for
+  publishing — the checkbox is unchecked by default when minting a token,
+  and an account set to "Authorization only" does not lift the requirement.
+  The `NPM_TOKEN` secret must hold a token minted with that checkbox
+  checked; it then bypasses 2FA for package publishing regardless of account
+  settings, and expires after at most 90 days. Troubleshooting a failed
+  release: **EOTP** = the token lacks the bypass (mint a new granular token
+  with it checked); **401** = the token expired or was revoked (mint a new
+  one). Either way, update the secret and re-run the failed workflow. Note:
+  npm removes direct publishing with bypass tokens in January 2027 — the
+  repo migrates to trusted publishing (OIDC) before then; see the
+  [backlog](docs/BACKLOG.md).
 - **SAST.** CodeQL runs via Default setup (Settings → Advanced Security) —
   every PR and main push is scanned; there is no workflow YAML to maintain.
 
