@@ -1,24 +1,27 @@
 # Backlog
 
-Deferred issues and enhancements captured while dogfooding — nothing here is scheduled or specced. An item graduates into a milestone in [PLAN.md](PLAN.md) (and gets an implementation-exact spec in [milestones/](milestones/)) when it's picked up. Add new entries with the date and the session that surfaced them.
+The work queue lives in GitHub issues carrying the [`backlog`](https://github.com/ChaosChild/fragmt/labels/backlog) label; this file is the index and the graduation log. The issue body is canonical for scope — entries here are pointers, never second descriptions. An item graduates into a milestone in [PLAN.md](PLAN.md) (and gets an implementation-exact spec in [milestones/](milestones/)) when picked up: the issue closes against the milestone PR and the pointer moves to *Graduated*. Add new entries with the date and the session that surfaced them.
 
-## Drafting model
+## Index
 
-### /api/meta history-walk performance (2026-08-18, M4-2 planning; audit 2026-08-19; measured 2026-08-20, M4-4 planning)
+### v1.x — polish & workflow (roadmap round, 2026-08-21)
 
-M4-2's metadata endpoint feeds the cards and doc head from git-log walks: walk 1 is one spawn capped at 2000 commits; walk 3 (recycle bin) one spawn capped at 200; walk 2 (draft map) is one `for-each-ref` plus one `git log` per non-main branch — the real scaling axis is branch count. Refresh fires on discrete user actions (mount, branch ops, saves, file ops, restore), not on the sync timer.
+- Search — title+body scan with snippets — #14
+- Link slideout — rail-replacing read-only panel, collapsible navbar, hover icons + shift+click, esc chain — #15
+- Nested docs repo — `init --folder <docs> --new <name>` — #16
 
-Measured on this repo (2026-08-20, M4-4 planning): **~250 ms warm / 377 ms cold** for the full `repoMeta()` at 19 docs, 13 non-main branches, 77 commits — not biting. All ceilings are ponytail-marked in core. When it bites: `rev-list` per doc, or a cache invalidated by HEAD — a straight swap inside `repoMeta`.
+### Post-v1 — collaboration first, then the OKF era (order locked 2026-08-21)
 
-### Draft change visibility in the content area (2026-08-20, M4-4 dogfooding)
+- Multi-user + PR wiring — **leads** — #20
+- OKF support — `init --okf`, conformant defaults + validate, frontmatter editor, trust stamping, references pane — #21
+- Agent-in-UI: harness bridge + client-side agent tools — after multi-user — #22
+- MCP — reconsider after multi-user / remote deployment — #23
 
-Opening a doc on its draft branch shows the drafted content, but nothing shows what the draft actually **changed** — the delta against main stays invisible until a merge conflicts or lands. The lazy first rung when it bites: a changed-lines gutter — an orange/red side bar beside the lines the draft's commits touched (`git diff main..HEAD -- <doc>`, one spawn, scoped to the open doc). A proper diff view (side-by-side or unified, per-hunk) is v1.x — that is a diff surface in the content area, not a decoration.
+### Older items, still open
 
-## Distributables
-
-### npm trusted publishing migration (2026-08-21, M5 release round)
-
-Publishing rides a granular token with the "Bypass 2FA" checkbox; npm removes direct publishing with such tokens in **January 2027** (they will only stage publishes for human 2FA approval). Migrate `release.yml` to **trusted publishing (OIDC)** — token-free, `id-token: write` already granted — once fragmt exists on npm (trusted publishing cannot do a first publish). Lazy rung: configure the trusted publisher on the package settings page (repo + workflow file + environment), delete the `NODE_AUTH_TOKEN` env block from the publish step, drop the `NPM_TOKEN` secret.
+- /api/meta history-walk performance (2026-08-18, M4-2 planning; measured 2026-08-20) — #17
+- Draft change visibility in the content area (2026-08-20, M4-4 dogfooding) — #18
+- npm trusted publishing migration — before January 2027 (2026-08-21, M5 release round) — #19
 
 ## Graduated
 

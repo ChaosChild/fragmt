@@ -22,8 +22,9 @@ as the UI.
 
 Documentation tools make you choose between a nice editor and owning your
 content. Notion and Confluence give you the editor and keep the content in their
-database — export is lossy, diffs don't exist, and your AI coding agent can't
-read any of it without an API integration. Plain markdown in git gives you
+database — export is lossy, history and diffs live inside their pane instead of
+your toolchain, and your AI coding agent can't read any of it without an API
+integration. Plain markdown in git gives you
 ownership, review, and agent-readability, but the editing experience is a text
 editor.
 
@@ -36,7 +37,7 @@ markdown and its full git history.
 | --- | --- | --- | --- |
 | Storage | vendor database | your repo | your repo |
 | Editing | WYSIWYG | text editor | WYSIWYG |
-| Diff / review | none | `git diff` / PRs | `git diff` / PRs |
+| Diff / review | page version history in their UI | `git diff` / PRs | `git diff` / PRs |
 | Agent-readable | via API | yes | yes, first-class |
 | Cost at 5 seats | per-seat, monthly | free | free |
 

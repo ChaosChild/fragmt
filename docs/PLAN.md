@@ -36,7 +36,8 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - **Deferred:** `docs/app.html` doc cards show author/version/last-edit/snippet, but M1's `/api/tree` carries none and there's no git layer until M2. Cards render the visual with available data; a git-log metadata API is a v1.x addition.
 - **Shipped:** M4-3 backlog remediation — the post-M4-2 dogfooding items in seven subagent batches: edit-flip scroll/menu-cap/on-draft-badge quick fixes; the `authors` config map resolving real emails to GitHub avatars; branch deletion (`-d`, confirm `-D` for unmerged); sidebar geometry (16px guide-line indent, min row width with scroll-not-clip, indicators after the name, resizable, always-visible bin); file actions on the breadcrumb name under a frontmatter-`title` model (the filename never changes — links are the currency) with the corner-icon machinery deleted; navbar drag & drop (rows → folders, → "/" root, → bin); link completion (heading slugs + anchors incl. `doc.md#frag`, folder links incl. empty ones, `GET /api/raw/*` for non-md, dead-link note); and `.gitignore` respected across every tree-derived surface via one `ls-files` allow-list (tracked wins). Spec: [M4-3](milestones/M4-3-backlog-remediation.md). 216 tests (sync suite's pre-existing Windows timeout flake fixed with honest 20s limits).
 - **Shipped:** M4-4 backlog remediation 2 + the agent surface — collision-aware drag & drop and move-picker targets (client tree consult); the merge-conflict resolution engine (stand-conflicted merge, `parseConflicts` hunk editor with ours/theirs/edit, structural `mergeSidecars` under the approved survival rules, conclude-merge `git commit --no-edit`, a one-middleware write-guard while `MERGE_HEAD` stands, honest abort fallback for non-doc conflicts); and the agent surface: `fragmt agent status · comment · draft` (AXI-style TOON output, `help[]` hints, exit codes 0/1/2) with `--author` identity, the delimited AGENTS.md block on `init` (create/append/refresh, nothing outside the markers), the `agents` config list + UI agent chip. MCP dropped from the plan — the CLI is the agent contract, HTTP stays UI-private. /api/meta performance stays deferred with measurements recorded in BACKLOG.md. Spec: [M4-4](milestones/M4-4-backlog-agent-surface.md); five reviewed subagent batches + docs. 287 tests.
-- **Next:** M5 (distributables & install) — publish readiness + release workflow merged, first tag **v0.5.0** pending the owner's release ritual; then M6 (dogfood hardening, opening with the Linux/macOS testing pass) closes v1.
+- **Shipped:** M5 distributables & install — `fragmt@0.5.0` published to npm 2026-08-21 (provenance-attested, GitHub Release with auto notes); `release.yml` publishes on tag push. The live pipeline taught three npm gotchas, all recorded in the spec: `NODE_AUTH_TOKEN` (not a bare `NPM_TOKEN` env var), `publishConfig.access=public` required for a first `--provenance` publish, and 2FA-or-bypass-token required for creating/publishing (the bypass checkbox on the granular token; account mode does not lift it — trusted publishing migration dated January 2027). The tarball smoke test also caught the CLI's direct-invocation guard breaking under symlinked node installs (nvm4w junctions) — fixed with a realpath comparison. Spec: [M5](milestones/M5-distributables-install.md); 294 tests.
+- **Next:** post-v1 roadmap locked in a Lavish round 2026-08-21 (issues #14–#23, index in BACKLOG.md): v1.x = search (#14), link slideout (#15), nested docs repo (#16); then multi-user + PR wiring leads (#20), OKF follows (#21), harness bridge after auth (#22), MCP reconsidered with remote deployment (#23). M6 (dogfood hardening, opening with the Linux/macOS testing pass) closes v1.
 
 ## M0 — Environment prep
 
@@ -149,7 +150,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 **Goal:** fragmt installs without cloning this repo — a published npm package, GitHub Releases on tags, and a quickstart that starts from `npx fragmt`. **Proves:** anyone can run v1 on their own clone in under a minute. Renumbered into place 2026-08-20 (dogfood hardening moved to M6; the publish-readiness work migrated here). Spec: [M5](milestones/M5-distributables-install.md) (decisions locked in two Lavish rounds, 2026-08-21: first release **v0.5.0** — milestone = minor, CI publishes on tag push via `NODE_AUTH_TOKEN`, auto-generated release notes + manual milestone paste; plain `npx fragmt` in docs; CodeQL default setup is the SAST layer; Windows-tested, Linux/macOS verification opens M6).
 
 - [x] Publish readiness: shebang on the emitted bin (source-level — tsc preserves it), `files` allowlist ships `dist/` + `ui/dist/`, `npm pack` clean, `prepublishOnly` builds
-- [ ] `npm publish` — `npx fragmt init && serve` works on a clean clone (owner: `npm version 0.5.0` + tag push; name claimed under @chaoschild)
+- [x] `npm publish` — `fragmt@0.5.0` live on npm (2026-08-21), provenance-attested; GitHub Release cut. Clean-clone acceptance rolls into M6's daily dogfood (Windows-verified via the tarball smoke test)
 - [x] GitHub Releases: tag → CI release workflow, notes from the milestone record
 - [x] README quickstart rewritten for the installed path (`npx`/global first, from-source second)
 - [x] Versioning policy (semver, milestone = minor during 0.x) in CONTRIBUTING
@@ -167,10 +168,12 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 | Item | Deferred to |
 | --- | --- |
-| MCP server | dropped — the agent surface is the AXI-conformant `fragmt agent` CLI (M4-4); the HTTP API stays UI-private |
-| Search UI, doc ordering, draft diff view | v1.x, when they hurt |
-| PR create/review in UI, auth/multi-user | v2 |
-| Import (Notion/Confluence), agent-in-UI chat | roadmap |
+| Search UI | v1.x — #14; doc ordering and draft diff view stay "when they hurt" (gutter rung: #18) |
+| PR create/review in UI, auth/multi-user | leads the post-v1 era — #20 |
+| OKF support (init --okf, frontmatter editor, trust stamping) | after multi-user — #21 |
+| Agent-in-UI (harness bridge, client-side agent tools) | after multi-user — #22 |
+| MCP server | parked, not dropped — reconsider after multi-user/remote deployment (#23); the agent surface stays the AXI-conformant `fragmt agent` CLI, HTTP stays UI-private |
+| Import (Notion/Confluence) | roadmap; agent-in-UI chat superseded by the harness bridge (#22) |
 | Table column alignment | accepted loss (spike) |
 
 ## Risks
