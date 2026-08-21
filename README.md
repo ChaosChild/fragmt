@@ -3,7 +3,7 @@
 [![CI](https://github.com/ChaosChild/fragmt/actions/workflows/ci.yml/badge.svg)](https://github.com/ChaosChild/fragmt/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A5%2022-brightgreen.svg)](package.json)
-[![Status](https://img.shields.io/badge/status-early%20%C2%B7%20editing--works-orange.svg)](docs/PLAN.md)
+[![Status](https://img.shields.io/badge/status-beta-orange.svg)](docs/PLAN.md)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 A git-native documentation environment for small dev teams, start-ups, and solo
@@ -55,9 +55,10 @@ markdown and its full git history.
 
 ## Status
 
-**Early — editing works.** The npm publish that makes `npx fragmt` real is
-the current milestone — until the first tag lands, run it
-[from source](#development).
+**Beta — [`fragmt@0.5.0`](https://www.npmjs.com/package/fragmt) is on npm.** The
+full v1 feature set works: editing, the file/folder lifecycle, branches and
+drafting with in-UI merge resolution, comments, the agent CLI. What stands
+between this and 1.0 is M6 — dogfood hardening.
 
 | Milestone | State |
 | --- | --- |
@@ -70,7 +71,7 @@ the current milestone — until the first tag lands, run it
 | M4-2 — dogfood polish (cards, headers, protected main, merge) | shipped |
 | M4-3 — backlog remediation (header file actions, titles, drag & drop, links, gitignore) | shipped |
 | M4-4 — backlog 2 + agent surface (merge resolution in-UI, `fragmt agent` CLI, AGENTS.md) | shipped |
-| M5 — distributables & install (npm publish, GitHub Releases, npx-first) | in progress — machinery merged, first tag pending |
+| M5 — distributables & install (npm publish, GitHub Releases, npx-first) | shipped — v0.5.0 on npm |
 | M6 — dogfood hardening | specced |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
