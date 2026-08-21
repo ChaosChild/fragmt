@@ -14,6 +14,12 @@ Measured on this repo (2026-08-20, M4-4 planning): **~250 ms warm / 377 ms cold*
 
 Opening a doc on its draft branch shows the drafted content, but nothing shows what the draft actually **changed** — the delta against main stays invisible until a merge conflicts or lands. The lazy first rung when it bites: a changed-lines gutter — an orange/red side bar beside the lines the draft's commits touched (`git diff main..HEAD -- <doc>`, one spawn, scoped to the open doc). A proper diff view (side-by-side or unified, per-hunk) is v1.x — that is a diff surface in the content area, not a decoration.
 
+## Distributables
+
+### npm trusted publishing migration (2026-08-21, M5 release round)
+
+Publishing rides a granular token with the "Bypass 2FA" checkbox; npm removes direct publishing with such tokens in **January 2027** (they will only stage publishes for human 2FA approval). Migrate `release.yml` to **trusted publishing (OIDC)** — token-free, `id-token: write` already granted — once fragmt exists on npm (trusted publishing cannot do a first publish). Lazy rung: configure the trusted publisher on the package settings page (repo + workflow file + environment), delete the `NODE_AUTH_TOKEN` env block from the publish step, drop the `NPM_TOKEN` secret.
+
 ## Graduated
 
 - Merge-conflict resolution in the UI → specced and shipped as M4-4 (stand-conflicted merge, per-hunk ours/theirs/edit resolution, structural sidecar merge, conclude-merge commit; the M4-3-era "milestone of its own" cost estimate was right — it was one).
