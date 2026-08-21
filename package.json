@@ -37,7 +37,8 @@
 		"lint": "biome check .",
 		"format": "biome format --write .",
 		"test": "vitest run",
-		"build": "tsc -p tsconfig.build.json && vite build ui"
+		"build": "tsc -p tsconfig.build.json && vite build ui",
+		"prepublishOnly": "npm run build"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.7",
