@@ -1,4 +1,6 @@
-import { pathToFileURL } from "node:url";
+#!/usr/bin/env node
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { findRepoRoot, initRepo, loadConfig } from "../core/index.js";
 import { createApp, startServer } from "../server/index.js";
@@ -118,8 +120,19 @@ async function runServe(portFlag: string | undefined): Promise<void> {
 	});
 }
 
-const invokedDirectly =
-	import.meta.url === pathToFileURL(process.argv[1] ?? "").href;
+// Compare realpaths: ESM resolves import.meta.url through symlinks, while
+// argv[1] arrives as the invoked path — nvm4w-style junctions make the raw
+// URL comparison fail, silently skipping main().
+const invokedDirectly = (() => {
+	try {
+		return (
+			realpathSync(fileURLToPath(import.meta.url)) ===
+			realpathSync(process.argv[1] ?? "")
+		);
+	} catch {
+		return false;
+	}
+})();
 if (invokedDirectly) {
 	main(process.argv.slice(2)).catch((e: unknown) => {
 		fail(e instanceof Error ? e.message : String(e));
