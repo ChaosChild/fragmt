@@ -32,6 +32,7 @@ Scope recorded 2026-08-20 (owner direction); implementation-exact detail locked 
 - `permissions: contents: write` (GitHub Release) + `id-token: write` (npm provenance).
 - Steps: checkout → setup-node@v4 (node 22, `cache: npm`, **`registry-url: https://registry.npmjs.org`**) → `npm ci` → `typecheck` → `biome ci` → `test` → `build` → `npm publish --provenance` → `softprops/action-gh-release@v2` with `generate_release_notes: true`.
 - **Auth gotcha (found in review):** npm reads **`NODE_AUTH_TOKEN`**, not a bare `NPM_TOKEN` env var — the publish step sets `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`. Without `registry-url` on setup-node the token isn't wired into npmrc either.
+- **First-publish provenance quirk (hit live, 2026-08-21):** `npm publish --provenance` on a package that doesn't exist yet refuses with "Can't generate provenance for new or private package, you must set `access` to public" — even for unscoped packages that are public by default. Fixed with `"publishConfig": { "access": "public" }` in package.json (also covers any emergency local publish). The failed run published nothing (the error is pre-upload); recovery was re-pointing the unpublished tag at the fix commit and pushing it again.
 - A tag can never skip the gate: the workflow runs the exact CI triple before building and publishing.
 
 ## Batch 3 — First release (owner + acceptance)
