@@ -1,10 +1,21 @@
-import { X } from "lucide-react";
-import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
+import { Pencil, X } from "lucide-react";
+import {
+	type KeyboardEvent as ReactKeyboardEvent,
+	type ReactNode,
+	type PointerEvent as ReactPointerEvent,
+	useRef,
+} from "react";
 import { clampSlideoutShare } from "./slideout-geometry";
 
-/** The slideout's modes (#15): Comments (the old rail's thread list) today;
- *  Preview — the linked doc, read-only — is batch b4. */
+/** The slideout's modes (#15): Comments — the old rail's thread list — and
+ *  Preview, the linked doc read-only (b4). */
 export type SlideoutMode = "comments" | "preview";
+
+const MODES: SlideoutMode[] = ["comments", "preview"];
+const TAB_ID: Record<SlideoutMode, string> = {
+	comments: "slideout-tab-comments",
+	preview: "slideout-tab-preview",
+};
 
 /**
  * The 7px drag divider between <main> and the slideout pane (#15) — the
@@ -52,16 +63,19 @@ function SlideoutDivider({
 
 /**
  * The link slideout shell (#15): a right pane beside <main> that replaces
- * the permanent comment rail. Comments mode is the refactored rail content
- * (passed as children); Preview is b4 — its tab renders disabled until that
- * lands. The head carries the mode tabs + close. App owns open/mode/share;
- * ≤1180px the CSS turns the pane into the bottom sheet the rail used to be.
+ * the permanent comment rail. The head carries the mode tabs (real tabs
+ * since b4 put a second mode behind them), the previewed doc's title, the
+ * promote-to-editor button, and close; the mode content arrives as
+ * children. App owns open/mode/preview state; ≤1180px the CSS turns the
+ * pane into the bottom sheet the rail used to be.
  */
 export function Slideout({
 	open,
 	mode,
 	commentCount,
+	previewTitle,
 	onModeChange,
+	onPromote,
 	onClose,
 	onShare,
 	children,
@@ -70,11 +84,48 @@ export function Slideout({
 	mode: SlideoutMode;
 	/** The Comments tab's count — the old rail title's "Comments · N". */
 	commentCount: number;
+	/** The previewed doc's display title — the head's "Preview · <title>"
+	 *  line (null in Comments mode or with nothing previewed). */
+	previewTitle: string | null;
 	onModeChange: (mode: SlideoutMode) => void;
+	/** The head's "open in editor" act (Preview mode, #15): App closes the
+	 *  pane and sends the main doc through the navigation queue. Absent =
+	 *  no button (nothing previewed). */
+	onPromote?: () => void;
 	onClose: () => void;
 	onShare: (share: number, commit: boolean) => void;
 	children: ReactNode;
 }) {
+	const tabRefs = useRef<Record<SlideoutMode, HTMLButtonElement | null>>({
+		comments: null,
+		preview: null,
+	});
+	// APG tabs: the arrows move selection (and focus) between the modes.
+	const onTabKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+		if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+		e.preventDefault();
+		const dir = e.key === "ArrowRight" ? 1 : -1;
+		const next =
+			MODES[(MODES.indexOf(mode) + dir + MODES.length) % MODES.length];
+		onModeChange(next);
+		tabRefs.current[next]?.focus();
+	};
+	const tab = (m: SlideoutMode, label: string) => (
+		<button
+			type="button"
+			ref={(el) => {
+				tabRefs.current[m] = el;
+			}}
+			id={TAB_ID[m]}
+			role="tab"
+			className={`slideout-tab${mode === m ? " on" : ""}`}
+			aria-selected={mode === m}
+			tabIndex={mode === m ? 0 : -1}
+			onClick={() => onModeChange(m)}
+		>
+			{label}
+		</button>
+	);
 	return (
 		<>
 			{open && <SlideoutDivider onShare={onShare} />}
@@ -83,26 +134,36 @@ export function Slideout({
 				aria-label={mode === "comments" ? "Comments" : "Preview"}
 			>
 				<div className="slideout-head">
-					{/* ponytail: aria-pressed pills, not a tablist — one selectable
-					    mode until b4's Preview lands; promote to real tabs then. */}
-					<button
-						type="button"
-						className={`slideout-tab${mode === "comments" ? " on" : ""}`}
-						aria-pressed={mode === "comments"}
-						onClick={() => onModeChange("comments")}
+					<div
+						className="slideout-tabs"
+						role="tablist"
+						aria-label="Panel mode"
+						onKeyDown={onTabKey}
 					>
-						Comments{commentCount > 0 ? ` · ${commentCount}` : ""}
-					</button>
-					<button
-						type="button"
-						className={`slideout-tab${mode === "preview" ? " on" : ""}`}
-						aria-pressed={mode === "preview"}
-						disabled
-						title="Opening links in the slideout lands next"
-					>
-						Preview
-					</button>
+						{tab(
+							"comments",
+							`Comments${commentCount > 0 ? ` · ${commentCount}` : ""}`,
+						)}
+						{tab("preview", "Preview")}
+					</div>
+					{previewTitle && (
+						<span className="slideout-title" title={previewTitle}>
+							Preview · {previewTitle}
+						</span>
+					)}
 					<span className="slideout-spacer" />
+					{mode === "preview" &&
+						onPromote && ( // Promote (#15): hand the previewed doc to the editor.
+							<button
+								type="button"
+								className="tool-btn"
+								title="Open in editor"
+								aria-label="Open in editor"
+								onClick={onPromote}
+							>
+								<Pencil aria-hidden="true" />
+							</button>
+						)}
 					<button
 						type="button"
 						className="slideout-close"
@@ -112,7 +173,14 @@ export function Slideout({
 						<X aria-hidden="true" />
 					</button>
 				</div>
-				{children}
+				<div
+					className="slideout-panel"
+					role="tabpanel"
+					id="slideout-panel"
+					aria-labelledby={TAB_ID[mode]}
+				>
+					{children}
+				</div>
 			</aside>
 		</>
 	);

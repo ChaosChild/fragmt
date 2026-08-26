@@ -1,3 +1,4 @@
+import type { Editor } from "@tiptap/core";
 import type { Transaction } from "@tiptap/pm/state";
 import { EditorContent, useEditor } from "@tiptap/react";
 import {
@@ -14,15 +15,19 @@ import { ImagePopover } from "./editor/ImageForm";
 import { resolveLinkTarget, slugifyHeading } from "./editor/links";
 import { SlashMenuView } from "./editor/SlashMenu";
 import type { SlashMenuState } from "./editor/slash";
+import { isIconHit } from "./link-hit";
 
 export interface EditorPaneHandle {
 	getMarkdown(): string;
 }
 
-/** Scroll a heading id into view — the anchor dispatch's one action (M4-3 b6). */
-function scrollToHeadingId(id: string) {
-	document
-		.getElementById(id)
+/** Scroll a heading id into view — the anchor dispatch's one action (M4-3
+ *  b6). Scoped to THIS editor's DOM (#15): the slideout preview is a second
+ *  EditorPane, and both panes slug the same heading texts to the same ids —
+ *  a document-wide lookup could scroll the wrong one. */
+function scrollToHeadingId(editor: Editor, id: string) {
+	editor.view.dom
+		.querySelector(`#${CSS.escape(id)}`)
 		?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -52,10 +57,12 @@ export function EditorPane({
 	docs,
 	folders,
 	onSelectDoc,
+	onOpenPreview,
 	onSelectFolder,
 	onLinkNotFound,
 	anchor,
 	onAnchorConsumed,
+	commenting = true,
 	ref,
 }: {
 	markdown: string;
@@ -76,6 +83,9 @@ export function EditorPane({
 	/** An in-doc link resolved to a tree doc — navigate in-app (App), with the
 	 *  #fragment when the link carried one (scrolled after the doc loads). */
 	onSelectDoc: (path: string, anchor?: string) => void;
+	/** A doc-link click chose the slideout (#15): edit-mode clicks (any
+	 *  modifier state) and read-mode Shift or hover-↗-zone hits. */
+	onOpenPreview: (path: string, anchor?: string) => void;
 	/** A link resolved to a tree folder — App expands it in the sidebar. */
 	onSelectFolder: (path: string) => void;
 	/** A relative link matched nothing and ends .md — DocView shows the note. */
@@ -84,6 +94,10 @@ export function EditorPane({
 	anchor?: string | null;
 	/** The pending anchor was consumed (scrolled or dropped) — App clears it. */
 	onAnchorConsumed: () => void;
+	/** The read-mode comment surfaces — the bubble and highlight jumps. False
+	 *  for the slideout preview (#15): its editor is a viewer, selections
+	 *  there are just selections. */
+	commenting?: boolean;
 	ref?: Ref<EditorPaneHandle>;
 }) {
 	const [slashState, setSlashState] = useState<SlashMenuState | null>(null);
@@ -154,7 +168,7 @@ export function EditorPane({
 	// way, so an unknown fragment never scrolls a later, unrelated doc.
 	useEffect(() => {
 		if (!editor || !anchor) return;
-		scrollToHeadingId(anchor);
+		scrollToHeadingId(editor, anchor);
 		onAnchorConsumed();
 	}, [editor, anchor, onAnchorConsumed]);
 
@@ -210,15 +224,19 @@ export function EditorPane({
 				// M4-3 b6 widens the dispatch: anchors, folder links, raw
 				// assets, and dead .md links (links.ts' table is normative).
 				onClick={(e) => {
-					if (
-						(editable && !(e.ctrlKey || e.metaKey)) ||
-						(!editable && !window.getSelection()?.isCollapsed)
-					)
+					// #15 b4: read mode's drag guard exempts Shift (Shift+click
+					// opens the preview AND extends the browser selection — the
+					// intent is the click), and edit mode's Ctrl/Cmd gate keeps
+					// every legacy dispatch except one new plain-click exception
+					// below: the cross-doc link.
+					if (!editable && !e.shiftKey && !window.getSelection()?.isCollapsed)
 						return;
+					const follows = !editable || e.ctrlKey || e.metaKey;
 					const target = e.target as HTMLElement;
 					const span = target.closest("[data-c]");
 					if (span) {
-						onSpanClick(span.getAttribute("data-c") ?? "");
+						if (follows && commenting)
+							onSpanClick(span.getAttribute("data-c") ?? "");
 						return;
 					}
 					const anchorEl = target.closest("a[href]");
@@ -230,19 +248,37 @@ export function EditorPane({
 						knownDocPaths,
 						knownFolderPaths,
 					);
+					// The one plain-click exception in edit mode (#15): a CROSS-doc
+					// link opens the slideout preview on any click — the buffer is
+					// never navigated away from. Same-doc fragments don't count
+					// (they scroll in place and never reload).
+					const crossDoc =
+						resolved.kind === "doc" &&
+						!(resolved.anchor && resolved.path === docPath);
+					if (!follows && !crossDoc) return;
 					switch (resolved.kind) {
 						case "doc":
 							e.preventDefault();
 							// Same doc + fragment: no reload — scroll in place.
 							if (resolved.anchor && resolved.path === docPath) {
-								scrollToHeadingId(resolved.anchor);
+								scrollToHeadingId(editor, resolved.anchor);
+							} else if (
+								editable ||
+								e.shiftKey ||
+								isIconHit(e.clientX, anchorEl.getBoundingClientRect())
+							) {
+								// #15: edit mode sends EVERY doc-link click to the
+								// slideout preview; read mode's Shift and the hover-↗
+								// zone (the link's last 18px — link-hit.ts) join it.
+								// A plain read click keeps the navigate; App guards it.
+								onOpenPreview(resolved.path, resolved.anchor);
 							} else {
 								onSelectDoc(resolved.path, resolved.anchor);
 							}
 							break;
 						case "anchor":
 							e.preventDefault();
-							scrollToHeadingId(resolved.id);
+							scrollToHeadingId(editor, resolved.id);
 							break;
 						case "folder":
 							e.preventDefault();
@@ -277,7 +313,7 @@ export function EditorPane({
 					// to its thread instead.
 					if (!editable) {
 						const span = (e.target as HTMLElement).closest("[data-c]");
-						if (span && (e.key === "Enter" || e.key === " ")) {
+						if (span && commenting && (e.key === "Enter" || e.key === " ")) {
 							e.preventDefault();
 							onSpanClick(span.getAttribute("data-c") ?? "");
 						}
@@ -308,12 +344,17 @@ export function EditorPane({
 					}
 				}}
 			/>
-			<BubbleToolbar
-				editor={editor}
-				editable={editable}
-				onComment={onComment}
-				onVisibilityChange={setBubbleOpen}
-			/>
+			{/* The bubble is a commenting surface — the preview (commenting:
+				    false) doesn't mount it; its read-only selections are just
+				    selections (#15). */}
+			{commenting && (
+				<BubbleToolbar
+					editor={editor}
+					editable={editable}
+					onComment={onComment}
+					onVisibilityChange={setBubbleOpen}
+				/>
+			)}
 			{editable && slashState && (
 				// Keyed by query: a new filter remounts the menu, resetting the
 				// highlight to the first item.

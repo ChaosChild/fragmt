@@ -31,7 +31,9 @@ function Highlighted({ text, q }: { text: string; q: string }) {
  * debounced as-you-type against /api/search, a keyboard listbox (↑/↓/↵/esc),
  * and opens that go through App's guarded callback (the navigation queue):
  * the modal just calls `onOpen(path)` and closes; a dirty buffer is App's
- * save-or-discard banner, never a silent drop.
+ * save-or-discard banner, never a silent drop. The ⇧ variant (#15 b4)
+ * passes {slideout:true} — the result opens in the slideout preview, a
+ * read that skips the queue by design.
  */
 export function SearchModal({
 	open,
@@ -40,8 +42,8 @@ export function SearchModal({
 }: {
 	open: boolean;
 	onClose: () => void;
-	/** App's guarded open (guardAction) — the only open path. */
-	onOpen: (path: string) => void;
+	/** App's guarded open (guardAction); {slideout:true} = the preview. */
+	onOpen: (path: string, opts?: { slideout?: boolean }) => void;
 }) {
 	const [q, setQ] = useState("");
 	const [results, setResults] = useState<SearchHit[] | null>(null);
@@ -129,7 +131,7 @@ export function SearchModal({
 			if (!hit) return;
 			e.preventDefault();
 			onClose();
-			onOpen(hit.path);
+			onOpen(hit.path, e.shiftKey ? { slideout: true } : undefined);
 		} else if (e.key === "Escape") {
 			e.preventDefault();
 			onClose();
@@ -195,9 +197,9 @@ export function SearchModal({
 								className={i === active ? "sr-row active" : "sr-row"}
 								onMouseEnter={() => setActive(i)}
 								onMouseDown={(e) => e.preventDefault()}
-								onClick={() => {
+								onClick={(e) => {
 									onClose();
-									onOpen(h.path);
+									onOpen(h.path, e.shiftKey ? { slideout: true } : undefined);
 								}}
 							>
 								<span className="sr-title">
@@ -220,6 +222,10 @@ export function SearchModal({
 					<span className="sep">·</span>
 					<span>
 						<kbd>↵</kbd> open
+					</span>
+					<span className="sep">·</span>
+					<span>
+						<kbd>⇧↵</kbd> slideout
 					</span>
 					<span className="sep">·</span>
 					<span>

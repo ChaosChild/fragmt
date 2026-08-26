@@ -38,9 +38,16 @@ import {
 	type TreeNode,
 } from "./api";
 import { CommentsRail } from "./CommentsRail";
+import { DocPreview } from "./DocPreview";
 import { DocView } from "./DocView";
 import { displayTitle } from "./display";
-import { type DragItem, isNoOpDrop, moveDestinations, movedPath } from "./dnd";
+import {
+	basename,
+	type DragItem,
+	isNoOpDrop,
+	moveDestinations,
+	movedPath,
+} from "./dnd";
 import type { AtDoc } from "./editor/at";
 import {
 	type BranchAction,
@@ -284,6 +291,22 @@ export function App() {
 	// clicks, the rail's reply @ mentions, and body linkification. Titles
 	// ride along from meta (M4-3 b4) — paths stay the identity.
 	const docs = useMemo(() => docItems(tree, meta), [tree, meta]);
+	// The tree's folder paths — the PREVIEW's link dispatch set (#15 b4).
+	// The main pane passes its move destinations (historical, pre-filtered);
+	// a viewer resolving links wants the true tree.
+	const treeFolders = useMemo(() => {
+		const out: string[] = [];
+		const walk = (n: TreeNode) => {
+			for (const c of n.children ?? []) {
+				if (c.type === "dir") {
+					out.push(c.path);
+					walk(c);
+				}
+			}
+		};
+		if (tree) walk(tree);
+		return out;
+	}, [tree]);
 	// The header move picker's destinations (M4-3 b4, collision-aware M4-4
 	// b1): App pre-filters — the current parent and every folder already
 	// holding a child named like the doc are never offered, and root rides
@@ -777,19 +800,29 @@ export function App() {
 
 	// --- M4-3 b6: link-navigation callbacks ----------------------------------
 
-	// A search result open (#14): through the dirty guard like every other
-	// navigation — an unsaved buffer parks the open in the banner, never a
-	// silent drop.
-	function openFromSearch(path: string) {
+	// A search result open (#14, ⇧ variant #15 b4): plain opens go through
+	// the dirty guard like every other navigation — an unsaved buffer parks
+	// the open in the banner, never a silent drop. Shift asks for the
+	// slideout preview instead: a read, the buffer is untouched, so the
+	// queue is skipped by design.
+	function openFromSearch(path: string, opts?: { slideout?: boolean }) {
+		if (opts?.slideout) {
+			openPreviewDoc(path);
+			return;
+		}
 		guardAction(`Open ${path}`, () => setSelected(path));
 	}
 
 	// A doc link (optionally with a #fragment): navigate, and leave the
 	// fragment as the pending anchor — the new doc's EditorPane scrolls to it
-	// once the content and heading ids exist.
-	function onDocLink(path: string, anchor?: string) {
-		setSelected(path);
-		setPendingAnchor(anchor ?? null);
+	// once the content and heading ids exist. Routed through the dirty guard
+	// since #15 b4: read-mode comment selections can dirty the buffer, and
+	// this was the one navigation seam that could drop it silently.
+	function onDocLink(path: string, anchor?: string, headline?: string) {
+		guardAction(headline ?? `Open ${path}`, () => {
+			setSelected(path);
+			setPendingAnchor(anchor ?? null);
+		});
 	}
 
 	// A folder link: expand the sidebar path (ancestors + target), then select
@@ -833,6 +866,81 @@ export function App() {
 	function expandSidebar() {
 		setSidebarCollapsed(false);
 		autoCollapsed.current = false;
+	}
+
+	// --- #15 b4: the slideout's Preview — a second, read-only doc ----------
+	//
+	// The previewed path (+ its pending #fragment) and the fetched doc. The
+	// preview never touches the editor's doc or buffer — its navigation just
+	// re-targets these, which is why none of it goes through the navigation
+	// queue.
+	const [previewPath, setPreviewPath] = useState<string | null>(null);
+	const [previewAnchor, setPreviewAnchor] = useState<string | null>(null);
+	const [previewDoc, setPreviewDoc] = useState<DocResponse | null>(null);
+	const [previewError, setPreviewError] = useState<string | null>(null);
+	// A dead .md link clicked inside the preview — the quiet equivalent of
+	// DocView's link-not-found banner.
+	const [previewDeadLink, setPreviewDeadLink] = useState<string | null>(null);
+	const clearPreviewAnchor = useCallback(() => setPreviewAnchor(null), []);
+
+	// The preview's fetch — the main doc's read client, cancel-guarded like
+	// the sidecar fetch. Quiet both ways: DocPreview's skeleton while
+	// loading, its inline note on failure. ponytail: the doc is fetched per
+	// path change and kept afterwards — a preview opened again after edits
+	// elsewhere shows the last fetch until re-targeted; refetch on open if
+	// that ever reads stale.
+	useEffect(() => {
+		setPreviewDeadLink(null);
+		setPreviewError(null);
+		if (!previewPath) {
+			setPreviewDoc(null);
+			return;
+		}
+		let cancelled = false;
+		setPreviewDoc(null);
+		getDoc(previewPath)
+			.then((d) => {
+				if (!cancelled) setPreviewDoc(d);
+			})
+			.catch((e: unknown) => {
+				if (!cancelled)
+					setPreviewError(e instanceof Error ? e.message : String(e));
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [previewPath]);
+
+	// Open (or re-target) the slideout's preview with a doc — the #15
+	// destination for edit-mode doc-link clicks, read-mode Shift and the ↗
+	// zone, and search's ⇧↵.
+	function openPreviewDoc(path: string, anchor?: string) {
+		onPreviewDocLink(path, anchor);
+		openSlideout("preview");
+	}
+
+	// A doc link inside the preview stays inside the preview (locked): the
+	// same re-target, without re-opening anything.
+	function onPreviewDocLink(path: string, anchor?: string) {
+		setPreviewPath(path);
+		setPreviewAnchor(anchor ?? null);
+	}
+
+	// A folder link inside the preview: the sidebar path expands, but the
+	// main doc never moves — a preview click must not navigate the editor.
+	// (The main pane's folder links also select the folder's first doc.)
+	function onPreviewFolderLink(path: string) {
+		setExpandFolder((f) => ({ path, n: (f?.n ?? 0) + 1 }));
+	}
+
+	// Promote (#15): the preview head's "open in editor" — fold the pane and
+	// hand the previewed doc to the MAIN editor through the same guarded
+	// seam (a dirty buffer parks in the banner, never a silent drop).
+	function promotePreview() {
+		const path = previewPath;
+		if (!path) return;
+		closeSlideout();
+		onDocLink(path, previewAnchor ?? undefined, `Edit ${path}`);
 	}
 
 	// LED + one-word status: amber = not synced yet (the word says which —
@@ -880,6 +988,13 @@ export function App() {
 			meta.current !== meta.main &&
 			(meta.drafts[selected] ?? []).some((e) => e.branch === meta.current),
 	);
+
+	// The preview head's "Preview · <title>" (#15) — the frontmatter title
+	// once loaded, the file basename until then.
+	const previewTitle =
+		slideoutMode === "preview" && previewPath
+			? displayTitle(previewDoc?.frontmatter.title, basename(previewPath))
+			: null;
 
 	// The head controls render in two places (#15): the sidebar head, and
 	// the topbar that replaces it while the sidebar is collapsed — same
@@ -1110,6 +1225,7 @@ export function App() {
 								authors={meta?.authors ?? {}}
 								docs={docs}
 								onSelectDoc={onDocLink}
+								onOpenPreview={openPreviewDoc}
 								onSelectFolder={onSelectFolderLink}
 								pendingAnchor={pendingAnchor}
 								onAnchorConsumed={clearAnchor}
@@ -1123,32 +1239,50 @@ export function App() {
 						)}
 					</main>
 					{/* The slideout (#15) — the rail's replacement as a right pane:
-					    Comments mode is the refactored rail content; Preview is b4.
-					    Hidden in resolution mode — the doc pane is taken over and
-					    its comments are mid-merge anyway. */}
+					    Comments mode is the refactored rail content; Preview is the
+					    linked doc read-only (b4). Hidden in resolution mode — the doc
+					    pane is taken over and its comments are mid-merge anyway. */}
 					{selected && !inResolution && (
 						<Slideout
 							open={railOpen}
 							mode={slideoutMode}
 							commentCount={threads.length}
+							previewTitle={previewTitle}
 							onModeChange={setSlideoutMode}
+							onPromote={previewPath ? promotePreview : undefined}
 							onClose={closeSlideout}
 							onShare={applySlideoutShare}
 						>
-							<CommentsRail
-								threads={threads}
-								liveIds={liveIds}
-								agents={meta?.agents ?? []}
-								onClose={closeSlideout}
-								focus={spanFocus}
-								onReply={(id, body) => railReply(id, body)}
-								onResolve={(id) => void railResolve(id, true)}
-								onReopen={(id) => void railResolve(id, false)}
-								onDelete={(id) => void railDelete(id)}
-								error={railError}
-								docs={docs}
-								onOpenDoc={setSelected}
-							/>
+							{slideoutMode === "comments" ? (
+								<CommentsRail
+									threads={threads}
+									liveIds={liveIds}
+									agents={meta?.agents ?? []}
+									onClose={closeSlideout}
+									focus={spanFocus}
+									onReply={(id, body) => railReply(id, body)}
+									onResolve={(id) => void railResolve(id, true)}
+									onReopen={(id) => void railResolve(id, false)}
+									onDelete={(id) => void railDelete(id)}
+									error={railError}
+									docs={docs}
+									onOpenDoc={setSelected}
+								/>
+							) : (
+								<DocPreview
+									path={previewPath}
+									doc={previewDoc}
+									error={previewError}
+									deadLink={previewDeadLink}
+									anchor={previewAnchor}
+									onAnchorConsumed={clearPreviewAnchor}
+									docs={docs}
+									folders={treeFolders}
+									onSelectDoc={onPreviewDocLink}
+									onSelectFolder={onPreviewFolderLink}
+									onLinkNotFound={setPreviewDeadLink}
+								/>
+							)}
 						</Slideout>
 					)}
 				</div>

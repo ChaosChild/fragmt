@@ -102,6 +102,7 @@ export function DocView({
 	onDraft,
 	docs,
 	onSelectDoc,
+	onOpenPreview,
 	onSelectFolder,
 	pendingAnchor,
 	onAnchorConsumed,
@@ -162,6 +163,9 @@ export function DocView({
 	/** An in-doc link resolved to a tree doc — navigate in-app (App); the
 	 *  #fragment rides along and scrolls after the new doc renders (M4-3 b6). */
 	onSelectDoc: (path: string, anchor?: string) => void;
+	/** A doc-link click chose the slideout preview (#15) — edit-mode clicks
+	 *  (any modifier) and read-mode Shift/hover-↗ hits; App opens the pane. */
+	onOpenPreview: (path: string, anchor?: string) => void;
 	/** An in-doc link resolved to a tree folder — App expands it in the
 	 *  sidebar and selects its first doc (M4-3 b6). */
 	onSelectFolder: (path: string) => void;
@@ -795,6 +799,7 @@ export function DocView({
 					docs={docs}
 					folders={folders}
 					onSelectDoc={onSelectDoc}
+					onOpenPreview={onOpenPreview}
 					onSelectFolder={onSelectFolder}
 					onLinkNotFound={setLinkNotFound}
 					anchor={pendingAnchor}

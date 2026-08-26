@@ -358,6 +358,7 @@ body {
 .doc-list,
 .main,
 .rail-body,
+.preview-body,
 .search-results {
 	scrollbar-width: thin;
 	scrollbar-color: var(--border) transparent;
@@ -365,6 +366,7 @@ body {
 .doc-list::-webkit-scrollbar,
 .main::-webkit-scrollbar,
 .rail-body::-webkit-scrollbar,
+.preview-body::-webkit-scrollbar,
 .search-results::-webkit-scrollbar {
 	width: 8px;
 	height: 8px;
@@ -372,12 +374,14 @@ body {
 .doc-list::-webkit-scrollbar-track,
 .main::-webkit-scrollbar-track,
 .rail-body::-webkit-scrollbar-track,
+.preview-body::-webkit-scrollbar-track,
 .search-results::-webkit-scrollbar-track {
 	background: transparent;
 }
 .doc-list::-webkit-scrollbar-thumb,
 .main::-webkit-scrollbar-thumb,
 .rail-body::-webkit-scrollbar-thumb,
+.preview-body::-webkit-scrollbar-thumb,
 .search-results::-webkit-scrollbar-thumb {
 	background: var(--border);
 	border-radius: 4px;
@@ -385,6 +389,7 @@ body {
 .doc-list::-webkit-scrollbar-thumb:hover,
 .main::-webkit-scrollbar-thumb:hover,
 .rail-body::-webkit-scrollbar-thumb:hover,
+.preview-body::-webkit-scrollbar-thumb:hover,
 .search-results::-webkit-scrollbar-thumb:hover {
 	background: var(--muted);
 }
@@ -1421,6 +1426,94 @@ button.comment-quote:hover {
 .slideout-close svg {
 	width: 15px;
 	height: 15px;
+}
+/* The tab pair — one tight group left of the head (real tabs since b4 put
+	   a second mode behind them: tablist/tab/aria-selected in Slideout.tsx). */
+.slideout-tabs {
+	display: flex;
+	gap: 2px;
+	flex-shrink: 0;
+}
+/* The previewed doc's title — the head's "Preview · <title>" line. */
+.slideout-title {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	letter-spacing: var(--track-label);
+	color: var(--muted);
+}
+/* The mode content — the tabpanel the tabs point at. */
+.slideout-panel {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+/* Preview body (b4) — the pane's own scroll region, .rail-body's shape. */
+.preview-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: var(--space-5) var(--space-4) var(--space-8);
+}
+/* The quiet load state — static skeleton bars, nothing to animate (and
+	   prefers-reduced-motion keeps it honest). */
+.preview-skeleton {
+	padding: var(--space-2) 0;
+}
+.preview-skeleton span {
+	display: block;
+	height: 12px;
+	border-radius: 4px;
+	background: var(--glass-inner);
+	margin-bottom: var(--space-3);
+}
+.preview-skeleton span:nth-child(1) {
+	width: 42%;
+	height: 22px;
+}
+.preview-skeleton span:nth-child(2) {
+	width: 94%;
+}
+.preview-skeleton span:nth-child(3) {
+	width: 71%;
+	margin-bottom: 0;
+}
+/* The preview renders the doc's comment highlights with it, but they are
+	   not controls there — no pointer, no jump (the bubble is unmounted). */
+.slideout .comment-highlight {
+	cursor: inherit;
+}
+/* #15: the hover-↗ affordance on the MAIN doc's links — a pseudo-element,
+	   so no DOM is added and the markdown/serialization never changes. It
+	   floats just past the link's right edge and is decoration only; the
+	   CLICKABLE zone is the link's own last 18px (isIconHit, link-hit.ts).
+	   ponytail: the glyph marks every in-doc link (CSS can't see
+	   resolution) and a multi-line link anchors it at the first fragment —
+	   shift+click is the robust path; a real DOM icon if the zone misfires. */
+.main .markdown a {
+	position: relative;
+}
+.main .markdown a::after {
+	content: "↗";
+	position: absolute;
+	left: 100%;
+	top: 0;
+	margin-left: 2px;
+	font-size: 0.7em;
+	line-height: 1;
+	color: var(--accent);
+	opacity: 0;
+	transition: opacity var(--motion-fast) var(--ease-standard);
+	pointer-events: none;
+}
+.main .markdown a:hover::after,
+.main .markdown a:focus-visible::after {
+	opacity: 1;
 }
 
 /* ── #15: collapse chrome — the topbar the collapsed sidebar wears ── */
