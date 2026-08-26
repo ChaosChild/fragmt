@@ -357,30 +357,35 @@ body {
 /* Shared slim scrollbar — every scroll region wears the same quiet rail */
 .doc-list,
 .main,
-.rail-body {
+.rail-body,
+.search-results {
 	scrollbar-width: thin;
 	scrollbar-color: var(--border) transparent;
 }
 .doc-list::-webkit-scrollbar,
 .main::-webkit-scrollbar,
-.rail-body::-webkit-scrollbar {
+.rail-body::-webkit-scrollbar,
+.search-results::-webkit-scrollbar {
 	width: 8px;
 	height: 8px;
 }
 .doc-list::-webkit-scrollbar-track,
 .main::-webkit-scrollbar-track,
-.rail-body::-webkit-scrollbar-track {
+.rail-body::-webkit-scrollbar-track,
+.search-results::-webkit-scrollbar-track {
 	background: transparent;
 }
 .doc-list::-webkit-scrollbar-thumb,
 .main::-webkit-scrollbar-thumb,
-.rail-body::-webkit-scrollbar-thumb {
+.rail-body::-webkit-scrollbar-thumb,
+.search-results::-webkit-scrollbar-thumb {
 	background: var(--border);
 	border-radius: 4px;
 }
 .doc-list::-webkit-scrollbar-thumb:hover,
 .main::-webkit-scrollbar-thumb:hover,
-.rail-body::-webkit-scrollbar-thumb:hover {
+.rail-body::-webkit-scrollbar-thumb:hover,
+.search-results::-webkit-scrollbar-thumb:hover {
 	background: var(--muted);
 }
 
@@ -2274,4 +2279,154 @@ button.comment-quote:hover {
 	font-size: 12.5px;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+/* ── #14: Ctrl+K search modal — Spotlight-style centered dialog ── */
+/* The dim backdrop (click = close) and the glass card on top of everything
+   (above menu-popover's 70). Rows echo the sidebar card language: hover is
+   the inner glass, the active row is the raised .doc-card.active look. */
+.search-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 80;
+	background: rgba(15, 20, 27, 0.55);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-4);
+}
+.search-modal {
+	width: min(640px, 100%);
+	max-height: min(70vh, 560px);
+	display: flex;
+	flex-direction: column;
+	border-radius: var(--radius-lg);
+	background: var(--glass-bg-strong);
+	border: 1px solid var(--glass-border);
+	box-shadow: var(--glass-shadow);
+	backdrop-filter: blur(22px) saturate(1.5);
+	-webkit-backdrop-filter: blur(22px) saturate(1.5);
+	overflow: hidden;
+}
+@supports not (backdrop-filter: blur(1px)) {
+	.search-modal {
+		background: var(--surface);
+	}
+}
+.search-input-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	border-bottom: 1px solid var(--border-soft);
+	flex-shrink: 0;
+}
+.search-input-row svg {
+	width: 16px;
+	height: 16px;
+	color: var(--muted);
+	flex-shrink: 0;
+}
+.search-input-row input {
+	flex: 1;
+	min-width: 0;
+	font-family: var(--font-body);
+	font-size: 15px;
+	color: var(--fg);
+	background: transparent;
+	border: none;
+	padding: 4px 0;
+	outline: none;
+}
+.search-input-row input::placeholder {
+	color: var(--muted);
+}
+.search-modal kbd {
+	font-family: var(--font-mono);
+	font-size: 10px;
+	color: var(--muted);
+	background: var(--glass-inner);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	padding: 1px 5px;
+	line-height: 1.5;
+	flex-shrink: 0;
+}
+.search-results {
+	flex: 1;
+	overflow-y: auto;
+	padding: var(--space-2);
+}
+.sr-row {
+	padding: var(--space-2) var(--space-3);
+	border-radius: 10px;
+	border: 1px solid transparent;
+	margin: 2px 0;
+	cursor: pointer;
+	transition:
+		background var(--motion-fast) var(--ease-standard),
+		border-color var(--motion-fast) var(--ease-standard),
+		box-shadow var(--motion-base) var(--ease-standard),
+		transform var(--motion-base) var(--ease-standard);
+}
+.sr-row:hover {
+	background: var(--glass-inner);
+}
+/* Active = physically raised off the glass (the .doc-card.active look) */
+.sr-row.active {
+	background: var(--glass-bg-strong);
+	border-color: var(--glass-border);
+	box-shadow: var(--card-shadow);
+	transform: translateY(-1px);
+}
+.sr-title {
+	display: block;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--fg);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.sr-row.active .sr-title {
+	color: var(--accent);
+}
+.sr-snippet {
+	display: block;
+	font-family: var(--font-serif);
+	font-size: 12.5px;
+	line-height: 1.45;
+	color: var(--muted);
+	margin-top: 2px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.sr-row mark {
+	background: color-mix(in srgb, var(--accent) 22%, transparent);
+	color: inherit;
+	border-radius: 2px;
+	padding: 0 1px;
+}
+.search-empty {
+	padding: var(--space-6) var(--space-4);
+	font-size: 13px;
+	color: var(--muted);
+	text-align: center;
+}
+.search-foot {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-4);
+	border-top: 1px solid var(--border-soft);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+	flex-shrink: 0;
+}
+.search-foot .sep {
+	color: var(--border);
 }

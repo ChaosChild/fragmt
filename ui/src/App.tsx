@@ -1,3 +1,4 @@
+import { Search } from "lucide-react";
 import {
 	type CSSProperties,
 	useCallback,
@@ -48,6 +49,7 @@ import {
 	NewDocButton,
 } from "./Menus";
 import { ResolutionView } from "./ResolutionView";
+import { SearchModal } from "./SearchModal";
 import { Sidebar, SidebarResizeHandle } from "./Sidebar";
 import { readStoredSidebarWidth, storeSidebarWidth } from "./sidebar-geometry";
 
@@ -163,6 +165,21 @@ export function App() {
 		path: string;
 		n: number;
 	} | null>(null);
+
+	// --- Ctrl+K search (#14): the modal is app-global — the shortcut toggles
+	// it from anywhere, including mid-edit (the editor binds no Mod-K;
+	// preventDefault keeps the browser's own search focus out of the way).
+	const [searchOpen, setSearchOpen] = useState(false);
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+				e.preventDefault();
+				setSearchOpen((o) => !o);
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, []);
 
 	// Latest selected/dirty for the stable interval/focus sync callback.
 	const live = useRef({ selected, dirty });
@@ -739,6 +756,13 @@ export function App() {
 
 	// --- M4-3 b6: link-navigation callbacks ----------------------------------
 
+	// A search result open (#14): through the dirty guard like every other
+	// navigation — an unsaved buffer parks the open in the banner, never a
+	// silent drop.
+	function openFromSearch(path: string) {
+		guardAction(`Open ${path}`, () => setSelected(path));
+	}
+
 	// A doc link (optionally with a #fragment): navigate, and leave the
 	// fragment as the pending anchor — the new doc's EditorPane scrolls to it
 	// once the content and heading ids exist.
@@ -821,6 +845,17 @@ export function App() {
 						<div className="side-head-row">
 							<span className="brand">fragmt</span>
 							<div className="side-head-spacer" />
+							{/* Search (#14): ⌕ left of ＋ (owner order) — the modal is
+							    the keyboard-first path (Ctrl+K works anywhere). */}
+							<button
+								type="button"
+								className="tool-btn"
+								title="Search (Ctrl+K)"
+								aria-label="Search (Ctrl+K)"
+								onClick={() => setSearchOpen(true)}
+							>
+								<Search aria-hidden="true" />
+							</button>
 							<NewDocButton onFileOp={runFileOp} />
 						</div>
 						<div className="side-head-row side-head-branch">
@@ -995,6 +1030,14 @@ export function App() {
 					/>
 				)}
 			</div>
+			{/* The Ctrl+K search dialog (#14) — a layout sibling, above
+			    everything; its opens route through guardAction (the
+			    navigation queue), so a dirty buffer never silently drops. */}
+			<SearchModal
+				open={searchOpen}
+				onClose={() => setSearchOpen(false)}
+				onOpen={openFromSearch}
+			/>
 		</>
 	);
 }
