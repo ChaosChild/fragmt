@@ -42,10 +42,23 @@ Specced in three Lavish rounds, 2026-08-25/26 (artifact: `.lavish/m7-search-link
 - The fixed order, end to end: **search modal → popover → slash/@ menus → bubble → selection → slideout → edit-cancel** — the M2-2 contract extended in two places: the modal leads, the slideout slots in before edit-cancel. EditorPane treats a chain-consumed Escape as spent.
 - A window-level fallback (App) catches the Escape that reaches it in read mode — the editor preventDefaults every Escape it sees, so read mode's arrive at the window unclaimed.
 
+## Dogfood round (2026-08-26)
+
+The owner ran the build and filed seven corrections; all landed the same day.
+
+1. **The default view regressed** — docs opened into a 55/45 split with an empty side pane (the tabs let the pane sit in Preview mode with nothing previewed, and the mode/open state stuck across doc switches). Rewritten: the v0.5.0 comments rail is the default and always-present pane again — fixed 316px (`--rail-w` restored), the open doc's threads, no mode tabs, no Comments button in the doc header. The pane widens to the draggable split **only while a preview is open**; closing the preview returns the 316px rail.
+2. **The Comments button collapsed the sidebar** — moot with the button gone, and the rule tightened with it: only a preview open auto-collapses (restore on close, manual « still wins); a span click touches nothing but the ≤1180px sheet. The empty-pane class died with the rewrite — the pane is always mounted with the thread list, and the split only exists with a live previewPath.
+3. **The hover ↗ glyph and the 18px right-edge hit zone were unusable** — both deleted (the CSS pseudo-element, the `isIconHit` dispatch, `ui/src/link-hit.ts` + its tests). Read-mode preview gestures reduce to **Shift+click**.
+4. **Edit-mode link clicks opened the preview on cursor placement** — reversed: a plain click in edit mode is normal editing (PM default, nothing opens); **Ctrl/Cmd+click opens the preview** (v0.5.0's ctrl-to-follow, retargeted).
+5. **The promote button misled** (a pencil titled "Open in editor", navigating the main pane in read mode) — now `SquareArrowOutUpRight` with "Open in main pane" title/aria; same guarded navigation + close.
+6. **Preview span tooltips promised a dead click** — in the preview only, span titles now summarize the thread's first comment (`andrei · open — "Pin this wording?"` — the sidecar carries no per-thread version, so the formatter drops absent pieces; `ui/src/comment-summary.ts` + tests). A second sidecar fetch feeds them; main-doc spans keep "View comment" + jump, preview span clicks stay inert.
+7. **Topbar gaps** — ThemeToggle renders in the topbar now (it was unreachable while collapsed); ＋ and ⌕ sit immediately right of Merge, LED alone at the far end: `» brand BranchMenu Merge ＋ ⌕ ThemeToggle [spacer] LED`.
+
 ## Acceptance
 
-- Gates green: `npx biome ci .` · `npm run typecheck` · `npm test` — **322 tests (294 → 322)**.
+- Gates green: `npx biome ci .` · `npm run typecheck` · `npm test` — **322 tests (294 → 322)**; the dogfood round kept the count (link-hit's 5 out, comment-summary's 5 in).
 - Manual: Ctrl+K mid-edit opens search; opening a result over a dirty buffer shows the banner (no silent drop); the slideout opens at 55/45, the divider drags and clamps, the split survives reload; opening collapses the sidebar once, a manual re-expand sticks, close restores only the automatic one; the collapsed topbar's branch/merge/new-doc/search all work; an edit-mode link click previews; Shift+click and the hover ↗ preview; promote routes through the queue; Esc walks the whole chain in order from any state.
+- Dogfood round: every doc opens with the 316px comments rail showing its threads; a preview (edit Ctrl/Cmd+click, read Shift+click, search ⇧↵) widens the pane and collapses the sidebar once; ✕/Esc/promote return the rail and restore the sidebar; edit-mode plain clicks place the cursor; preview spans summarize their threads; the topbar shows theme + ＋ ⌕ by Merge with the LED at the far end.
 
 ## Risks
 

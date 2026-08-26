@@ -50,8 +50,8 @@ markdown and its full git history.
   branches; review = PRs.
 - Inline comments anchored as editor marks, threads stored in versioned sidecar
   files — no comment backend.
-- Ctrl/Cmd+K search across titles and bodies; a link slideout for side-by-side
-  reading (read-only preview) or comments beside the doc.
+- Ctrl/Cmd+K search across titles and bodies; a permanent comments rail beside
+  the doc that widens into a read-only preview pane for side-by-side reading.
 - v2: same binary hosted for teams; GitHub OAuth for identity; GitHub
   collaborator permissions as access control.
 
@@ -91,23 +91,26 @@ server keeps the local clone synced with its remote (pull --rebase + push,
 never force) on an interval, on focus, and before editing. Inline comments
 anchor to text as marks in the markdown itself, with threads versioned in
 JSON sidecars — comment from read mode or edit mode, replies and resolve in
-the right-margin rail (now the slideout's comments mode), orphans detected
+the permanent right-margin rail, orphans detected
 against the live document.
 
 **Search and side-by-side reading.** Ctrl/Cmd+K opens a centered search
 palette — anywhere, mid-edit — with results as title and snippet (title hits
 first, capped at 50); ↑/↓ wrap, hover syncs, Enter opens, and a dirty editor
 is protected: navigation through it shows a save/discard/cancel banner,
-never a silent drop. Shift+Enter previews the result instead. The slideout's
-preview mode shows a second, read-only pane: doc links open inside it
-(Shift+click or the hover ↗ zone on a doc link previews from the body),
-anchors scroll, dead links get a quiet note, and a promote button moves the
-preview into the editor. The split (55/45 by default) drags between 40–60%
-and persists; opening the slideout collapses the sidebar once («» restores
-it, a manual choice sticks), and while collapsed a compact top bar keeps
-branch, merge, new-doc, and search reachable. Escape closes surfaces in a
-fixed order — modal, popover, slash/@ menus, bubble, selection, slideout —
-before it cancels editing.
+never a silent drop. Shift+Enter previews the result instead. The comments
+rail is a permanent 316px column beside every doc; while a preview is open
+it widens into a draggable 55/45 split (clamped 40–60%, persisted) holding
+the second, read-only pane: doc links open inside it — read-mode Shift+click
+or edit-mode Ctrl/Cmd+click previews from the body (a plain edit click just
+places the cursor) — anchors scroll, dead links get a quiet note, spans
+carry thread summaries as tooltips, and an open-in-main button moves the
+previewed doc into the main pane through the same guarded navigation.
+Closing the preview returns the pane to the 316px rail. Only a preview open
+collapses the sidebar once («» restores it, a manual choice sticks), and
+while collapsed a compact top bar keeps branch, merge, new-doc, search, and
+theme reachable. Escape closes surfaces in a fixed order — modal, popover,
+slash/@ menus, bubble, selection, preview — before it cancels editing.
 
 **Main is protected** — whether the branch actually is or not. Editing (or
 commenting on, or creating) a doc on main automatically starts a draft
