@@ -54,7 +54,13 @@ export function useMenu() {
 				close();
 		};
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") close();
+			// Consumed, and marked so (#15 b5): an open popover always wins
+			// the Escape chain — the window fallback (and any future
+			// ordering) can see this Escape never reaches the slideout leg.
+			if (e.key === "Escape") {
+				e.preventDefault();
+				close();
+			}
 		};
 		// The popover is placed once; scrolling the list under it would
 		// detach it from its row, so any scroll just dismisses.

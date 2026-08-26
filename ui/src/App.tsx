@@ -209,6 +209,29 @@ export function App() {
 		return () => window.removeEventListener("keydown", onKey);
 	}, []);
 
+	// #15 b5: the Escape chain's window fallback — an Escape that reaches the
+	// window UN-prevented was consumed by no inline surface (the edit-mode
+	// editor preventDefaults every Escape it sees; read mode's Escapes arrive
+	// here by design, PM being keydown-inert on a non-editable view — the
+	// bubble's capture listener eats the selection-clearing ones). Modal
+	// first, then slideout: the modal usually closes itself (focus sits in
+	// its input), so this leg mostly covers focus escaping its trap.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: closeSlideout is re-created per render on purpose — its sidebar restore reads autoCollapsed (a ref), so the two open flags are the only state this listener branches on.
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.defaultPrevented) return;
+			if (searchOpen) {
+				e.preventDefault();
+				setSearchOpen(false);
+			} else if (railOpen) {
+				e.preventDefault();
+				closeSlideout();
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [searchOpen, railOpen]);
+
 	// Latest selected/dirty for the stable interval/focus sync callback.
 	const live = useRef({ selected, dirty });
 	live.current = { selected, dirty };
@@ -858,6 +881,15 @@ export function App() {
 		autoCollapsed.current = false;
 	}
 
+	// The Escape chain's slideout slot (#15 b5): true = the pane was open and
+	// this call closed it (EditorPane treats the Escape as spent, keeping
+	// edit-cancel for the next press); false = nothing was open.
+	function closeSlideoutIfOpen() {
+		if (!railOpen) return false;
+		closeSlideout();
+		return true;
+	}
+
 	// The « / » pair. A manual expand while the slideout stays open clears
 	// the automatic flag — the slideout never re-collapses (no fighting).
 	function collapseSidebar() {
@@ -1210,6 +1242,7 @@ export function App() {
 								onPendingActionCancel={() => setPendingAction(null)}
 								conflict={conflict}
 								onDismissConflict={() => setConflict(null)}
+								onEscapeSurfacesClear={closeSlideoutIfOpen}
 								onBeforeEdit={beforeEdit}
 								// Protected main (item 7): read-mode comments draft
 								// first — DocView awaits this before the combined POST

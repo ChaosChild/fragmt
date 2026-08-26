@@ -49,6 +49,7 @@ export function EditorPane({
 	editable,
 	onSave,
 	onCancel,
+	onEscapeSurfacesClear,
 	onComment,
 	onSpanClick,
 	saving,
@@ -69,6 +70,14 @@ export function EditorPane({
 	editable: boolean;
 	onSave: (markdown: string) => void;
 	onCancel: () => void;
+	/** The Escape chain's slideout slot (#15 b5): App's
+	 *  close-slideout-if-open, called in EDIT mode once popover/slash/@/bubble
+	 *  are clear and the selection is collapsed. True = the pane was open and
+	 *  just closed (the Escape is spent, edit-cancel keeps the next press);
+	 *  false/absent = nothing was open, fall through to onCancel. Read mode
+	 *  needs no leg here — PM never runs keydown on a non-editable view, so
+	 *  its un-consumed Escapes reach App's window fallback instead. */
+	onEscapeSurfacesClear?: () => boolean;
 	onComment: (id: string, quote: string, body: string) => void;
 	/** A comment highlight (span[data-c]) was activated — jump the rail to it. */
 	onSpanClick: (id: string) => void;
@@ -307,10 +316,13 @@ export function EditorPane({
 				}}
 				onKeyDown={(e) => {
 					// Read mode owns no edit-session keys — Esc just clears
-					// the selection (PM's own handling), Ctrl+S would save a
-					// buffer the user cannot see they are editing. Enter/Space
-					// on a focused highlight (the mark carries tabindex) jumps
-					// to its thread instead.
+					// the selection (the bubble's capture listener, which
+					// consumes the event; PM never runs keydown on a
+					// non-editable view, so an Esc with no bubble reaches
+					// App's window fallback and can close the slideout, #15
+					// b5), Ctrl+S would save a buffer the user cannot see
+					// they are editing. Enter/Space on a focused highlight
+					// (the mark carries tabindex) jumps to its thread instead.
 					if (!editable) {
 						const span = (e.target as HTMLElement).closest("[data-c]");
 						if (span && commenting && (e.key === "Enter" || e.key === " ")) {
@@ -319,12 +331,13 @@ export function EditorPane({
 						}
 						return;
 					}
-					// Escape order (M2-2): popover → slash menu → bubble →
-					// selection → edit-cancel-with-confirm. Each surface
-					// dismisses itself first; the bubble runs a capture-phase
-					// listener, so by the time Escape reaches here no surface
-					// is open. (PM preventDefaults every Escape, so
-					// defaultPrevented cannot detect consumption.)
+					// Escape order (#15 b5): popover → slash menu → bubble →
+					// selection → slideout → edit-cancel-with-confirm. Each
+					// surface dismisses itself first; the bubble runs a
+					// capture-phase listener, so by the time Escape reaches
+					// here no surface is open. (The editor preventDefaults
+					// every Escape, so defaultPrevented cannot detect
+					// consumption elsewhere.)
 					if (e.key === "Escape") {
 						e.preventDefault();
 						if (slashState || atState || imageAt !== null || bubbleOpen) return;
@@ -336,7 +349,10 @@ export function EditorPane({
 								.setTextSelection(editor.state.selection.to)
 								.run();
 						} else {
-							onCancel();
+							// The slideout slot (#15 b5): a true return means
+							// the pane was open and just closed — the Escape
+							// is spent; edit-cancel keeps the next press.
+							if (!onEscapeSurfacesClear?.()) onCancel();
 						}
 					} else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
 						e.preventDefault();

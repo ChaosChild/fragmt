@@ -91,6 +91,7 @@ export function DocView({
 	onPendingActionCancel,
 	conflict,
 	onDismissConflict,
+	onEscapeSurfacesClear,
 	onBeforeEdit,
 	onDraftFirst,
 	docMeta,
@@ -136,6 +137,9 @@ export function DocView({
 	/** Sync conflict message (M3) — the calm banner, never a merge UI. */
 	conflict: string | null;
 	onDismissConflict: () => void;
+	/** The Escape chain's slideout slot (#15 b5, App) — forwarded verbatim to
+	 *  EditorPane: true = the slideout was open and the Escape closed it. */
+	onEscapeSurfacesClear?: () => boolean;
 	/** Pre-edit gate (App): true = flip to edit mode. On main, App drafts
 	 *  first (protected main) and returns false on failure — the banner is
 	 *  App's; DocView stays dumb. */
@@ -339,7 +343,13 @@ export function DocView({
 					onChange={(e) => setRenameValue(e.target.value)}
 					onFocus={(e) => e.target.select()}
 					onKeyDown={(e) => {
-						if (e.key === "Escape") closeRename();
+						if (e.key === "Escape") {
+							// Consumed (#15 b5): the box is an Escape surface —
+							// the window fallback must not also close the
+							// slideout on the same press.
+							e.preventDefault();
+							closeRename();
+						}
 					}}
 					aria-label="Document title"
 					disabled={renameBusy}
@@ -793,6 +803,7 @@ export function DocView({
 					onDirtyChange={setDirty}
 					onSave={() => void handleSave()}
 					onCancel={requestCancel}
+					onEscapeSurfacesClear={onEscapeSurfacesClear}
 					onComment={(id, quote, body) => void handleComment(id, quote, body)}
 					onSpanClick={onSpanClick}
 					docPath={selected ?? doc.path}
