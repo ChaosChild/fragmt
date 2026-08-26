@@ -52,7 +52,7 @@
 	--space-12: 48px;
 	--reading-max: 920px;
 	--sidebar-w: 332px;
-	--rail-w: 316px;
+	--slideout-share: 0.55;
 	--topbar-h: 54px;
 	--focus-ring: 0 0 0 3px rgba(31, 57, 176, 0.34);
 	--motion-fast: 80ms;
@@ -561,7 +561,11 @@ body {
 
 /* ═══ MAIN — the page itself ═══════════════════════════════════ */
 .main {
-	flex: 1;
+	/* The slideout split's one flex variable (#15): main grows the share,
+	   the pane grows the rest — grow ratios, so the fixed sidebar and the
+	   divider come out first. A lone growing item still takes all the free
+	   space, so a closed (or absent) slideout keeps the full-width main. */
+	flex: var(--slideout-share) 1 0%;
 	overflow-y: auto;
 	min-width: 0;
 }
@@ -686,9 +690,6 @@ body {
 .iconbtn.subtle:hover {
 	color: var(--accent);
 	border-color: transparent;
-}
-.comments-btn {
-	display: none;
 }
 .comments-btn .badge {
 	font-family: var(--font-mono);
@@ -1064,33 +1065,11 @@ body {
 	flex-shrink: 0;
 }
 
-/* ═══ COMMENTS RAIL — margin notes; also carries app status ═══ */
-.comments-rail {
-	width: var(--rail-w);
-	min-width: var(--rail-w);
-	display: flex;
-	flex-direction: column;
-	flex-shrink: 0;
-}
-.rail-head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3);
-	border-bottom: 1px solid var(--border);
-	flex-shrink: 0;
-}
-.rail-title {
-	font-family: var(--font-mono);
-	font-size: 11px;
-	font-weight: 500;
-	text-transform: uppercase;
-	letter-spacing: var(--track-label);
-	color: var(--muted);
-}
-.rail-spacer {
-	flex: 1;
-}
+/* ═══ COMMENTS — the slideout's Comments mode (#15; was the rail) ═══
+   The thread list renders inside the slideout pane (rules below); the old
+   rail head is gone — the mode tabs and close live in .slideout-head, and
+   the sync indicator / theme toggle outlived it in the topbar and the
+   sidebar head. */
 .sync-indicator {
 	font-family: var(--font-mono);
 	font-size: 11px;
@@ -1131,31 +1110,6 @@ body {
 	box-shadow: var(--focus-ring);
 }
 .theme-toggle svg {
-	width: 15px;
-	height: 15px;
-}
-.rail-close {
-	display: none;
-	background: transparent;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	color: var(--muted);
-	width: 32px;
-	height: 32px;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-}
-.rail-close:hover {
-	color: var(--accent);
-	border-color: var(--accent);
-}
-.rail-close:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-.rail-close svg {
 	width: 15px;
 	height: 15px;
 }
@@ -1353,6 +1307,166 @@ button.comment-quote:hover {
 	padding: 0 var(--space-1) var(--space-3);
 }
 
+/* ── #15: the link slideout — the right pane the rail became ───── */
+/* Closed takes no space on desktop (the flex split only applies while a
+   pane participates); ≤1180px the RESPONSIVE block below turns the pane
+   into the bottom sheet the rail used to be. */
+.slideout {
+	display: none;
+	flex-direction: column;
+	flex: calc(1 - var(--slideout-share)) 1 0%;
+	min-width: 0;
+}
+.slideout.open {
+	display: flex;
+}
+/* The 7px drag strip between main and the pane — hover/press tints it the
+   accent; the grip is the centered 2×26 bar. */
+.slideout-divider {
+	width: 7px;
+	flex-shrink: 0;
+	cursor: col-resize;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: color-mix(in srgb, var(--fg) 4%, transparent);
+	transition: background var(--motion-fast) var(--ease-standard);
+	touch-action: none;
+	user-select: none;
+}
+.slideout-divider:hover,
+.slideout-divider:active {
+	background: var(--accent-tint);
+}
+.slideout-divider::before {
+	content: "";
+	width: 2px;
+	height: 26px;
+	border-radius: 2px;
+	background: var(--border);
+	transition: background var(--motion-fast) var(--ease-standard);
+}
+.slideout-divider:hover::before,
+.slideout-divider:active::before {
+	background: var(--accent);
+}
+/* Head: mode tabs + close — mono pills (the mock's .tabbtn). */
+.slideout-head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3);
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+}
+.slideout-spacer {
+	flex: 1;
+}
+.slideout-tab {
+	display: inline-flex;
+	align-items: center;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: var(--track-label);
+	background: none;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	color: var(--muted);
+	padding: 0 10px;
+	min-height: 32px; /* a11y floor: ≥32px hit targets (§9) */
+	cursor: pointer;
+	transition:
+		color var(--motion-fast) var(--ease-standard),
+		border-color var(--motion-fast) var(--ease-standard),
+		background var(--motion-fast) var(--ease-standard);
+}
+.slideout-tab.on {
+	color: var(--accent);
+	border-color: var(--accent);
+	background: var(--accent-tint);
+}
+.slideout-tab:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.slideout-tab:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.slideout-close {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	cursor: pointer;
+	color: var(--muted);
+	width: 32px;
+	height: 32px;
+	flex-shrink: 0;
+	transition:
+		color var(--motion-fast) var(--ease-standard),
+		border-color var(--motion-fast) var(--ease-standard);
+}
+.slideout-close:hover {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+.slideout-close:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.slideout-close svg {
+	width: 15px;
+	height: 15px;
+}
+
+/* ── #15: collapse chrome — the topbar the collapsed sidebar wears ── */
+.app-frame {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+}
+/* The layout was height:100vh as the root; inside the frame it takes
+   whatever the topbar leaves. */
+.app-frame > .layout {
+	height: auto;
+	flex: 1;
+	min-height: 0;
+}
+.sidebar.collapsed {
+	display: none;
+}
+.app-topbar {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	height: 40px;
+	flex-shrink: 0;
+	padding: 0 var(--space-3) 0 var(--space-2);
+	background: var(--glass-bg);
+	border-bottom: 1px solid var(--glass-border);
+	backdrop-filter: blur(18px) saturate(1.5);
+	-webkit-backdrop-filter: blur(18px) saturate(1.5);
+}
+@supports not (backdrop-filter: blur(1px)) {
+	.app-topbar {
+		background: var(--surface);
+	}
+}
+/* The sidebar head's stretching rules un-stretch here: the branch menu
+   sizes to its name (ellipsizing past 150px) and Merge never widens the
+   bar — same look as the sidebar's row 2, without the full-width pull. */
+.app-topbar .branch-dd {
+	width: auto;
+	max-width: 150px;
+}
+.app-topbar .iconbtn {
+	flex-shrink: 0;
+}
+
 /* ═══ TOP BAR — mobile / tablet only ═══════════════════════════ */
 .topbar {
 	display: none;
@@ -1441,10 +1555,10 @@ button.comment-quote:hover {
 	.side-head {
 		display: none;
 	} /* brand + branch live in the top bar now */
-	.comments-btn {
-		display: inline-flex;
-	}
-	.comments-rail {
+	/* The slideout is the comments bottom sheet here (#15 took over the
+	   rail's role): mounted regardless of .open so the transform animates. */
+	.slideout {
+		display: flex;
 		position: fixed;
 		z-index: 45;
 		top: auto;
@@ -1465,28 +1579,25 @@ button.comment-quote:hover {
 		transition: transform var(--motion-base) var(--ease-standard);
 	}
 	@supports not (backdrop-filter: blur(1px)) {
-		.comments-rail {
+		.slideout {
 			background: var(--surface);
 		}
 	}
-	.comments-rail.open {
+	.slideout.open {
 		transform: translateY(0);
 	}
-	.rail-head {
+	.slideout-divider {
+		display: none;
+	} /* the sheet is full-width — nothing to split */
+	.slideout-head {
 		padding: var(--space-3) var(--space-4);
 	}
 	.rail-body {
 		padding: var(--space-4);
 	}
-	.rail-close {
-		display: flex;
-	}
 	.sync-indicator {
 		display: none;
 	} /* LED dot in the top bar covers it */
-	.rail-head .theme-toggle {
-		display: none;
-	}
 }
 @media (max-width: 900px) {
 	.doc-pane,

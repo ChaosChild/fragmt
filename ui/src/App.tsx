@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Search } from "lucide-react";
 import {
 	type CSSProperties,
 	useCallback,
@@ -51,7 +51,13 @@ import {
 import { ResolutionView } from "./ResolutionView";
 import { SearchModal } from "./SearchModal";
 import { Sidebar, SidebarResizeHandle } from "./Sidebar";
+import { Slideout, type SlideoutMode } from "./Slideout";
 import { readStoredSidebarWidth, storeSidebarWidth } from "./sidebar-geometry";
+import {
+	readStoredSlideoutShare,
+	storeSlideoutShare,
+} from "./slideout-geometry";
+import { ThemeToggle } from "./ThemeToggle";
 
 function firstDoc(node: TreeNode): string | null {
 	for (const child of node.children ?? []) {
@@ -151,6 +157,21 @@ export function App() {
 		comments: {},
 	});
 	const [railOpen, setRailOpen] = useState(false);
+	// #15: the rail became the slideout — App owns its mode + drag split
+	// (the sidebar resize pattern, in %) and the sidebar collapse the split
+	// buys. railOpen now means "the slideout pane is open".
+	const [slideoutMode, setSlideoutMode] = useState<SlideoutMode>("comments");
+	const [slideoutShare, setSlideoutShare] = useState(() =>
+		readStoredSlideoutShare(),
+	);
+	const applySlideoutShare = (share: number, commit: boolean) => {
+		setSlideoutShare(share);
+		if (commit) storeSlideoutShare(share);
+	};
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+	// True while the sidebar is collapsed because the slideout opened (not
+	// the user's «) — only that collapse is undone when the slideout closes.
+	const autoCollapsed = useRef(false);
 	const [railError, setRailError] = useState<string | null>(null);
 	// Doc→rail jump target; `n` re-arms repeated clicks on the same span.
 	const [spanFocus, setSpanFocus] = useState<{ id: string; n: number } | null>(
@@ -781,6 +802,39 @@ export function App() {
 		if (first) setSelected(first);
 	}
 
+	// --- #15: the slideout + the collapse chrome it buys ---------------------
+	//
+	// Opening the slideout auto-collapses the sidebar ONCE to buy the split
+	// room: an already-collapsed sidebar keeps its own reason (the user's «,
+	// so nothing to restore later). Every open path routes through here —
+	// the comments button, doc span clicks, and (b4) link opens.
+	function openSlideout(mode: SlideoutMode) {
+		setRailOpen(true);
+		setSlideoutMode(mode);
+		if (!sidebarCollapsed) {
+			setSidebarCollapsed(true);
+			autoCollapsed.current = true;
+		}
+	}
+
+	// Close restores the sidebar only when the automatic collapse still
+	// stands — a manual « (before or after the open) is never undone by it.
+	function closeSlideout() {
+		setRailOpen(false);
+		if (autoCollapsed.current && sidebarCollapsed) setSidebarCollapsed(false);
+		autoCollapsed.current = false;
+	}
+
+	// The « / » pair. A manual expand while the slideout stays open clears
+	// the automatic flag — the slideout never re-collapses (no fighting).
+	function collapseSidebar() {
+		setSidebarCollapsed(true);
+	}
+	function expandSidebar() {
+		setSidebarCollapsed(false);
+		autoCollapsed.current = false;
+	}
+
 	// LED + one-word status: amber = not synced yet (the word says which —
 	// Unsaved/Saved/Syncing), green = synced, red = error (conflict or sync
 	// failure; holds until the next clean sync).
@@ -827,208 +881,277 @@ export function App() {
 			(meta.drafts[selected] ?? []).some((e) => e.branch === meta.current),
 	);
 
+	// The head controls render in two places (#15): the sidebar head, and
+	// the topbar that replaces it while the sidebar is collapsed — same
+	// elements, second location, no logic duplication.
+	const searchBtn = (
+		// Search (#14): ⌕ left of ＋ (owner order) — the modal is the
+		// keyboard-first path (Ctrl+K works anywhere).
+		<button
+			type="button"
+			className="tool-btn"
+			title="Search (Ctrl+K)"
+			aria-label="Search (Ctrl+K)"
+			onClick={() => setSearchOpen(true)}
+		>
+			<Search aria-hidden="true" />
+		</button>
+	);
+	const branchMenu = <BranchMenu current={branch} onAction={requestBranch} />;
+	// Resolution mode owns the merge act — the button hides until the
+	// standing merge finishes or aborts (both locations).
+	const mergeBtn = !inResolution && (
+		<button
+			type="button"
+			className="iconbtn"
+			disabled={!canMerge || dirty}
+			title={
+				canMerge
+					? dirty
+						? "save or discard changes to the open document first"
+						: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
+					: undefined
+			}
+			onClick={() => void runMerge()}
+		>
+			Merge
+		</button>
+	);
+	const newDocBtn = <NewDocButton onFileOp={runFileOp} />;
+
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
-			<div className="layout">
-				<aside
-					className="sidebar"
-					aria-label="Documents"
-					style={
-						sidebarW === null
-							? undefined
-							: ({ "--sidebar-w": `${sidebarW}px` } as CSSProperties)
-					}
+			<div className="app-frame">
+				{/* Collapsed chrome (#15): while the sidebar is tucked away, the
+				    topbar carries what its head held — expand, brand, branch,
+				    Merge, new doc, search, sync LED. */}
+				{sidebarCollapsed && (
+					<header className="app-topbar">
+						<button
+							type="button"
+							className="tool-btn"
+							title="Expand sidebar"
+							aria-label="Expand sidebar"
+							onClick={expandSidebar}
+						>
+							<ChevronsRight aria-hidden="true" />
+						</button>
+						<span className="brand">fragmt</span>
+						{branchMenu}
+						{mergeBtn}
+						<span className="topbar-spacer" />
+						{newDocBtn}
+						{searchBtn}
+						<span
+							className={`sync-indicator${led === "amber" ? " warn" : led === "red" ? " err" : ""}`}
+							role="status"
+							title={ledLabel}
+						>
+							<span className={`led ${led}`} aria-hidden="true" />
+							{ledLabel}
+						</span>
+					</header>
+				)}
+				<div
+					className="layout"
+					style={{ "--slideout-share": String(slideoutShare) } as CSSProperties}
 				>
-					{/* Two-row head (item 11): brand + "+", then branch + Merge. */}
-					<div className="side-head">
-						<div className="side-head-row">
-							<span className="brand">fragmt</span>
-							<div className="side-head-spacer" />
-							{/* Search (#14): ⌕ left of ＋ (owner order) — the modal is
-							    the keyboard-first path (Ctrl+K works anywhere). */}
-							<button
-								type="button"
-								className="tool-btn"
-								title="Search (Ctrl+K)"
-								aria-label="Search (Ctrl+K)"
-								onClick={() => setSearchOpen(true)}
-							>
-								<Search aria-hidden="true" />
-							</button>
-							<NewDocButton onFileOp={runFileOp} />
-						</div>
-						<div className="side-head-row side-head-branch">
-							<BranchMenu current={branch} onAction={requestBranch} />
-							{/* Resolution mode owns the merge act — the global button
-							    hides until the standing merge finishes or aborts. */}
-							{!inResolution && (
+					<aside
+						className={sidebarCollapsed ? "sidebar collapsed" : "sidebar"}
+						aria-label="Documents"
+						style={
+							sidebarW === null
+								? undefined
+								: ({ "--sidebar-w": `${sidebarW}px` } as CSSProperties)
+						}
+					>
+						{/* Two-row head (item 11): brand + "+", then branch + Merge. */}
+						<div className="side-head">
+							<div className="side-head-row">
+								<span className="brand">fragmt</span>
+								<div className="side-head-spacer" />
+								{searchBtn}
+								{/* Moved from the rail head (#15) — the sidebar head is
+								    always reachable, slideout or not. */}
+								<ThemeToggle />
+								{newDocBtn}
+								{/* « collapses the sidebar (#15) — the topbar takes
+								    over while it's away. */}
 								<button
 									type="button"
-									className="iconbtn"
-									disabled={!canMerge || dirty}
-									title={
-										canMerge
-											? dirty
-												? "save or discard changes to the open document first"
-												: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
-											: undefined
-									}
-									onClick={() => void runMerge()}
+									className="tool-btn"
+									title="Collapse sidebar"
+									aria-label="Collapse sidebar"
+									onClick={collapseSidebar}
 								>
-									Merge
+									<ChevronsLeft aria-hidden="true" />
 								</button>
-							)}
+							</div>
+							<div className="side-head-row side-head-branch">
+								{branchMenu}
+								{mergeBtn}
+							</div>
 						</div>
-					</div>
-					<Sidebar
-						tree={tree}
-						selected={selected}
-						onSelect={setSelected}
-						meta={meta}
-						expandFolder={expandFolder}
-						onOpenGhost={(path, branchName) => void openGhost(path, branchName)}
-						onRestore={(items) => void runRestore(items)}
-						// Drag & drop (M4-3 b5 + M4-4 dogfood round): dropTargetValid
-						// blocks self-subtree drops; a drop back on the item's own
-						// parent is a silent no-op (isNoOpDrop) — the peaceful
-						// cancel — so anything reaching the move/delete flows is a
-						// real op.
-						onDropItem={(item: DragItem, folder: string) => {
-							if (isNoOpDrop(item, folder)) return;
-							item.type === "doc"
-								? moveDocTo(item.path, folder)
-								: requestMoveFolder(item.path, folder);
-						}}
-						onDropBin={(item: DragItem, name: string) =>
-							item.type === "doc"
-								? deleteDocAt(item.path, name)
-								: requestDeleteFolder(item.path, name)
-						}
-					/>
-					<SidebarResizeHandle onWidth={applySidebarW} />
-				</aside>
-				<main className="main">
-					{/* App-level failures (file ops, sync, branch commands) say
+						<Sidebar
+							tree={tree}
+							selected={selected}
+							onSelect={setSelected}
+							meta={meta}
+							expandFolder={expandFolder}
+							onOpenGhost={(path, branchName) =>
+								void openGhost(path, branchName)
+							}
+							onRestore={(items) => void runRestore(items)}
+							// Drag & drop (M4-3 b5 + M4-4 dogfood round): dropTargetValid
+							// blocks self-subtree drops; a drop back on the item's own
+							// parent is a silent no-op (isNoOpDrop) — the peaceful
+							// cancel — so anything reaching the move/delete flows is a
+							// real op.
+							onDropItem={(item: DragItem, folder: string) => {
+								if (isNoOpDrop(item, folder)) return;
+								item.type === "doc"
+									? moveDocTo(item.path, folder)
+									: requestMoveFolder(item.path, folder);
+							}}
+							onDropBin={(item: DragItem, name: string) =>
+								item.type === "doc"
+									? deleteDocAt(item.path, name)
+									: requestDeleteFolder(item.path, name)
+							}
+						/>
+						<SidebarResizeHandle onWidth={applySidebarW} />
+					</aside>
+					<main className="main">
+						{/* App-level failures (file ops, sync, branch commands) say
 					    what went wrong where the user is looking — a failed move
 					    must not read as "nothing happened". The merge-conflict
 					    fallback (M4-4 b3) is its own banner, never the sync one. */}
-					{error && (
-						<div
-							className="conflict-banner"
-							role="alert"
-							style={{ margin: "12px 24px 0" }}
-						>
-							<div>
-								<strong>Something failed</strong>
-								{error}
-							</div>
-							<button
-								type="button"
-								className="iconbtn subtle dismiss"
-								onClick={() => setError(null)}
+						{error && (
+							<div
+								className="conflict-banner"
+								role="alert"
+								style={{ margin: "12px 24px 0" }}
 							>
-								Dismiss
-							</button>
-						</div>
-					)}
-					{mergeConflict && (
-						<div
-							className="conflict-banner"
-							role="alert"
-							style={{ margin: "12px 24px 0" }}
-						>
-							<div>
-								<strong>Merge conflict</strong>
-								{mergeConflict}
+								<div>
+									<strong>Something failed</strong>
+									{error}
+								</div>
+								<button
+									type="button"
+									className="iconbtn subtle dismiss"
+									onClick={() => setError(null)}
+								>
+									Dismiss
+								</button>
 							</div>
-							<button
-								type="button"
-								className="iconbtn subtle dismiss"
-								onClick={() => setMergeConflict(null)}
+						)}
+						{mergeConflict && (
+							<div
+								className="conflict-banner"
+								role="alert"
+								style={{ margin: "12px 24px 0" }}
 							>
-								Dismiss
-							</button>
-						</div>
-					)}
-					{inResolution ? (
-						<ResolutionView onDone={mergeDone} />
-					) : (
-						<DocView
-							doc={doc}
-							selected={selected}
-							// A successful save commits locally — synced flips back
-							// to false: the LED reads Saved (amber), not Synced;
-							// the next sync confirms it.
-							onSaved={(d) => {
-								setDoc(d);
-								setSynced(false);
-								// A save is a commit — versions/drafts/bin moved.
-								refreshMeta();
-							}}
-							onReload={reloadSelected}
-							onDirtyChange={setDirty}
+								<div>
+									<strong>Merge conflict</strong>
+									{mergeConflict}
+								</div>
+								<button
+									type="button"
+									className="iconbtn subtle dismiss"
+									onClick={() => setMergeConflict(null)}
+								>
+									Dismiss
+								</button>
+							</div>
+						)}
+						{inResolution ? (
+							<ResolutionView onDone={mergeDone} />
+						) : (
+							<DocView
+								doc={doc}
+								selected={selected}
+								// A successful save commits locally — synced flips back
+								// to false: the LED reads Saved (amber), not Synced;
+								// the next sync confirms it.
+								onSaved={(d) => {
+									setDoc(d);
+									setSynced(false);
+									// A save is a commit — versions/drafts/bin moved.
+									refreshMeta();
+								}}
+								onReload={reloadSelected}
+								onDirtyChange={setDirty}
+								commentCount={threads.length}
+								onOpenComments={() => openSlideout("comments")}
+								onCommentsChanged={refreshComments}
+								onSpanClick={(id) => {
+									// Span clicks are comment intents — the slideout
+									// opens in (or switches to) Comments, then jumps.
+									openSlideout("comments");
+									setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
+								}}
+								pendingAction={pendingAction}
+								onPendingActionCancel={() => setPendingAction(null)}
+								conflict={conflict}
+								onDismissConflict={() => setConflict(null)}
+								onBeforeEdit={beforeEdit}
+								// Protected main (item 7): read-mode comments draft
+								// first — DocView awaits this before the combined POST
+								// (undefined off main: no interception).
+								onDraftFirst={onMain ? draftFirst : undefined}
+								docMeta={docMeta}
+								branch={branch}
+								led={led}
+								ledLabel={ledLabel}
+								draftBranch={draftBranch}
+								onOpenDraft={() => draftBranch && openDraft(draftBranch)}
+								onDraft={onDraft}
+								authors={meta?.authors ?? {}}
+								docs={docs}
+								onSelectDoc={onDocLink}
+								onSelectFolder={onSelectFolderLink}
+								pendingAnchor={pendingAnchor}
+								onAnchorConsumed={clearAnchor}
+								folders={moveDest.folders}
+								rootMoveValid={moveDest.rootValid}
+								onBeforeRename={beforeRename}
+								onMoveDoc={requestMoveDoc}
+								onDeleteDoc={requestDeleteDoc}
+								onRenamed={onRenamed}
+							/>
+						)}
+					</main>
+					{/* The slideout (#15) — the rail's replacement as a right pane:
+					    Comments mode is the refactored rail content; Preview is b4.
+					    Hidden in resolution mode — the doc pane is taken over and
+					    its comments are mid-merge anyway. */}
+					{selected && !inResolution && (
+						<Slideout
+							open={railOpen}
+							mode={slideoutMode}
 							commentCount={threads.length}
-							onOpenComments={() => setRailOpen(true)}
-							onCommentsChanged={refreshComments}
-							onSpanClick={(id) => {
-								setRailOpen(true);
-								setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
-							}}
-							pendingAction={pendingAction}
-							onPendingActionCancel={() => setPendingAction(null)}
-							conflict={conflict}
-							onDismissConflict={() => setConflict(null)}
-							onBeforeEdit={beforeEdit}
-							// Protected main (item 7): read-mode comments draft
-							// first — DocView awaits this before the combined POST
-							// (undefined off main: no interception).
-							onDraftFirst={onMain ? draftFirst : undefined}
-							docMeta={docMeta}
-							branch={branch}
-							led={led}
-							ledLabel={ledLabel}
-							draftBranch={draftBranch}
-							onOpenDraft={() => draftBranch && openDraft(draftBranch)}
-							onDraft={onDraft}
-							authors={meta?.authors ?? {}}
-							docs={docs}
-							onSelectDoc={onDocLink}
-							onSelectFolder={onSelectFolderLink}
-							pendingAnchor={pendingAnchor}
-							onAnchorConsumed={clearAnchor}
-							folders={moveDest.folders}
-							rootMoveValid={moveDest.rootValid}
-							onBeforeRename={beforeRename}
-							onMoveDoc={requestMoveDoc}
-							onDeleteDoc={requestDeleteDoc}
-							onRenamed={onRenamed}
-						/>
+							onModeChange={setSlideoutMode}
+							onClose={closeSlideout}
+							onShare={applySlideoutShare}
+						>
+							<CommentsRail
+								threads={threads}
+								liveIds={liveIds}
+								agents={meta?.agents ?? []}
+								onClose={closeSlideout}
+								focus={spanFocus}
+								onReply={(id, body) => railReply(id, body)}
+								onResolve={(id) => void railResolve(id, true)}
+								onReopen={(id) => void railResolve(id, false)}
+								onDelete={(id) => void railDelete(id)}
+								error={railError}
+								docs={docs}
+								onOpenDoc={setSelected}
+							/>
+						</Slideout>
 					)}
-				</main>
-				{/* The rail is a layout sibling of <main> (right margin column);
-				    the head carries the app's sync LED + theme (review decision 2).
-				    Hidden in resolution mode — the doc pane is taken over and its
-				    comments are mid-merge anyway. */}
-				{selected && !inResolution && (
-					<CommentsRail
-						threads={threads}
-						liveIds={liveIds}
-						agents={meta?.agents ?? []}
-						led={led}
-						ledLabel={ledLabel}
-						open={railOpen}
-						onClose={() => setRailOpen(false)}
-						focus={spanFocus}
-						onReply={(id, body) => railReply(id, body)}
-						onResolve={(id) => void railResolve(id, true)}
-						onReopen={(id) => void railResolve(id, false)}
-						onDelete={(id) => void railDelete(id)}
-						error={railError}
-						docs={docs}
-						onOpenDoc={setSelected}
-					/>
-				)}
+				</div>
 			</div>
 			{/* The Ctrl+K search dialog (#14) — a layout sibling, above
 			    everything; its opens route through guardAction (the

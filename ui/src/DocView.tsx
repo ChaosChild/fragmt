@@ -120,7 +120,8 @@ export function DocView({
 	onDirtyChange: (dirty: boolean) => void;
 	/** Live thread count (App owns the sidecar state) — 0 hides the button. */
 	commentCount: number;
-	/** Opens/scrolls the comments rail (App); the mobile sheet's entry point. */
+	/** Opens the comments slideout in Comments mode (App) — the desktop
+	 *  entry point (#15) and the mobile sheet's open button. */
 	onOpenComments: () => void;
 	/** Bumps App's sidecar refetch after a successful create. */
 	onCommentsChanged: () => void;
@@ -700,8 +701,9 @@ export function DocView({
 							</>
 						) : (
 							<>
-								{/* comments-btn stays desktop-hidden (mock rule) — it
-								    surfaces ≤1180px, where the rail becomes a sheet. */}
+								{/* The slideout's Comments entry (#15): visible at
+								    every width now — desktop opens the side pane,
+								    ≤1180px the bottom sheet, as before. */}
 								{commentCount > 0 && (
 									<button
 										type="button"
