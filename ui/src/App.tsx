@@ -1336,6 +1336,8 @@ export function App() {
 							preview={previewPath !== null}
 							commentCount={threads.length}
 							previewTitle={previewTitle}
+							led={led}
+							ledLabel={ledLabel}
 							onPromote={previewPath ? promotePreview : undefined}
 							onClose={previewPath !== null ? closePreview : closeSheet}
 							onShare={applySlideoutShare}

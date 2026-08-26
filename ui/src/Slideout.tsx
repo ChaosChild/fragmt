@@ -61,6 +61,8 @@ export function Slideout({
 	preview,
 	commentCount,
 	previewTitle,
+	led,
+	ledLabel,
 	onPromote,
 	onClose,
 	onShare,
@@ -75,6 +77,10 @@ export function Slideout({
 	/** The previewed doc's display title — the head's "Preview · <title>"
 	 *  line (null with nothing previewed). */
 	previewTitle: string | null;
+	/** The sync LED + one-word status (App's), the rail head's right end —
+	 *  the v0.5.0 header restored (testing round 2026-08-26). */
+	led: string;
+	ledLabel: string;
 	/** The head's open-in-main act (preview state, #15): App closes the pane
 	 *  and sends the previewed doc through the navigation queue. Absent =
 	 *  no button (nothing previewed). */
@@ -101,6 +107,18 @@ export function Slideout({
 						<span className="slideout-title">Comments · {commentCount}</span>
 					)}
 					<span className="slideout-spacer" />
+					{/* The rail head's right end (v0.5.0): the sync LED + word.
+					    Preview state keeps it too — the split hides the sidebar,
+					    so this stays the one always-visible sync cue. Hidden
+					    ≤1180px (the topbar's LED covers it there). */}
+					<span
+						className={`sync-indicator${led === "amber" ? " warn" : led === "red" ? " err" : ""}`}
+						role="status"
+						title={ledLabel}
+					>
+						<span className={`led ${led}`} aria-hidden="true" />
+						{ledLabel}
+					</span>
 					{/* Open in main pane (#15): the previewed doc becomes the
 					    main one — through the navigation queue. The icon reads
 					    as move-to-main, not edit. */}

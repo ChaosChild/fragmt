@@ -1359,9 +1359,10 @@ button.comment-quote:hover {
 .slideout-divider:active::before {
 	background: var(--accent);
 }
-/* Head: the preview state's chrome (title, open-in-main, close). The
-   comments state's head is the ≤1180px sheet's fold affordance — hidden
-   on desktop, restored inside the media query below. */
+/* Head: the preview state's chrome (title, open-in-main, close) and, in
+   the comments state, the restored v0.5.0 rail head — "COMMENTS · N" +
+   the sync LED. The close is preview-only on desktop (the rail has no
+   closed state there); the ≤1180px sheet re-shows it as its fold. */
 .slideout-head {
 	display: flex;
 	align-items: center;
@@ -1370,7 +1371,7 @@ button.comment-quote:hover {
 	border-bottom: 1px solid var(--border);
 	flex-shrink: 0;
 }
-.slideout:not(.preview) .slideout-head {
+.slideout:not(.preview) .slideout-close {
 	display: none;
 }
 .slideout-spacer {
@@ -1407,7 +1408,7 @@ button.comment-quote:hover {
 /* The tab pair was here — gone with the tabs themselves (dogfood round,
    2026-08-26): the pane's two states are previewPath's presence. */
 /* The head's title line — "Preview · <title>" in the preview state,
-   "Comments · N" in the sheet's. */
+   "Comments · N" in the rail's — the v0.5.0 rail-title styling. */
 .slideout-title {
 	flex: 0 1 auto;
 	min-width: 0;
@@ -1415,7 +1416,9 @@ button.comment-quote:hover {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	font-family: var(--font-mono);
-	font-size: 10px;
+	font-size: 11px;
+	font-weight: 500;
+	text-transform: uppercase;
 	letter-spacing: var(--track-label);
 	color: var(--muted);
 }
@@ -1633,6 +1636,11 @@ button.comment-quote:hover {
 	/* The comments state's head returns here (the sheet's title + fold);
 	   the preview head needs no help — it never hides. */
 	.slideout:not(.preview) .slideout-head {
+		display: flex;
+	}
+	/* The sheet's fold: the comments close returns ≤1180 (hidden on
+	   desktop above — the rail has no closed state there). */
+	.slideout:not(.preview) .slideout-close {
 		display: flex;
 	}
 	.slideout-head {
