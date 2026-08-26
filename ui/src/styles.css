@@ -569,9 +569,10 @@ body {
 .main {
 	/* The split's one flex variable (#15): main grows the share, the pane
 	   grows the rest — grow ratios, so the fixed sidebar and the divider
-	   come out first. The pane is the fixed 316px rail by default (a lone
-	   growing item takes all the free space regardless) and the flexed
-	   45% only while a preview is open. */
+	   come out first. Without a preview App feeds the variable 1, so main
+	   (the lone grower next to the fixed 316px pane) claims ALL free
+	   space — spec §9.7.1: a grow factor under 1 takes only grow ×
+	   free-space, never the whole remainder. */
 	flex: var(--slideout-share) 1 0%;
 	overflow-y: auto;
 	min-width: 0;

@@ -1146,7 +1146,18 @@ export function App() {
 				)}
 				<div
 					className="layout"
-					style={{ "--slideout-share": String(slideoutShare) } as CSSProperties}
+					// Without a preview the pane is a fixed 316px column, so main
+					// must claim ALL free space — flex-grow 1. The 55/45 share
+					// only applies while the pane is flexed (preview open): per
+					// spec §9.7.1 a grow < 1 takes just grow × free-space, so a
+					// lone 0.55 grower leaves 45% of the layout dead.
+					style={
+						{
+							"--slideout-share": String(
+								previewPath !== null ? slideoutShare : 1,
+							),
+						} as CSSProperties
+					}
 				>
 					<aside
 						className={sidebarCollapsed ? "sidebar collapsed" : "sidebar"}
