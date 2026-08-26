@@ -15,7 +15,6 @@ import { ImagePopover } from "./editor/ImageForm";
 import { resolveLinkTarget, slugifyHeading } from "./editor/links";
 import { SlashMenuView } from "./editor/SlashMenu";
 import type { SlashMenuState } from "./editor/slash";
-import { isIconHit } from "./link-hit";
 
 export interface EditorPaneHandle {
 	getMarkdown(): string;
@@ -64,6 +63,7 @@ export function EditorPane({
 	anchor,
 	onAnchorConsumed,
 	commenting = true,
+	spanTitleFor,
 	ref,
 }: {
 	markdown: string;
@@ -92,8 +92,8 @@ export function EditorPane({
 	/** An in-doc link resolved to a tree doc — navigate in-app (App), with the
 	 *  #fragment when the link carried one (scrolled after the doc loads). */
 	onSelectDoc: (path: string, anchor?: string) => void;
-	/** A doc-link click chose the slideout (#15): edit-mode clicks (any
-	 *  modifier state) and read-mode Shift or hover-↗-zone hits. */
+	/** A doc-link click chose the slideout (#15, dogfooded): edit-mode
+	 *  Ctrl/Cmd and read-mode Shift — the buffer is never navigated away. */
 	onOpenPreview: (path: string, anchor?: string) => void;
 	/** A link resolved to a tree folder — App expands it in the sidebar. */
 	onSelectFolder: (path: string) => void;
@@ -107,6 +107,10 @@ export function EditorPane({
 	 *  for the slideout preview (#15): its editor is a viewer, selections
 	 *  there are just selections. */
 	commenting?: boolean;
+	/** Per-span tooltip text (dogfood round, #15): the preview overrides the
+	 *  mark's static "View comment" with the thread's summary — see the
+	 *  title pass below. Absent = the mark's own title stands. */
+	spanTitleFor?: (id: string) => string;
 	ref?: Ref<EditorPaneHandle>;
 }) {
 	const [slashState, setSlashState] = useState<SlashMenuState | null>(null);
@@ -181,6 +185,21 @@ export function EditorPane({
 		onAnchorConsumed();
 	}, [editor, anchor, onAnchorConsumed]);
 
+	// Span-title pass (dogfood round, #15): the mark renders a static
+	// "View comment"; a pane that knows the sidecar (the preview) rewrites
+	// each span's title from it. The heading-id walk's pattern — ids/titles
+	// live only in the rendered DOM — re-run on content load AND when the
+	// caller's function changes identity (its map landed after the render).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: markdown is the content-load signal — a same-path refetch re-renders the spans with the mark's default title, and the walk must fire again; spanTitleFor's identity alone can miss it.
+	useEffect(() => {
+		if (!editor || !spanTitleFor) return;
+		for (const el of Array.from(
+			editor.view.dom.querySelectorAll<HTMLElement>("span[data-c]"),
+		)) {
+			el.title = spanTitleFor(el.getAttribute("data-c") ?? "");
+		}
+	}, [editor, markdown, spanTitleFor]);
+
 	// Edit/Cancel flips editability on the SAME mounted editor — the DOM
 	// never rebuilds, so the text cannot reflow (M2 rule). A stale bubble
 	// flag (bubble open when Save was clicked) would eat one Escape later;
@@ -233,11 +252,12 @@ export function EditorPane({
 				// M4-3 b6 widens the dispatch: anchors, folder links, raw
 				// assets, and dead .md links (links.ts' table is normative).
 				onClick={(e) => {
-					// #15 b4: read mode's drag guard exempts Shift (Shift+click
-					// opens the preview AND extends the browser selection — the
-					// intent is the click), and edit mode's Ctrl/Cmd gate keeps
-					// every legacy dispatch except one new plain-click exception
-					// below: the cross-doc link.
+					// #15, dogfooded 2026-08-26: read mode's drag guard exempts
+					// Shift (Shift+click opens the preview AND extends the
+					// browser selection — the intent is the click). Edit mode:
+					// a plain click is normal editing — cursor placement, PM's
+					// default, nothing opens; Ctrl/Cmd is v0.5.0's
+					// ctrl-to-follow, retargeted at the preview for doc links.
 					if (!editable && !e.shiftKey && !window.getSelection()?.isCollapsed)
 						return;
 					const follows = !editable || e.ctrlKey || e.metaKey;
@@ -248,6 +268,7 @@ export function EditorPane({
 							onSpanClick(span.getAttribute("data-c") ?? "");
 						return;
 					}
+					if (!follows) return;
 					const anchorEl = target.closest("a[href]");
 					if (!anchorEl) return;
 					const href = anchorEl.getAttribute("href") ?? "";
@@ -257,29 +278,17 @@ export function EditorPane({
 						knownDocPaths,
 						knownFolderPaths,
 					);
-					// The one plain-click exception in edit mode (#15): a CROSS-doc
-					// link opens the slideout preview on any click — the buffer is
-					// never navigated away from. Same-doc fragments don't count
-					// (they scroll in place and never reload).
-					const crossDoc =
-						resolved.kind === "doc" &&
-						!(resolved.anchor && resolved.path === docPath);
-					if (!follows && !crossDoc) return;
 					switch (resolved.kind) {
 						case "doc":
 							e.preventDefault();
 							// Same doc + fragment: no reload — scroll in place.
 							if (resolved.anchor && resolved.path === docPath) {
 								scrollToHeadingId(editor, resolved.anchor);
-							} else if (
-								editable ||
-								e.shiftKey ||
-								isIconHit(e.clientX, anchorEl.getBoundingClientRect())
-							) {
-								// #15: edit mode sends EVERY doc-link click to the
-								// slideout preview; read mode's Shift and the hover-↗
-								// zone (the link's last 18px — link-hit.ts) join it.
-								// A plain read click keeps the navigate; App guards it.
+							} else if (editable || e.shiftKey) {
+								// #15: edit mode's Ctrl/Cmd and read mode's Shift
+								// open the slideout preview — the buffer is never
+								// navigated away from. A plain read click keeps
+								// the navigate; App guards it.
 								onOpenPreview(resolved.path, resolved.anchor);
 							} else {
 								onSelectDoc(resolved.path, resolved.anchor);

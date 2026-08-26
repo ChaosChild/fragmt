@@ -3,14 +3,16 @@ import { EditorPane } from "./EditorPane";
 import type { AtDoc } from "./editor/at";
 
 /**
- * The slideout's Preview mode (#15 b4): the linked doc as a second,
+ * The pane's Preview state (#15 b4, dogfooded): the linked doc as a second,
  * READ-ONLY EditorPane. Every edit surface is inert by wiring — the comment
  * bubble and highlight jumps are off (`commenting: false`), the save/cancel
  * keys are editable-gated — and the one live interaction is the point: doc
  * links re-target the preview itself (App's previewPath), so following a
  * trail never touches the editor's doc or its buffer. Non-doc links keep
  * the main pane's dispatch: external and raw open tabs, folders expand the
- * sidebar, dead links get this pane's quiet note.
+ * sidebar, dead links get this pane's quiet note. The previewed doc's
+ * sidecar arrives as `spanTitleFor` — thread summaries for the rendered
+ * spans, nothing more (no reply/resolve UI here).
  */
 export function DocPreview({
 	path,
@@ -24,6 +26,7 @@ export function DocPreview({
 	onSelectDoc,
 	onSelectFolder,
 	onLinkNotFound,
+	spanTitleFor,
 }: {
 	/** The previewed docsRoot-relative path (App owns it and the fetch). */
 	path: string | null;
@@ -46,6 +49,9 @@ export function DocPreview({
 	onSelectFolder: (path: string) => void;
 	/** A relative .md link matched nothing — App notes it here. */
 	onLinkNotFound: (href: string) => void;
+	/** The previewed doc's thread-summary lookup (App, from its own sidecar
+	 *  fetch) — the span tooltips. Absent = "View comment" everywhere. */
+	spanTitleFor?: (id: string) => string;
 }) {
 	if (!path) {
 		return (
@@ -94,13 +100,14 @@ export function DocPreview({
 					docs={docs}
 					folders={folders}
 					onSelectDoc={onSelectDoc}
-					// Shift and the hover-↗ zone re-target the preview too —
-					// same callback, same destination.
+					// Shift re-targets the preview too — same callback, same
+					// destination.
 					onOpenPreview={onSelectDoc}
 					onSelectFolder={onSelectFolder}
 					onLinkNotFound={onLinkNotFound}
 					anchor={anchor}
 					onAnchorConsumed={onAnchorConsumed}
+					spanTitleFor={spanTitleFor}
 				/>
 			)}
 		</div>

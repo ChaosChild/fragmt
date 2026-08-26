@@ -52,6 +52,7 @@
 	--space-12: 48px;
 	--reading-max: 920px;
 	--sidebar-w: 332px;
+	--rail-w: 316px;
 	--slideout-share: 0.55;
 	--topbar-h: 54px;
 	--focus-ring: 0 0 0 3px rgba(31, 57, 176, 0.34);
@@ -566,10 +567,11 @@ body {
 
 /* ═══ MAIN — the page itself ═══════════════════════════════════ */
 .main {
-	/* The slideout split's one flex variable (#15): main grows the share,
-	   the pane grows the rest — grow ratios, so the fixed sidebar and the
-	   divider come out first. A lone growing item still takes all the free
-	   space, so a closed (or absent) slideout keeps the full-width main. */
+	/* The split's one flex variable (#15): main grows the share, the pane
+	   grows the rest — grow ratios, so the fixed sidebar and the divider
+	   come out first. The pane is the fixed 316px rail by default (a lone
+	   growing item takes all the free space regardless) and the flexed
+	   45% only while a preview is open. */
 	flex: var(--slideout-share) 1 0%;
 	overflow-y: auto;
 	min-width: 0;
@@ -696,15 +698,11 @@ body {
 	color: var(--accent);
 	border-color: transparent;
 }
-.comments-btn .badge {
-	font-family: var(--font-mono);
-	font-size: 10px;
-	background: var(--accent-tint);
-	color: var(--accent);
-	border-radius: var(--radius);
-	padding: 1px 5px;
-	line-height: 1.4;
-}
+
+/* ═══ COMMENTS — the pane's default state (#15, dogfooded 2026-08-26) ═
+   The v0.5.0 rail restored: a permanent margin column for the open doc's
+   threads. The pane rules live in the #15 block below; these style the
+   thread list the column holds. */
 
 /* Document header — the email parallel: who, which version, when,
    sync state, and the draft escape hatch. */
@@ -1312,18 +1310,23 @@ button.comment-quote:hover {
 	padding: 0 var(--space-1) var(--space-3);
 }
 
-/* ── #15: the link slideout — the right pane the rail became ───── */
-/* Closed takes no space on desktop (the flex split only applies while a
-   pane participates); ≤1180px the RESPONSIVE block below turns the pane
-   into the bottom sheet the rail used to be. */
+/* ── #15: the right pane — the rail, widened only by a preview ──── */
+/* Default (dogfooded 2026-08-26): the v0.5.0 comments rail restored —
+   always present, fixed 316px, the open doc's threads. A preview
+   (.preview) widens it into the draggable split; ≤1180px the RESPONSIVE
+   block below turns the pane into the bottom sheet the rail used to be
+   (.open) — desktop has no closed state to own. */
 .slideout {
-	display: none;
-	flex-direction: column;
-	flex: calc(1 - var(--slideout-share)) 1 0%;
-	min-width: 0;
-}
-.slideout.open {
 	display: flex;
+	flex-direction: column;
+	width: var(--rail-w);
+	min-width: var(--rail-w);
+	flex-shrink: 0;
+}
+.slideout.preview {
+	width: auto;
+	min-width: 0;
+	flex: calc(1 - var(--slideout-share)) 1 0%;
 }
 /* The 7px drag strip between main and the pane — hover/press tints it the
    accent; the grip is the centered 2×26 bar. */
@@ -1355,7 +1358,9 @@ button.comment-quote:hover {
 .slideout-divider:active::before {
 	background: var(--accent);
 }
-/* Head: mode tabs + close — mono pills (the mock's .tabbtn). */
+/* Head: the preview state's chrome (title, open-in-main, close). The
+   comments state's head is the ≤1180px sheet's fold affordance — hidden
+   on desktop, restored inside the media query below. */
 .slideout-head {
 	display: flex;
 	align-items: center;
@@ -1364,40 +1369,11 @@ button.comment-quote:hover {
 	border-bottom: 1px solid var(--border);
 	flex-shrink: 0;
 }
+.slideout:not(.preview) .slideout-head {
+	display: none;
+}
 .slideout-spacer {
 	flex: 1;
-}
-.slideout-tab {
-	display: inline-flex;
-	align-items: center;
-	font-family: var(--font-mono);
-	font-size: 10px;
-	text-transform: uppercase;
-	letter-spacing: var(--track-label);
-	background: none;
-	border: 1px solid transparent;
-	border-radius: 999px;
-	color: var(--muted);
-	padding: 0 10px;
-	min-height: 32px; /* a11y floor: ≥32px hit targets (§9) */
-	cursor: pointer;
-	transition:
-		color var(--motion-fast) var(--ease-standard),
-		border-color var(--motion-fast) var(--ease-standard),
-		background var(--motion-fast) var(--ease-standard);
-}
-.slideout-tab.on {
-	color: var(--accent);
-	border-color: var(--accent);
-	background: var(--accent-tint);
-}
-.slideout-tab:disabled {
-	opacity: 0.5;
-	cursor: default;
-}
-.slideout-tab:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
 }
 .slideout-close {
 	display: flex;
@@ -1427,14 +1403,10 @@ button.comment-quote:hover {
 	width: 15px;
 	height: 15px;
 }
-/* The tab pair — one tight group left of the head (real tabs since b4 put
-	   a second mode behind them: tablist/tab/aria-selected in Slideout.tsx). */
-.slideout-tabs {
-	display: flex;
-	gap: 2px;
-	flex-shrink: 0;
-}
-/* The previewed doc's title — the head's "Preview · <title>" line. */
+/* The tab pair was here — gone with the tabs themselves (dogfood round,
+   2026-08-26): the pane's two states are previewPath's presence. */
+/* The head's title line — "Preview · <title>" in the preview state,
+   "Comments · N" in the sheet's. */
 .slideout-title {
 	flex: 0 1 auto;
 	min-width: 0;
@@ -1446,7 +1418,7 @@ button.comment-quote:hover {
 	letter-spacing: var(--track-label);
 	color: var(--muted);
 }
-/* The mode content — the tabpanel the tabs point at. */
+/* The state's content. */
 .slideout-panel {
 	flex: 1;
 	min-height: 0;
@@ -1487,33 +1459,6 @@ button.comment-quote:hover {
 	   not controls there — no pointer, no jump (the bubble is unmounted). */
 .slideout .comment-highlight {
 	cursor: inherit;
-}
-/* #15: the hover-↗ affordance on the MAIN doc's links — a pseudo-element,
-	   so no DOM is added and the markdown/serialization never changes. It
-	   floats just past the link's right edge and is decoration only; the
-	   CLICKABLE zone is the link's own last 18px (isIconHit, link-hit.ts).
-	   ponytail: the glyph marks every in-doc link (CSS can't see
-	   resolution) and a multi-line link anchors it at the first fragment —
-	   shift+click is the robust path; a real DOM icon if the zone misfires. */
-.main .markdown a {
-	position: relative;
-}
-.main .markdown a::after {
-	content: "↗";
-	position: absolute;
-	left: 100%;
-	top: 0;
-	margin-left: 2px;
-	font-size: 0.7em;
-	line-height: 1;
-	color: var(--accent);
-	opacity: 0;
-	transition: opacity var(--motion-fast) var(--ease-standard);
-	pointer-events: none;
-}
-.main .markdown a:hover::after,
-.main .markdown a:focus-visible::after {
-	opacity: 1;
 }
 
 /* ── #15: collapse chrome — the topbar the collapsed sidebar wears ── */
@@ -1636,8 +1581,7 @@ button.comment-quote:hover {
 }
 
 /* ═══ RESPONSIVE ═══════════════════════════════════════════════ */
-/* ≤1180: comments rail → glass bottom sheet; top bar appears;
-   Comments button joins Edit on the doc. */
+/* ≤1180: comments pane → glass bottom sheet; top bar appears. */
 @media (max-width: 1180px) {
 	.topbar {
 		display: flex;
@@ -1648,8 +1592,13 @@ button.comment-quote:hover {
 	.side-head {
 		display: none;
 	} /* brand + branch live in the top bar now */
-	/* The slideout is the comments bottom sheet here (#15 took over the
-	   rail's role): mounted regardless of .open so the transform animates. */
+	/* The pane is the comments bottom sheet here (the v0.5.0 rail's mobile
+	   shape, #15 kept it): mounted regardless of .open so the transform
+	   animates; the preview state wears the same sheet. */
+	.slideout,
+	.slideout.preview {
+		width: 100%;
+	}
 	.slideout {
 		display: flex;
 		position: fixed;
@@ -1658,8 +1607,6 @@ button.comment-quote:hover {
 		bottom: 0;
 		left: 0;
 		right: 0;
-		width: 100%;
-		min-width: 0;
 		max-height: 78vh;
 		border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 		background: var(--glass-bg-strong);
@@ -1682,6 +1629,11 @@ button.comment-quote:hover {
 	.slideout-divider {
 		display: none;
 	} /* the sheet is full-width — nothing to split */
+	/* The comments state's head returns here (the sheet's title + fold);
+	   the preview head needs no help — it never hides. */
+	.slideout:not(.preview) .slideout-head {
+		display: flex;
+	}
 	.slideout-head {
 		padding: var(--space-3) var(--space-4);
 	}

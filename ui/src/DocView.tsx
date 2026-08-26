@@ -1,11 +1,4 @@
-import {
-	Check,
-	FolderInput,
-	MessageSquare,
-	Pencil,
-	Trash2,
-	X,
-} from "lucide-react";
+import { Check, FolderInput, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
 	addComment,
@@ -74,8 +67,8 @@ function Avatar({
  * shows a non-destructive banner and keeps the user's buffer (M2 spec).
  * Comment anchoring (M4-2) is one combined POST — doc body and sidecar
  * thread in a single server-side commit — without ever flipping the mode.
- * The rail lives in App; DocView keeps only the doc-bar badge (fed from
- * App's sidecar state) and forwards highlight-span clicks to it.
+ * The comments rail lives in App, always present beside this pane; DocView
+ * only forwards highlight-span clicks to it.
  */
 export function DocView({
 	doc,
@@ -83,8 +76,6 @@ export function DocView({
 	onSaved,
 	onReload,
 	onDirtyChange,
-	commentCount,
-	onOpenComments,
 	onCommentsChanged,
 	onSpanClick,
 	pendingAction,
@@ -120,11 +111,6 @@ export function DocView({
 	onSaved: (doc: DocResponse) => void;
 	onReload: () => void;
 	onDirtyChange: (dirty: boolean) => void;
-	/** Live thread count (App owns the sidecar state) — 0 hides the button. */
-	commentCount: number;
-	/** Opens the comments slideout in Comments mode (App) — the desktop
-	 *  entry point (#15) and the mobile sheet's open button. */
-	onOpenComments: () => void;
 	/** Bumps App's sidecar refetch after a successful create. */
 	onCommentsChanged: () => void;
 	/** A comment highlight was activated in the doc — jump the rail to it. */
@@ -714,39 +700,22 @@ export function DocView({
 								</button>
 							</>
 						) : (
-							<>
-								{/* The slideout's Comments entry (#15): visible at
-								    every width now — desktop opens the side pane,
-								    ≤1180px the bottom sheet, as before. */}
-								{commentCount > 0 && (
-									<button
-										type="button"
-										className="iconbtn comments-btn"
-										aria-label={`Comments (${commentCount})`}
-										onClick={onOpenComments}
-									>
-										<MessageSquare aria-hidden="true" />
-										<span className="label">Comments</span>
-										<span className="badge">{commentCount}</span>
-									</button>
-								)}
-								<button
-									type="button"
-									className="iconbtn"
-									onClick={() => {
-										// App gates the flip (protected main: draft
-										// first) — only a true enters edit mode.
-										void onBeforeEdit().then((proceed) => {
-											if (!proceed) return;
-											setEditing(true);
-											setSaveError(null);
-										});
-									}}
-								>
-									<Pencil aria-hidden="true" />
-									<span className="label">Edit</span>
-								</button>
-							</>
+							<button
+								type="button"
+								className="iconbtn"
+								onClick={() => {
+									// App gates the flip (protected main: draft
+									// first) — only a true enters edit mode.
+									void onBeforeEdit().then((proceed) => {
+										if (!proceed) return;
+										setEditing(true);
+										setSaveError(null);
+									});
+								}}
+							>
+								<Pencil aria-hidden="true" />
+								<span className="label">Edit</span>
+							</button>
 						)}
 					</div>
 				</header>

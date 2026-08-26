@@ -361,12 +361,12 @@ function ThreadCard({
 }
 
 /**
- * The comments thread list (M4-5, refactored #15): the rail's body without
- * its old column chrome — the slideout (Slideout.tsx) supplies the pane,
- * the mode tabs, and the close button; the sync LED and theme toggle live
- * in the doc head and the sidebar head now. App still owns the sidecar
- * state and the mutations; this stays presentational plus its own UI state
- * (resolved toggle, reply boxes).
+ * The comments thread list (M4-5, refactored #15): the rail's body — the
+ * pane (Slideout.tsx) supplies the permanent column and, in its preview
+ * state, the head row; the sync LED and theme toggle live in the doc head
+ * and the sidebar/topbar now. App still owns the sidecar state and the
+ * mutations; this stays presentational plus its own UI state (resolved
+ * toggle, reply boxes).
  */
 export function CommentsRail({
 	threads,
@@ -387,8 +387,8 @@ export function CommentsRail({
 	liveIds: Set<string>;
 	/** Config agent display names (meta) — the agent chip (M4-4 b5). */
 	agents: string[];
-	/** Close the slideout — a jump-to-doc target reads best with the pane
-	 *  folded away (the mobile sheet especially). */
+	/** Fold the ≤1180px sheet — a jump-to-doc target reads best full-width
+	 *  there; the desktop pane is permanent, nothing to close. */
 	onClose: () => void;
 	/** Doc→rail jump trigger; `n` re-arms repeated clicks on the same span. */
 	focus: { id: string; n: number } | null;

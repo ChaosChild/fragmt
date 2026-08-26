@@ -38,6 +38,7 @@ import {
 	type TreeNode,
 } from "./api";
 import { CommentsRail } from "./CommentsRail";
+import { commentSpanTitle } from "./comment-summary";
 import { DocPreview } from "./DocPreview";
 import { DocView } from "./DocView";
 import { displayTitle } from "./display";
@@ -58,7 +59,7 @@ import {
 import { ResolutionView } from "./ResolutionView";
 import { SearchModal } from "./SearchModal";
 import { Sidebar, SidebarResizeHandle } from "./Sidebar";
-import { Slideout, type SlideoutMode } from "./Slideout";
+import { Slideout } from "./Slideout";
 import { readStoredSidebarWidth, storeSidebarWidth } from "./sidebar-geometry";
 import {
 	readStoredSlideoutShare,
@@ -157,17 +158,17 @@ export function App() {
 	// amber word: Saved (committed, not yet synced) vs Synced (green).
 	const [synced, setSynced] = useState(true);
 
-	// --- comments (M4-5): App owns the sidecar state — the rail, the doc-bar
-	// badge, and DocView's create-notification all read from this one fetch;
+	// --- comments (M4-5): App owns the sidecar state — the pane's thread
+	// list and DocView's create-notification both read from this one fetch;
 	// every mutation re-runs it through refreshComments.
 	const [commentFile, setCommentFile] = useState<CommentFile>({
 		comments: {},
 	});
+	// #15, dogfooded 2026-08-26: the pane is the v0.5.0 rail again — always
+	// present (316px) with the open doc's threads. railOpen only matters
+	// ≤1180px, where the CSS turns the pane into the bottom sheet; a preview
+	// (previewPath) is what widens it into the draggable split.
 	const [railOpen, setRailOpen] = useState(false);
-	// #15: the rail became the slideout — App owns its mode + drag split
-	// (the sidebar resize pattern, in %) and the sidebar collapse the split
-	// buys. railOpen now means "the slideout pane is open".
-	const [slideoutMode, setSlideoutMode] = useState<SlideoutMode>("comments");
 	const [slideoutShare, setSlideoutShare] = useState(() =>
 		readStoredSlideoutShare(),
 	);
@@ -176,8 +177,8 @@ export function App() {
 		if (commit) storeSlideoutShare(share);
 	};
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-	// True while the sidebar is collapsed because the slideout opened (not
-	// the user's «) — only that collapse is undone when the slideout closes.
+	// True while the sidebar is collapsed because a preview opened (not the
+	// user's «) — only that collapse is undone when the preview closes.
 	const autoCollapsed = useRef(false);
 	const [railError, setRailError] = useState<string | null>(null);
 	// Doc→rail jump target; `n` re-arms repeated clicks on the same span.
@@ -208,29 +209,6 @@ export function App() {
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
 	}, []);
-
-	// #15 b5: the Escape chain's window fallback — an Escape that reaches the
-	// window UN-prevented was consumed by no inline surface (the edit-mode
-	// editor preventDefaults every Escape it sees; read mode's Escapes arrive
-	// here by design, PM being keydown-inert on a non-editable view — the
-	// bubble's capture listener eats the selection-clearing ones). Modal
-	// first, then slideout: the modal usually closes itself (focus sits in
-	// its input), so this leg mostly covers focus escaping its trap.
-	// biome-ignore lint/correctness/useExhaustiveDependencies: closeSlideout is re-created per render on purpose — its sidebar restore reads autoCollapsed (a ref), so the two open flags are the only state this listener branches on.
-	useEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape" || e.defaultPrevented) return;
-			if (searchOpen) {
-				e.preventDefault();
-				setSearchOpen(false);
-			} else if (railOpen) {
-				e.preventDefault();
-				closeSlideout();
-			}
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, [searchOpen, railOpen]);
 
 	// Latest selected/dirty for the stable interval/focus sync callback.
 	const live = useRef({ selected, dirty });
@@ -858,40 +836,51 @@ export function App() {
 		if (first) setSelected(first);
 	}
 
-	// --- #15: the slideout + the collapse chrome it buys ---------------------
+	// --- #15: the pane's open/close seams + the collapse chrome ----------------
 	//
-	// Opening the slideout auto-collapses the sidebar ONCE to buy the split
+	// Opening a PREVIEW auto-collapses the sidebar once to buy the split
 	// room: an already-collapsed sidebar keeps its own reason (the user's «,
-	// so nothing to restore later). Every open path routes through here —
-	// the comments button, doc span clicks, and (b4) link opens.
-	function openSlideout(mode: SlideoutMode) {
+	// so nothing to restore later). The comments pane needs no room bought —
+	// it is the default, so its one open act (a span click) only lifts the
+	// ≤1180px sheet; the sidebar is never touched for it.
+	function openPreviewDoc(path: string, anchor?: string) {
+		onPreviewDocLink(path, anchor);
 		setRailOpen(true);
-		setSlideoutMode(mode);
 		if (!sidebarCollapsed) {
 			setSidebarCollapsed(true);
 			autoCollapsed.current = true;
 		}
 	}
 
-	// Close restores the sidebar only when the automatic collapse still
-	// stands — a manual « (before or after the open) is never undone by it.
-	function closeSlideout() {
+	// Closing the preview returns the pane to the comments rail (and folds
+	// the mobile sheet) and restores the sidebar only when the automatic
+	// collapse still stands — a manual « (before or after the open) is never
+	// undone by it.
+	function closePreview() {
+		setPreviewPath(null);
 		setRailOpen(false);
 		if (autoCollapsed.current && sidebarCollapsed) setSidebarCollapsed(false);
 		autoCollapsed.current = false;
 	}
 
-	// The Escape chain's slideout slot (#15 b5): true = the pane was open and
+	// The Escape chain's preview slot (#15 b5): true = a preview was open and
 	// this call closed it (EditorPane treats the Escape as spent, keeping
-	// edit-cancel for the next press); false = nothing was open.
-	function closeSlideoutIfOpen() {
-		if (!railOpen) return false;
-		closeSlideout();
+	// edit-cancel for the next press); false = nothing was open. The
+	// comments state has no slot — the pane is permanent, nothing to close.
+	function closePreviewIfOpen() {
+		if (previewPath === null) return false;
+		closePreview();
 		return true;
 	}
 
-	// The « / » pair. A manual expand while the slideout stays open clears
-	// the automatic flag — the slideout never re-collapses (no fighting).
+	// The ≤1180px sheet's fold — the desktop pane is always present, so a
+	// comments-state close can only mean this.
+	function closeSheet() {
+		setRailOpen(false);
+	}
+
+	// The « / » pair. A manual expand while a preview stays open clears
+	// the automatic flag — the pane never re-collapses (no fighting).
 	function collapseSidebar() {
 		setSidebarCollapsed(true);
 	}
@@ -900,7 +889,7 @@ export function App() {
 		autoCollapsed.current = false;
 	}
 
-	// --- #15 b4: the slideout's Preview — a second, read-only doc ----------
+	// --- #15 b4: the pane's Preview — a second, read-only doc ---------------
 	//
 	// The previewed path (+ its pending #fragment) and the fetched doc. The
 	// preview never touches the editor's doc or buffer — its navigation just
@@ -914,6 +903,29 @@ export function App() {
 	// DocView's link-not-found banner.
 	const [previewDeadLink, setPreviewDeadLink] = useState<string | null>(null);
 	const clearPreviewAnchor = useCallback(() => setPreviewAnchor(null), []);
+
+	// #15 b5: the Escape chain's window fallback — an Escape that reaches the
+	// window UN-prevented was consumed by no inline surface (the edit-mode
+	// editor preventDefaults every Escape it sees; read mode's Escapes arrive
+	// here by design, PM being keydown-inert on a non-editable view — the
+	// bubble's capture listener eats the selection-clearing ones). Modal
+	// first, then the preview: the modal usually closes itself (focus sits in
+	// its input), so this leg mostly covers focus escaping its trap.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: closePreview is re-created per render on purpose — its sidebar restore reads autoCollapsed (a ref), so the two open flags are the only state this listener branches on.
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.defaultPrevented) return;
+			if (searchOpen) {
+				e.preventDefault();
+				setSearchOpen(false);
+			} else if (previewPath !== null) {
+				e.preventDefault();
+				closePreview();
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [searchOpen, previewPath]);
 
 	// The preview's fetch — the main doc's read client, cancel-guarded like
 	// the sidecar fetch. Quiet both ways: DocPreview's skeleton while
@@ -943,13 +955,40 @@ export function App() {
 		};
 	}, [previewPath]);
 
-	// Open (or re-target) the slideout's preview with a doc — the #15
-	// destination for edit-mode doc-link clicks, read-mode Shift and the ↗
-	// zone, and search's ⇧↵.
-	function openPreviewDoc(path: string, anchor?: string) {
-		onPreviewDocLink(path, anchor);
-		openSlideout("preview");
-	}
+	// The previewed doc's OWN sidecar (dogfood round): a second fetch, fully
+	// separate from the main doc's — it feeds nothing but the preview's span
+	// tooltips (the thread summaries), never any reply/resolve UI. A failure
+	// is quiet: unknown ids fall back to the mark's "View comment".
+	const [previewComments, setPreviewComments] = useState<CommentFile>({
+		comments: {},
+	});
+	useEffect(() => {
+		if (!previewPath) {
+			setPreviewComments({ comments: {} });
+			return;
+		}
+		let cancelled = false;
+		getComments(previewPath)
+			.then((file) => {
+				if (!cancelled) setPreviewComments(file);
+			})
+			.catch(() => {
+				if (!cancelled) setPreviewComments({ comments: {} });
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [previewPath]);
+	// The stable identity matters as much as the map: EditorPane's title pass
+	// re-runs when this function changes, so the summaries land on spans that
+	// rendered before the fetch returned.
+	const previewTitleFor = useCallback(
+		(id: string) => {
+			const thread = previewComments.comments[id];
+			return thread ? commentSpanTitle(thread) : "View comment";
+		},
+		[previewComments],
+	);
 
 	// A doc link inside the preview stays inside the preview (locked): the
 	// same re-target, without re-opening anything.
@@ -965,14 +1004,16 @@ export function App() {
 		setExpandFolder((f) => ({ path, n: (f?.n ?? 0) + 1 }));
 	}
 
-	// Promote (#15): the preview head's "open in editor" — fold the pane and
-	// hand the previewed doc to the MAIN editor through the same guarded
-	// seam (a dirty buffer parks in the banner, never a silent drop).
+	// Open in main pane (#15, dogfooded): the preview head's promote — fold
+	// the pane back to the comments rail and hand the previewed doc to the
+	// MAIN pane through the same guarded seam (a dirty buffer parks in the
+	// banner, never a silent drop); the 316px rail then shows the new doc's
+	// comments.
 	function promotePreview() {
 		const path = previewPath;
 		if (!path) return;
-		closeSlideout();
-		onDocLink(path, previewAnchor ?? undefined, `Edit ${path}`);
+		closePreview();
+		onDocLink(path, previewAnchor ?? undefined);
 	}
 
 	// LED + one-word status: amber = not synced yet (the word says which —
@@ -1024,7 +1065,7 @@ export function App() {
 	// The preview head's "Preview · <title>" (#15) — the frontmatter title
 	// once loaded, the file basename until then.
 	const previewTitle =
-		slideoutMode === "preview" && previewPath
+		previewPath !== null
 			? displayTitle(previewDoc?.frontmatter.title, basename(previewPath))
 			: null;
 
@@ -1072,7 +1113,9 @@ export function App() {
 			<div className="app-frame">
 				{/* Collapsed chrome (#15): while the sidebar is tucked away, the
 				    topbar carries what its head held — expand, brand, branch,
-				    Merge, new doc, search, sync LED. */}
+				    Merge, new doc, search, theme, sync LED. The fixed actions
+				    (＋ ⌕ ThemeToggle) sit immediately right of Merge; the LED
+				    alone holds the far end (dogfood round, 2026-08-26). */}
 				{sidebarCollapsed && (
 					<header className="app-topbar">
 						<button
@@ -1087,9 +1130,10 @@ export function App() {
 						<span className="brand">fragmt</span>
 						{branchMenu}
 						{mergeBtn}
-						<span className="topbar-spacer" />
 						{newDocBtn}
 						{searchBtn}
+						<ThemeToggle />
+						<span className="topbar-spacer" />
 						<span
 							className={`sync-indicator${led === "amber" ? " warn" : led === "red" ? " err" : ""}`}
 							role="status"
@@ -1229,20 +1273,19 @@ export function App() {
 								}}
 								onReload={reloadSelected}
 								onDirtyChange={setDirty}
-								commentCount={threads.length}
-								onOpenComments={() => openSlideout("comments")}
 								onCommentsChanged={refreshComments}
 								onSpanClick={(id) => {
-									// Span clicks are comment intents — the slideout
-									// opens in (or switches to) Comments, then jumps.
-									openSlideout("comments");
+									// Span clicks are comment intents — the pane is the
+									// permanent rail already; this only lifts the ≤1180px
+									// sheet, then jumps the rail to the thread.
+									setRailOpen(true);
 									setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
 								}}
 								pendingAction={pendingAction}
 								onPendingActionCancel={() => setPendingAction(null)}
 								conflict={conflict}
 								onDismissConflict={() => setConflict(null)}
-								onEscapeSurfacesClear={closeSlideoutIfOpen}
+								onEscapeSurfacesClear={closePreviewIfOpen}
 								onBeforeEdit={beforeEdit}
 								// Protected main (item 7): read-mode comments draft
 								// first — DocView awaits this before the combined POST
@@ -1271,27 +1314,27 @@ export function App() {
 							/>
 						)}
 					</main>
-					{/* The slideout (#15) — the rail's replacement as a right pane:
-					    Comments mode is the refactored rail content; Preview is the
-					    linked doc read-only (b4). Hidden in resolution mode — the doc
-					    pane is taken over and its comments are mid-merge anyway. */}
+					{/* The right pane (#15, dogfooded): the v0.5.0 comments rail
+					    again — permanent, 316px, the open doc's threads — until a
+					    preview opens and widens it into the split. Hidden in
+					    resolution mode: the doc pane is taken over and its comments
+					    are mid-merge anyway. */}
 					{selected && !inResolution && (
 						<Slideout
 							open={railOpen}
-							mode={slideoutMode}
+							preview={previewPath !== null}
 							commentCount={threads.length}
 							previewTitle={previewTitle}
-							onModeChange={setSlideoutMode}
 							onPromote={previewPath ? promotePreview : undefined}
-							onClose={closeSlideout}
+							onClose={previewPath !== null ? closePreview : closeSheet}
 							onShare={applySlideoutShare}
 						>
-							{slideoutMode === "comments" ? (
+							{previewPath === null ? (
 								<CommentsRail
 									threads={threads}
 									liveIds={liveIds}
 									agents={meta?.agents ?? []}
-									onClose={closeSlideout}
+									onClose={closeSheet}
 									focus={spanFocus}
 									onReply={(id, body) => railReply(id, body)}
 									onResolve={(id) => void railResolve(id, true)}
@@ -1314,6 +1357,7 @@ export function App() {
 									onSelectDoc={onPreviewDocLink}
 									onSelectFolder={onPreviewFolderLink}
 									onLinkNotFound={setPreviewDeadLink}
+									spanTitleFor={previewTitleFor}
 								/>
 							)}
 						</Slideout>
