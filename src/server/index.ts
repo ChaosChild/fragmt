@@ -44,6 +44,7 @@ import {
 	resolveMergeSidecar,
 	restoreDoc,
 	StaleDocError,
+	searchDocs,
 	setResolved,
 	setTitle,
 	startDraft,
@@ -562,6 +563,14 @@ export function createApp(ctx: ServerContext): Hono {
 	app.get("/api/meta", async (c) =>
 		c.json(await repoMeta(ctx.repoRoot, ctx.docsRoot)),
 	);
+
+	// Search (#14): a thin GET over the core's flat scan. `q` missing is a
+	// 400; present-but-short is searchDocs' own empty array, not an error.
+	app.get("/api/search", async (c) => {
+		const q = c.req.query("q");
+		if (q === undefined) return c.json({ error: "q is required" }, 400);
+		return c.json(await searchDocs(ctx.repoRoot, ctx.docsRoot, q));
+	});
 
 	app.post("/api/draft", async (c) => {
 		const body = await jsonBody(c);

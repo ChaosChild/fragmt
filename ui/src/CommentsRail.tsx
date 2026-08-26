@@ -1,9 +1,8 @@
-import { Check, Reply, RotateCcw, Trash2, X } from "lucide-react";
+import { Check, Reply, RotateCcw, Trash2 } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { CommentThread } from "./api";
 import { isAgent } from "./display";
 import { type AtDoc, filterAtDocs } from "./editor/at";
-import { ThemeToggle } from "./ThemeToggle";
 
 /** "2h ago" for recent, a locale date once older — the rail's quiet meta. */
 function timeAgo(iso: string): string {
@@ -362,19 +361,17 @@ function ThreadCard({
 }
 
 /**
- * The comments rail (M4-5): margin notes for the open doc, per the staged
- * app.html markup. App owns the sidecar state and the mutations; the rail is
- * presentational plus its own UI state (resolved toggle, reply boxes). The
- * head also carries the app's sync LED + theme toggle (review decision 2) —
- * `open` only matters where the CSS turns the rail into a bottom sheet.
+ * The comments thread list (M4-5, refactored #15): the rail's body — the
+ * pane (Slideout.tsx) supplies the permanent column and, in its preview
+ * state, the head row; the sync LED and theme toggle live in the doc head
+ * and the sidebar/topbar now. App still owns the sidecar state and the
+ * mutations; this stays presentational plus its own UI state (resolved
+ * toggle, reply boxes).
  */
 export function CommentsRail({
 	threads,
 	liveIds,
 	agents,
-	led,
-	ledLabel,
-	open,
 	onClose,
 	focus,
 	onReply,
@@ -390,9 +387,8 @@ export function CommentsRail({
 	liveIds: Set<string>;
 	/** Config agent display names (meta) — the agent chip (M4-4 b5). */
 	agents: string[];
-	led: "green" | "amber" | "red";
-	ledLabel: string;
-	open: boolean;
+	/** Fold the ≤1180px sheet — a jump-to-doc target reads best full-width
+	 *  there; the desktop pane is permanent, nothing to close. */
 	onClose: () => void;
 	/** Doc→rail jump trigger; `n` re-arms repeated clicks on the same span. */
 	focus: { id: string; n: number } | null;
@@ -436,8 +432,8 @@ export function CommentsRail({
 	}, [focus, showResolved]);
 
 	// The reverse direction: the quote button scrolls the doc's span into view
-	// and flashes it (app.html's jump). onClose folds the mobile sheet away —
-	// a visual no-op on desktop, where the rail is a static margin column.
+	// and flashes it (app.html's jump). onClose folds the pane away so the
+	// target reads full-width — the mobile sheet especially.
 	function jumpToDoc(id: string) {
 		const target = document.querySelector(`.main [data-c="${CSS.escape(id)}"]`);
 		if (!target) return;
@@ -447,48 +443,50 @@ export function CommentsRail({
 	}
 
 	return (
-		<aside
-			className={`comments-rail${open ? " open" : ""}`}
-			aria-label="Comments"
-		>
-			<div className="rail-head">
-				<span className="rail-title">Comments · {threads.length}</span>
-				<div className="rail-spacer" />
-				<span
-					className={`sync-indicator${led === "amber" ? " warn" : led === "red" ? " err" : ""}`}
-					role="status"
-					title={ledLabel}
-				>
-					<span className={`led ${led}`} aria-hidden="true" />
-					{ledLabel}
-				</span>
-				<ThemeToggle />
-				<button
-					type="button"
-					className="rail-close"
-					aria-label="Close comments"
-					onClick={onClose}
-				>
-					<X aria-hidden="true" />
-				</button>
-			</div>
-			<div className="rail-body" ref={bodyRef}>
-				{error && (
-					<p className="rail-error" role="alert">
-						{error}
-					</p>
-				)}
-				{threads.length === 0 && (
-					<p className="label-meta" style={{ padding: "4px 4px 16px" }}>
-						No comments yet &mdash; select text in the document to anchor a
-						note.
-					</p>
-				)}
-				{/* Open threads always sit on top; the resolved block renders
+		<div className="rail-body" ref={bodyRef}>
+			{error && (
+				<p className="rail-error" role="alert">
+					{error}
+				</p>
+			)}
+			{threads.length === 0 && (
+				<p className="label-meta" style={{ padding: "4px 4px 16px" }}>
+					No comments yet &mdash; select text in the document to anchor a note.
+				</p>
+			)}
+			{/* Open threads always sit on top; the resolved block renders
 				    after them (and after the toggle) so expanding it never
 				    pushes the open ones down the rail. */}
-				{threads
-					.filter((t) => !t.resolved)
+			{threads
+				.filter((t) => !t.resolved)
+				.map((t) => (
+					<ThreadCard
+						key={t.id}
+						thread={t}
+						orphan={!liveIds.has(t.id)}
+						agents={agents}
+						docs={docs}
+						onOpenDoc={onOpenDoc}
+						onJump={jumpToDoc}
+						onReply={onReply}
+						onResolve={onResolve}
+						onReopen={onReopen}
+						onDelete={onDelete}
+					/>
+				))}
+			{resolvedCount > 0 && (
+				<button
+					type="button"
+					className="label-meta show-resolved"
+					aria-pressed={showResolved}
+					onClick={() => setShowResolved((v) => !v)}
+				>
+					{showResolved ? "Hide resolved" : `Show resolved (${resolvedCount})`}
+				</button>
+			)}
+			{showResolved &&
+				threads
+					.filter((t) => t.resolved)
 					.map((t) => (
 						<ThreadCard
 							key={t.id}
@@ -504,37 +502,6 @@ export function CommentsRail({
 							onDelete={onDelete}
 						/>
 					))}
-				{resolvedCount > 0 && (
-					<button
-						type="button"
-						className="label-meta show-resolved"
-						aria-pressed={showResolved}
-						onClick={() => setShowResolved((v) => !v)}
-					>
-						{showResolved
-							? "Hide resolved"
-							: `Show resolved (${resolvedCount})`}
-					</button>
-				)}
-				{showResolved &&
-					threads
-						.filter((t) => t.resolved)
-						.map((t) => (
-							<ThreadCard
-								key={t.id}
-								thread={t}
-								orphan={!liveIds.has(t.id)}
-								agents={agents}
-								docs={docs}
-								onOpenDoc={onOpenDoc}
-								onJump={jumpToDoc}
-								onReply={onReply}
-								onResolve={onResolve}
-								onReopen={onReopen}
-								onDelete={onDelete}
-							/>
-						))}
-			</div>
-		</aside>
+		</div>
 	);
 }

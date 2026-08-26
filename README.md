@@ -50,15 +50,19 @@ markdown and its full git history.
   branches; review = PRs.
 - Inline comments anchored as editor marks, threads stored in versioned sidecar
   files — no comment backend.
+- Ctrl/Cmd+K search across titles and bodies; a permanent comments rail beside
+  the doc that widens into a read-only preview pane for side-by-side reading.
 - v2: same binary hosted for teams; GitHub OAuth for identity; GitHub
   collaborator permissions as access control.
 
 ## Status
 
-**Beta — [`fragmt@0.5.0`](https://www.npmjs.com/package/fragmt) is on npm.** The
+**Beta — [`fragmt@0.5.0`](https://www.npmjs.com/package/fragmt) is on npm;
+v0.6.0 (search + link slideout) tags right after that round merges.** The
 full v1 feature set works: editing, the file/folder lifecycle, branches and
 drafting with in-UI merge resolution, comments, the agent CLI. What stands
-between this and 1.0 is M6 — dogfood hardening.
+between this and 1.0 is M6 — dogfood hardening, a long-running milestone: v1
+closes with 1.0.0 when it's done, not on a schedule.
 
 | Milestone | State |
 | --- | --- |
@@ -72,7 +76,8 @@ between this and 1.0 is M6 — dogfood hardening.
 | M4-3 — backlog remediation (header file actions, titles, drag & drop, links, gitignore) | shipped |
 | M4-4 — backlog 2 + agent surface (merge resolution in-UI, `fragmt agent` CLI, AGENTS.md) | shipped |
 | M5 — distributables & install (npm publish, GitHub Releases, npx-first) | shipped — v0.5.0 on npm |
-| M6 — dogfood hardening | specced |
+| Search + link slideout (#14, #15) — first backlog round (milestones retired) | shipped — v0.6.0 tags on merge |
+| M6 — dogfood hardening | long-running — 1.0.0 when it's done |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
 WYSIWYG editor, and save — each save is a git commit under your local git
@@ -86,7 +91,26 @@ server keeps the local clone synced with its remote (pull --rebase + push,
 never force) on an interval, on focus, and before editing. Inline comments
 anchor to text as marks in the markdown itself, with threads versioned in
 JSON sidecars — comment from read mode or edit mode, replies and resolve in
-the right-margin rail, orphans detected against the live document.
+the permanent right-margin rail, orphans detected
+against the live document.
+
+**Search and side-by-side reading.** Ctrl/Cmd+K opens a centered search
+palette — anywhere, mid-edit — with results as title and snippet (title hits
+first, capped at 50); ↑/↓ wrap, hover syncs, Enter opens, and a dirty editor
+is protected: navigation through it shows a save/discard/cancel banner,
+never a silent drop. Shift+Enter previews the result instead. The comments
+rail is a permanent 316px column beside every doc; while a preview is open
+it widens into a draggable 55/45 split (clamped 40–60%, persisted) holding
+the second, read-only pane: doc links open inside it — read-mode Shift+click
+or edit-mode Ctrl/Cmd+click previews from the body (a plain edit click just
+places the cursor) — anchors scroll, dead links get a quiet note, spans
+carry thread summaries as tooltips, and an open-in-main button moves the
+previewed doc into the main pane through the same guarded navigation.
+Closing the preview returns the pane to the 316px rail. Only a preview open
+collapses the sidebar once («» restores it, a manual choice sticks), and
+while collapsed a compact top bar keeps branch, merge, new-doc, search, and
+theme reachable. Escape closes surfaces in a fixed order — modal, popover,
+slash/@ menus, bubble, selection, preview — before it cancels editing.
 
 **Main is protected** — whether the branch actually is or not. Editing (or
 commenting on, or creating) a doc on main automatically starts a draft
@@ -161,7 +185,7 @@ run in — point it at your own docs by running the same two commands from
 inside any git clone.
 
 > **Platforms:** v0.x is tested on Windows; Linux and macOS verification is
-> the next milestone's opening act. Reports from those platforms are welcome.
+> still on the long-running M6 list. Reports from those platforms are welcome.
 
 To run from source instead, see [Development](#development).
 
@@ -340,17 +364,18 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full loop and conventions.
 - [Product requirements](docs/REQUIREMENTS.md) — who it's for and what v1 owes them
 - [Architecture](docs/ARCHITECTURE.md) — storage model, comment anchoring, git layer
 - [Design principles](docs/DESIGN.md) — UI tokens, reading column, sidebar spec
-- [v1 build plan](docs/PLAN.md) — milestones, risks, and what was cut
-- [Backlog](docs/BACKLOG.md) — deferred issues and enhancements from dogfooding
-- [Milestone specs](docs/milestones/) — implementation-exact, M0 through M5
+- [v1 build plan](docs/PLAN.md) — the closed milestone record, risks, and what was cut
+- [Backlog](docs/BACKLOG.md) — the work queue (GitHub issues) and graduation log
+- [Milestone specs](docs/milestones/) — implementation-exact, M0 through M5 plus the first backlog round
 - [Editor spike](docs/SPIKE.md) — markdown round-trip fidelity; why Tiptap won
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The build plan is public and
-milestone-shaped, so the most useful contribution right now is feedback on the
-specs before the code exists. Open an issue before a large PR — scope is
-deliberately tight, and the "Cut from v1" table in the plan is load-bearing.
+See [CONTRIBUTING.md](CONTRIBUTING.md). The build plan's milestone record is
+public and closed; work is picked from the backlog, so the most useful
+contribution right now is dogfooding and issue reports. Open an issue before
+a large PR — scope is deliberately tight, and the "Cut from v1" table in the
+plan is load-bearing.
 
 ## License
 

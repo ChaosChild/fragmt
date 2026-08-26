@@ -411,3 +411,16 @@ export const deleteComment = (path: string, id: string, baseHash?: string) =>
 		}`,
 		{ method: "DELETE" },
 	);
+
+// --- #14: search -------------------------------------------------------------
+
+/** Mirror of the core search hit (src/core/search.ts). */
+export interface SearchHit {
+	path: string;
+	title: string;
+	snippet: string;
+}
+
+/** The flat worktree scan — a trimmed <2-char query is the server's own []. */
+export const searchDocs = (q: string) =>
+	request<SearchHit[]>(`/api/search?q=${encodeURIComponent(q)}`);

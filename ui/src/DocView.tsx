@@ -1,11 +1,4 @@
-import {
-	Check,
-	FolderInput,
-	MessageSquare,
-	Pencil,
-	Trash2,
-	X,
-} from "lucide-react";
+import { Check, FolderInput, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
 	addComment,
@@ -74,8 +67,8 @@ function Avatar({
  * shows a non-destructive banner and keeps the user's buffer (M2 spec).
  * Comment anchoring (M4-2) is one combined POST — doc body and sidecar
  * thread in a single server-side commit — without ever flipping the mode.
- * The rail lives in App; DocView keeps only the doc-bar badge (fed from
- * App's sidecar state) and forwards highlight-span clicks to it.
+ * The comments rail lives in App, always present beside this pane; DocView
+ * only forwards highlight-span clicks to it.
  */
 export function DocView({
 	doc,
@@ -83,14 +76,13 @@ export function DocView({
 	onSaved,
 	onReload,
 	onDirtyChange,
-	commentCount,
-	onOpenComments,
 	onCommentsChanged,
 	onSpanClick,
 	pendingAction,
 	onPendingActionCancel,
 	conflict,
 	onDismissConflict,
+	onEscapeSurfacesClear,
 	onBeforeEdit,
 	onDraftFirst,
 	docMeta,
@@ -102,6 +94,7 @@ export function DocView({
 	onDraft,
 	docs,
 	onSelectDoc,
+	onOpenPreview,
 	onSelectFolder,
 	pendingAnchor,
 	onAnchorConsumed,
@@ -118,10 +111,6 @@ export function DocView({
 	onSaved: (doc: DocResponse) => void;
 	onReload: () => void;
 	onDirtyChange: (dirty: boolean) => void;
-	/** Live thread count (App owns the sidecar state) — 0 hides the button. */
-	commentCount: number;
-	/** Opens/scrolls the comments rail (App); the mobile sheet's entry point. */
-	onOpenComments: () => void;
 	/** Bumps App's sidecar refetch after a successful create. */
 	onCommentsChanged: () => void;
 	/** A comment highlight was activated in the doc — jump the rail to it. */
@@ -134,6 +123,9 @@ export function DocView({
 	/** Sync conflict message (M3) — the calm banner, never a merge UI. */
 	conflict: string | null;
 	onDismissConflict: () => void;
+	/** The Escape chain's slideout slot (#15 b5, App) — forwarded verbatim to
+	 *  EditorPane: true = the slideout was open and the Escape closed it. */
+	onEscapeSurfacesClear?: () => boolean;
 	/** Pre-edit gate (App): true = flip to edit mode. On main, App drafts
 	 *  first (protected main) and returns false on failure — the banner is
 	 *  App's; DocView stays dumb. */
@@ -161,6 +153,9 @@ export function DocView({
 	/** An in-doc link resolved to a tree doc — navigate in-app (App); the
 	 *  #fragment rides along and scrolls after the new doc renders (M4-3 b6). */
 	onSelectDoc: (path: string, anchor?: string) => void;
+	/** A doc-link click chose the slideout preview (#15) — edit-mode clicks
+	 *  (any modifier) and read-mode Shift/hover-↗ hits; App opens the pane. */
+	onOpenPreview: (path: string, anchor?: string) => void;
 	/** An in-doc link resolved to a tree folder — App expands it in the
 	 *  sidebar and selects its first doc (M4-3 b6). */
 	onSelectFolder: (path: string) => void;
@@ -334,7 +329,13 @@ export function DocView({
 					onChange={(e) => setRenameValue(e.target.value)}
 					onFocus={(e) => e.target.select()}
 					onKeyDown={(e) => {
-						if (e.key === "Escape") closeRename();
+						if (e.key === "Escape") {
+							// Consumed (#15 b5): the box is an Escape surface —
+							// the window fallback must not also close the
+							// slideout on the same press.
+							e.preventDefault();
+							closeRename();
+						}
 					}}
 					aria-label="Document title"
 					disabled={renameBusy}
@@ -699,38 +700,22 @@ export function DocView({
 								</button>
 							</>
 						) : (
-							<>
-								{/* comments-btn stays desktop-hidden (mock rule) — it
-								    surfaces ≤1180px, where the rail becomes a sheet. */}
-								{commentCount > 0 && (
-									<button
-										type="button"
-										className="iconbtn comments-btn"
-										aria-label={`Comments (${commentCount})`}
-										onClick={onOpenComments}
-									>
-										<MessageSquare aria-hidden="true" />
-										<span className="label">Comments</span>
-										<span className="badge">{commentCount}</span>
-									</button>
-								)}
-								<button
-									type="button"
-									className="iconbtn"
-									onClick={() => {
-										// App gates the flip (protected main: draft
-										// first) — only a true enters edit mode.
-										void onBeforeEdit().then((proceed) => {
-											if (!proceed) return;
-											setEditing(true);
-											setSaveError(null);
-										});
-									}}
-								>
-									<Pencil aria-hidden="true" />
-									<span className="label">Edit</span>
-								</button>
-							</>
+							<button
+								type="button"
+								className="iconbtn"
+								onClick={() => {
+									// App gates the flip (protected main: draft
+									// first) — only a true enters edit mode.
+									void onBeforeEdit().then((proceed) => {
+										if (!proceed) return;
+										setEditing(true);
+										setSaveError(null);
+									});
+								}}
+							>
+								<Pencil aria-hidden="true" />
+								<span className="label">Edit</span>
+							</button>
 						)}
 					</div>
 				</header>
@@ -787,12 +772,14 @@ export function DocView({
 					onDirtyChange={setDirty}
 					onSave={() => void handleSave()}
 					onCancel={requestCancel}
+					onEscapeSurfacesClear={onEscapeSurfacesClear}
 					onComment={(id, quote, body) => void handleComment(id, quote, body)}
 					onSpanClick={onSpanClick}
 					docPath={selected ?? doc.path}
 					docs={docs}
 					folders={folders}
 					onSelectDoc={onSelectDoc}
+					onOpenPreview={onOpenPreview}
 					onSelectFolder={onSelectFolder}
 					onLinkNotFound={setLinkNotFound}
 					anchor={pendingAnchor}

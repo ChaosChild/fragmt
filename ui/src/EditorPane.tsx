@@ -1,3 +1,4 @@
+import type { Editor } from "@tiptap/core";
 import type { Transaction } from "@tiptap/pm/state";
 import { EditorContent, useEditor } from "@tiptap/react";
 import {
@@ -19,10 +20,13 @@ export interface EditorPaneHandle {
 	getMarkdown(): string;
 }
 
-/** Scroll a heading id into view — the anchor dispatch's one action (M4-3 b6). */
-function scrollToHeadingId(id: string) {
-	document
-		.getElementById(id)
+/** Scroll a heading id into view — the anchor dispatch's one action (M4-3
+ *  b6). Scoped to THIS editor's DOM (#15): the slideout preview is a second
+ *  EditorPane, and both panes slug the same heading texts to the same ids —
+ *  a document-wide lookup could scroll the wrong one. */
+function scrollToHeadingId(editor: Editor, id: string) {
+	editor.view.dom
+		.querySelector(`#${CSS.escape(id)}`)
 		?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -44,6 +48,7 @@ export function EditorPane({
 	editable,
 	onSave,
 	onCancel,
+	onEscapeSurfacesClear,
 	onComment,
 	onSpanClick,
 	saving,
@@ -52,16 +57,27 @@ export function EditorPane({
 	docs,
 	folders,
 	onSelectDoc,
+	onOpenPreview,
 	onSelectFolder,
 	onLinkNotFound,
 	anchor,
 	onAnchorConsumed,
+	commenting = true,
+	spanTitleFor,
 	ref,
 }: {
 	markdown: string;
 	editable: boolean;
 	onSave: (markdown: string) => void;
 	onCancel: () => void;
+	/** The Escape chain's slideout slot (#15 b5): App's
+	 *  close-slideout-if-open, called in EDIT mode once popover/slash/@/bubble
+	 *  are clear and the selection is collapsed. True = the pane was open and
+	 *  just closed (the Escape is spent, edit-cancel keeps the next press);
+	 *  false/absent = nothing was open, fall through to onCancel. Read mode
+	 *  needs no leg here — PM never runs keydown on a non-editable view, so
+	 *  its un-consumed Escapes reach App's window fallback instead. */
+	onEscapeSurfacesClear?: () => boolean;
 	onComment: (id: string, quote: string, body: string) => void;
 	/** A comment highlight (span[data-c]) was activated — jump the rail to it. */
 	onSpanClick: (id: string) => void;
@@ -76,6 +92,9 @@ export function EditorPane({
 	/** An in-doc link resolved to a tree doc — navigate in-app (App), with the
 	 *  #fragment when the link carried one (scrolled after the doc loads). */
 	onSelectDoc: (path: string, anchor?: string) => void;
+	/** A doc-link click chose the slideout (#15, dogfooded): edit-mode
+	 *  Ctrl/Cmd and read-mode Shift — the buffer is never navigated away. */
+	onOpenPreview: (path: string, anchor?: string) => void;
 	/** A link resolved to a tree folder — App expands it in the sidebar. */
 	onSelectFolder: (path: string) => void;
 	/** A relative link matched nothing and ends .md — DocView shows the note. */
@@ -84,6 +103,14 @@ export function EditorPane({
 	anchor?: string | null;
 	/** The pending anchor was consumed (scrolled or dropped) — App clears it. */
 	onAnchorConsumed: () => void;
+	/** The read-mode comment surfaces — the bubble and highlight jumps. False
+	 *  for the slideout preview (#15): its editor is a viewer, selections
+	 *  there are just selections. */
+	commenting?: boolean;
+	/** Per-span tooltip text (dogfood round, #15): the preview overrides the
+	 *  mark's static "View comment" with the thread's summary — see the
+	 *  title pass below. Absent = the mark's own title stands. */
+	spanTitleFor?: (id: string) => string;
 	ref?: Ref<EditorPaneHandle>;
 }) {
 	const [slashState, setSlashState] = useState<SlashMenuState | null>(null);
@@ -154,9 +181,24 @@ export function EditorPane({
 	// way, so an unknown fragment never scrolls a later, unrelated doc.
 	useEffect(() => {
 		if (!editor || !anchor) return;
-		scrollToHeadingId(anchor);
+		scrollToHeadingId(editor, anchor);
 		onAnchorConsumed();
 	}, [editor, anchor, onAnchorConsumed]);
+
+	// Span-title pass (dogfood round, #15): the mark renders a static
+	// "View comment"; a pane that knows the sidecar (the preview) rewrites
+	// each span's title from it. The heading-id walk's pattern — ids/titles
+	// live only in the rendered DOM — re-run on content load AND when the
+	// caller's function changes identity (its map landed after the render).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: markdown is the content-load signal — a same-path refetch re-renders the spans with the mark's default title, and the walk must fire again; spanTitleFor's identity alone can miss it.
+	useEffect(() => {
+		if (!editor || !spanTitleFor) return;
+		for (const el of Array.from(
+			editor.view.dom.querySelectorAll<HTMLElement>("span[data-c]"),
+		)) {
+			el.title = spanTitleFor(el.getAttribute("data-c") ?? "");
+		}
+	}, [editor, markdown, spanTitleFor]);
 
 	// Edit/Cancel flips editability on the SAME mounted editor — the DOM
 	// never rebuilds, so the text cannot reflow (M2 rule). A stale bubble
@@ -210,17 +252,23 @@ export function EditorPane({
 				// M4-3 b6 widens the dispatch: anchors, folder links, raw
 				// assets, and dead .md links (links.ts' table is normative).
 				onClick={(e) => {
-					if (
-						(editable && !(e.ctrlKey || e.metaKey)) ||
-						(!editable && !window.getSelection()?.isCollapsed)
-					)
+					// #15, dogfooded 2026-08-26: read mode's drag guard exempts
+					// Shift (Shift+click opens the preview AND extends the
+					// browser selection — the intent is the click). Edit mode:
+					// a plain click is normal editing — cursor placement, PM's
+					// default, nothing opens; Ctrl/Cmd is v0.5.0's
+					// ctrl-to-follow, retargeted at the preview for doc links.
+					if (!editable && !e.shiftKey && !window.getSelection()?.isCollapsed)
 						return;
+					const follows = !editable || e.ctrlKey || e.metaKey;
 					const target = e.target as HTMLElement;
 					const span = target.closest("[data-c]");
 					if (span) {
-						onSpanClick(span.getAttribute("data-c") ?? "");
+						if (follows && commenting)
+							onSpanClick(span.getAttribute("data-c") ?? "");
 						return;
 					}
+					if (!follows) return;
 					const anchorEl = target.closest("a[href]");
 					if (!anchorEl) return;
 					const href = anchorEl.getAttribute("href") ?? "";
@@ -235,14 +283,20 @@ export function EditorPane({
 							e.preventDefault();
 							// Same doc + fragment: no reload — scroll in place.
 							if (resolved.anchor && resolved.path === docPath) {
-								scrollToHeadingId(resolved.anchor);
+								scrollToHeadingId(editor, resolved.anchor);
+							} else if (editable || e.shiftKey) {
+								// #15: edit mode's Ctrl/Cmd and read mode's Shift
+								// open the slideout preview — the buffer is never
+								// navigated away from. A plain read click keeps
+								// the navigate; App guards it.
+								onOpenPreview(resolved.path, resolved.anchor);
 							} else {
 								onSelectDoc(resolved.path, resolved.anchor);
 							}
 							break;
 						case "anchor":
 							e.preventDefault();
-							scrollToHeadingId(resolved.id);
+							scrollToHeadingId(editor, resolved.id);
 							break;
 						case "folder":
 							e.preventDefault();
@@ -271,24 +325,28 @@ export function EditorPane({
 				}}
 				onKeyDown={(e) => {
 					// Read mode owns no edit-session keys — Esc just clears
-					// the selection (PM's own handling), Ctrl+S would save a
-					// buffer the user cannot see they are editing. Enter/Space
-					// on a focused highlight (the mark carries tabindex) jumps
-					// to its thread instead.
+					// the selection (the bubble's capture listener, which
+					// consumes the event; PM never runs keydown on a
+					// non-editable view, so an Esc with no bubble reaches
+					// App's window fallback and can close the slideout, #15
+					// b5), Ctrl+S would save a buffer the user cannot see
+					// they are editing. Enter/Space on a focused highlight
+					// (the mark carries tabindex) jumps to its thread instead.
 					if (!editable) {
 						const span = (e.target as HTMLElement).closest("[data-c]");
-						if (span && (e.key === "Enter" || e.key === " ")) {
+						if (span && commenting && (e.key === "Enter" || e.key === " ")) {
 							e.preventDefault();
 							onSpanClick(span.getAttribute("data-c") ?? "");
 						}
 						return;
 					}
-					// Escape order (M2-2): popover → slash menu → bubble →
-					// selection → edit-cancel-with-confirm. Each surface
-					// dismisses itself first; the bubble runs a capture-phase
-					// listener, so by the time Escape reaches here no surface
-					// is open. (PM preventDefaults every Escape, so
-					// defaultPrevented cannot detect consumption.)
+					// Escape order (#15 b5): popover → slash menu → bubble →
+					// selection → slideout → edit-cancel-with-confirm. Each
+					// surface dismisses itself first; the bubble runs a
+					// capture-phase listener, so by the time Escape reaches
+					// here no surface is open. (The editor preventDefaults
+					// every Escape, so defaultPrevented cannot detect
+					// consumption elsewhere.)
 					if (e.key === "Escape") {
 						e.preventDefault();
 						if (slashState || atState || imageAt !== null || bubbleOpen) return;
@@ -300,7 +358,10 @@ export function EditorPane({
 								.setTextSelection(editor.state.selection.to)
 								.run();
 						} else {
-							onCancel();
+							// The slideout slot (#15 b5): a true return means
+							// the pane was open and just closed — the Escape
+							// is spent; edit-cancel keeps the next press.
+							if (!onEscapeSurfacesClear?.()) onCancel();
 						}
 					} else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
 						e.preventDefault();
@@ -308,12 +369,17 @@ export function EditorPane({
 					}
 				}}
 			/>
-			<BubbleToolbar
-				editor={editor}
-				editable={editable}
-				onComment={onComment}
-				onVisibilityChange={setBubbleOpen}
-			/>
+			{/* The bubble is a commenting surface — the preview (commenting:
+				    false) doesn't mount it; its read-only selections are just
+				    selections (#15). */}
+			{commenting && (
+				<BubbleToolbar
+					editor={editor}
+					editable={editable}
+					onComment={onComment}
+					onVisibilityChange={setBubbleOpen}
+				/>
+			)}
 			{editable && slashState && (
 				// Keyed by query: a new filter remounts the menu, resetting the
 				// highlight to the first item.

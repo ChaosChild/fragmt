@@ -53,6 +53,7 @@
 	--reading-max: 920px;
 	--sidebar-w: 332px;
 	--rail-w: 316px;
+	--slideout-share: 0.55;
 	--topbar-h: 54px;
 	--focus-ring: 0 0 0 3px rgba(31, 57, 176, 0.34);
 	--motion-fast: 80ms;
@@ -357,30 +358,40 @@ body {
 /* Shared slim scrollbar — every scroll region wears the same quiet rail */
 .doc-list,
 .main,
-.rail-body {
+.rail-body,
+.preview-body,
+.search-results {
 	scrollbar-width: thin;
 	scrollbar-color: var(--border) transparent;
 }
 .doc-list::-webkit-scrollbar,
 .main::-webkit-scrollbar,
-.rail-body::-webkit-scrollbar {
+.rail-body::-webkit-scrollbar,
+.preview-body::-webkit-scrollbar,
+.search-results::-webkit-scrollbar {
 	width: 8px;
 	height: 8px;
 }
 .doc-list::-webkit-scrollbar-track,
 .main::-webkit-scrollbar-track,
-.rail-body::-webkit-scrollbar-track {
+.rail-body::-webkit-scrollbar-track,
+.preview-body::-webkit-scrollbar-track,
+.search-results::-webkit-scrollbar-track {
 	background: transparent;
 }
 .doc-list::-webkit-scrollbar-thumb,
 .main::-webkit-scrollbar-thumb,
-.rail-body::-webkit-scrollbar-thumb {
+.rail-body::-webkit-scrollbar-thumb,
+.preview-body::-webkit-scrollbar-thumb,
+.search-results::-webkit-scrollbar-thumb {
 	background: var(--border);
 	border-radius: 4px;
 }
 .doc-list::-webkit-scrollbar-thumb:hover,
 .main::-webkit-scrollbar-thumb:hover,
-.rail-body::-webkit-scrollbar-thumb:hover {
+.rail-body::-webkit-scrollbar-thumb:hover,
+.preview-body::-webkit-scrollbar-thumb:hover,
+.search-results::-webkit-scrollbar-thumb:hover {
 	background: var(--muted);
 }
 
@@ -556,7 +567,13 @@ body {
 
 /* ═══ MAIN — the page itself ═══════════════════════════════════ */
 .main {
-	flex: 1;
+	/* The split's one flex variable (#15): main grows the share, the pane
+	   grows the rest — grow ratios, so the fixed sidebar and the divider
+	   come out first. Without a preview App feeds the variable 1, so main
+	   (the lone grower next to the fixed 316px pane) claims ALL free
+	   space — spec §9.7.1: a grow factor under 1 takes only grow ×
+	   free-space, never the whole remainder. */
+	flex: var(--slideout-share) 1 0%;
 	overflow-y: auto;
 	min-width: 0;
 }
@@ -682,18 +699,11 @@ body {
 	color: var(--accent);
 	border-color: transparent;
 }
-.comments-btn {
-	display: none;
-}
-.comments-btn .badge {
-	font-family: var(--font-mono);
-	font-size: 10px;
-	background: var(--accent-tint);
-	color: var(--accent);
-	border-radius: var(--radius);
-	padding: 1px 5px;
-	line-height: 1.4;
-}
+
+/* ═══ COMMENTS — the pane's default state (#15, dogfooded 2026-08-26) ═
+   The v0.5.0 rail restored: a permanent margin column for the open doc's
+   threads. The pane rules live in the #15 block below; these style the
+   thread list the column holds. */
 
 /* Document header — the email parallel: who, which version, when,
    sync state, and the draft escape hatch. */
@@ -1048,6 +1058,12 @@ body {
 	align-items: flex-start;
 	gap: var(--space-4);
 }
+/* The action bar pins right (testing round 2026-08-26): the buttons end
+   the banner's line regardless of how long the headline runs. */
+.conflict-banner .doc-actions {
+	margin-left: auto;
+	flex-shrink: 0;
+}
 .conflict-banner strong {
 	color: var(--fg);
 	font-weight: 600;
@@ -1059,33 +1075,11 @@ body {
 	flex-shrink: 0;
 }
 
-/* ═══ COMMENTS RAIL — margin notes; also carries app status ═══ */
-.comments-rail {
-	width: var(--rail-w);
-	min-width: var(--rail-w);
-	display: flex;
-	flex-direction: column;
-	flex-shrink: 0;
-}
-.rail-head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3);
-	border-bottom: 1px solid var(--border);
-	flex-shrink: 0;
-}
-.rail-title {
-	font-family: var(--font-mono);
-	font-size: 11px;
-	font-weight: 500;
-	text-transform: uppercase;
-	letter-spacing: var(--track-label);
-	color: var(--muted);
-}
-.rail-spacer {
-	flex: 1;
-}
+/* ═══ COMMENTS — the slideout's Comments mode (#15; was the rail) ═══
+   The thread list renders inside the slideout pane (rules below); the old
+   rail head is gone — the mode tabs and close live in .slideout-head, and
+   the sync indicator / theme toggle outlived it in the topbar and the
+   sidebar head. */
 .sync-indicator {
 	font-family: var(--font-mono);
 	font-size: 11px;
@@ -1100,59 +1094,6 @@ body {
 	width: 6px;
 	height: 6px;
 	box-shadow: none;
-}
-.theme-toggle {
-	background: transparent;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	color: var(--muted);
-	width: 32px;
-	height: 32px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-	transition:
-		color var(--motion-fast) var(--ease-standard),
-		border-color var(--motion-fast) var(--ease-standard);
-}
-.theme-toggle:hover {
-	color: var(--accent);
-	border-color: var(--accent);
-}
-.theme-toggle:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-.theme-toggle svg {
-	width: 15px;
-	height: 15px;
-}
-.rail-close {
-	display: none;
-	background: transparent;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	color: var(--muted);
-	width: 32px;
-	height: 32px;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-}
-.rail-close:hover {
-	color: var(--accent);
-	border-color: var(--accent);
-}
-.rail-close:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-.rail-close svg {
-	width: 15px;
-	height: 15px;
 }
 
 .rail-body {
@@ -1348,6 +1289,204 @@ button.comment-quote:hover {
 	padding: 0 var(--space-1) var(--space-3);
 }
 
+/* ── #15: the right pane — the rail, widened only by a preview ──── */
+/* Default (dogfooded 2026-08-26): the v0.5.0 comments rail restored —
+   always present, fixed 316px, the open doc's threads. A preview
+   (.preview) widens it into the draggable split; ≤1180px the RESPONSIVE
+   block below turns the pane into the bottom sheet the rail used to be
+   (.open) — desktop has no closed state to own. */
+.slideout {
+	display: flex;
+	flex-direction: column;
+	width: var(--rail-w);
+	min-width: var(--rail-w);
+	flex-shrink: 0;
+}
+.slideout.preview {
+	width: auto;
+	min-width: 0;
+	flex: calc(1 - var(--slideout-share)) 1 0%;
+}
+/* The 7px drag strip between main and the pane — hover/press tints it the
+   accent; the grip is the centered 2×26 bar. */
+.slideout-divider {
+	width: 7px;
+	flex-shrink: 0;
+	cursor: col-resize;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: color-mix(in srgb, var(--fg) 4%, transparent);
+	transition: background var(--motion-fast) var(--ease-standard);
+	touch-action: none;
+	user-select: none;
+}
+.slideout-divider:hover,
+.slideout-divider:active {
+	background: var(--accent-tint);
+}
+.slideout-divider::before {
+	content: "";
+	width: 2px;
+	height: 26px;
+	border-radius: 2px;
+	background: var(--border);
+	transition: background var(--motion-fast) var(--ease-standard);
+}
+.slideout-divider:hover::before,
+.slideout-divider:active::before {
+	background: var(--accent);
+}
+/* Head: the preview state's chrome (title, open-in-main, close) and, in
+   the comments state, the restored v0.5.0 rail head — "COMMENTS · N" +
+   the sync LED. The close is preview-only on desktop (the rail has no
+   closed state there); the ≤1180px sheet re-shows it as its fold. */
+.slideout-head {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-2) var(--space-3) var(--space-3);
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+}
+.slideout:not(.preview) .slideout-close {
+	display: none;
+}
+.slideout-spacer {
+	flex: 1;
+}
+.slideout-close {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: transparent;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	cursor: pointer;
+	color: var(--muted);
+	width: 32px;
+	height: 32px;
+	flex-shrink: 0;
+	transition:
+		color var(--motion-fast) var(--ease-standard),
+		border-color var(--motion-fast) var(--ease-standard);
+}
+.slideout-close:hover {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+.slideout-close:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.slideout-close svg {
+	width: 15px;
+	height: 15px;
+}
+/* The tab pair was here — gone with the tabs themselves (dogfood round,
+   2026-08-26): the pane's two states are previewPath's presence. */
+/* The head's title line — "Preview · <title>" in the preview state,
+   "Comments · N" in the rail's — the v0.5.0 rail-title styling. */
+.slideout-title {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: var(--track-label);
+	color: var(--muted);
+}
+/* The state's content. */
+.slideout-panel {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+/* Preview body (b4) — the pane's own scroll region, .rail-body's shape. */
+.preview-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: var(--space-5) var(--space-4) var(--space-8);
+}
+/* The quiet load state — static skeleton bars, nothing to animate (and
+	   prefers-reduced-motion keeps it honest). */
+.preview-skeleton {
+	padding: var(--space-2) 0;
+}
+.preview-skeleton span {
+	display: block;
+	height: 12px;
+	border-radius: 4px;
+	background: var(--glass-inner);
+	margin-bottom: var(--space-3);
+}
+.preview-skeleton span:nth-child(1) {
+	width: 42%;
+	height: 22px;
+}
+.preview-skeleton span:nth-child(2) {
+	width: 94%;
+}
+.preview-skeleton span:nth-child(3) {
+	width: 71%;
+	margin-bottom: 0;
+}
+/* The preview renders the doc's comment highlights with it, but they are
+	   not controls there — no pointer, no jump (the bubble is unmounted). */
+.slideout .comment-highlight {
+	cursor: inherit;
+}
+
+/* ── #15: collapse chrome — the topbar the collapsed sidebar wears ── */
+.app-frame {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+}
+/* The layout was height:100vh as the root; inside the frame it takes
+   whatever the topbar leaves. */
+.app-frame > .layout {
+	height: auto;
+	flex: 1;
+	min-height: 0;
+}
+.sidebar.collapsed {
+	display: none;
+}
+.app-topbar {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	height: 40px;
+	flex-shrink: 0;
+	padding: 0 var(--space-3) 0 var(--space-2);
+	background: var(--glass-bg);
+	border-bottom: 1px solid var(--glass-border);
+	backdrop-filter: blur(18px) saturate(1.5);
+	-webkit-backdrop-filter: blur(18px) saturate(1.5);
+}
+@supports not (backdrop-filter: blur(1px)) {
+	.app-topbar {
+		background: var(--surface);
+	}
+}
+/* The sidebar head's stretching rules un-stretch here: the branch menu
+   sizes to its name (ellipsizing past 150px) and Merge never widens the
+   bar — same look as the sidebar's row 2, without the full-width pull. */
+.app-topbar .branch-dd {
+	width: auto;
+	max-width: 150px;
+}
+.app-topbar .iconbtn {
+	flex-shrink: 0;
+}
+
 /* ═══ TOP BAR — mobile / tablet only ═══════════════════════════ */
 .topbar {
 	display: none;
@@ -1424,8 +1563,7 @@ button.comment-quote:hover {
 }
 
 /* ═══ RESPONSIVE ═══════════════════════════════════════════════ */
-/* ≤1180: comments rail → glass bottom sheet; top bar appears;
-   Comments button joins Edit on the doc. */
+/* ≤1180: comments pane → glass bottom sheet; top bar appears. */
 @media (max-width: 1180px) {
 	.topbar {
 		display: flex;
@@ -1436,18 +1574,21 @@ button.comment-quote:hover {
 	.side-head {
 		display: none;
 	} /* brand + branch live in the top bar now */
-	.comments-btn {
-		display: inline-flex;
+	/* The pane is the comments bottom sheet here (the v0.5.0 rail's mobile
+	   shape, #15 kept it): mounted regardless of .open so the transform
+	   animates; the preview state wears the same sheet. */
+	.slideout,
+	.slideout.preview {
+		width: 100%;
 	}
-	.comments-rail {
+	.slideout {
+		display: flex;
 		position: fixed;
 		z-index: 45;
 		top: auto;
 		bottom: 0;
 		left: 0;
 		right: 0;
-		width: 100%;
-		min-width: 0;
 		max-height: 78vh;
 		border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 		background: var(--glass-bg-strong);
@@ -1460,28 +1601,35 @@ button.comment-quote:hover {
 		transition: transform var(--motion-base) var(--ease-standard);
 	}
 	@supports not (backdrop-filter: blur(1px)) {
-		.comments-rail {
+		.slideout {
 			background: var(--surface);
 		}
 	}
-	.comments-rail.open {
+	.slideout.open {
 		transform: translateY(0);
 	}
-	.rail-head {
+	.slideout-divider {
+		display: none;
+	} /* the sheet is full-width — nothing to split */
+	/* The comments state's head returns here (the sheet's title + fold);
+	   the preview head needs no help — it never hides. */
+	.slideout:not(.preview) .slideout-head {
+		display: flex;
+	}
+	/* The sheet's fold: the comments close returns ≤1180 (hidden on
+	   desktop above — the rail has no closed state there). */
+	.slideout:not(.preview) .slideout-close {
+		display: flex;
+	}
+	.slideout-head {
 		padding: var(--space-3) var(--space-4);
 	}
 	.rail-body {
 		padding: var(--space-4);
 	}
-	.rail-close {
-		display: flex;
-	}
 	.sync-indicator {
 		display: none;
 	} /* LED dot in the top bar covers it */
-	.rail-head .theme-toggle {
-		display: none;
-	}
 }
 @media (max-width: 900px) {
 	.doc-pane,
@@ -2274,4 +2422,154 @@ button.comment-quote:hover {
 	font-size: 12.5px;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+/* ── #14: Ctrl+K search modal — Spotlight-style centered dialog ── */
+/* The dim backdrop (click = close) and the glass card on top of everything
+   (above menu-popover's 70). Rows echo the sidebar card language: hover is
+   the inner glass, the active row is the raised .doc-card.active look. */
+.search-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 80;
+	background: rgba(15, 20, 27, 0.55);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-4);
+}
+.search-modal {
+	width: min(640px, 100%);
+	max-height: min(70vh, 560px);
+	display: flex;
+	flex-direction: column;
+	border-radius: var(--radius-lg);
+	background: var(--glass-bg-strong);
+	border: 1px solid var(--glass-border);
+	box-shadow: var(--glass-shadow);
+	backdrop-filter: blur(22px) saturate(1.5);
+	-webkit-backdrop-filter: blur(22px) saturate(1.5);
+	overflow: hidden;
+}
+@supports not (backdrop-filter: blur(1px)) {
+	.search-modal {
+		background: var(--surface);
+	}
+}
+.search-input-row {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	border-bottom: 1px solid var(--border-soft);
+	flex-shrink: 0;
+}
+.search-input-row svg {
+	width: 16px;
+	height: 16px;
+	color: var(--muted);
+	flex-shrink: 0;
+}
+.search-input-row input {
+	flex: 1;
+	min-width: 0;
+	font-family: var(--font-body);
+	font-size: 15px;
+	color: var(--fg);
+	background: transparent;
+	border: none;
+	padding: 4px 0;
+	outline: none;
+}
+.search-input-row input::placeholder {
+	color: var(--muted);
+}
+.search-modal kbd {
+	font-family: var(--font-mono);
+	font-size: 10px;
+	color: var(--muted);
+	background: var(--glass-inner);
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	padding: 1px 5px;
+	line-height: 1.5;
+	flex-shrink: 0;
+}
+.search-results {
+	flex: 1;
+	overflow-y: auto;
+	padding: var(--space-2);
+}
+.sr-row {
+	padding: var(--space-2) var(--space-3);
+	border-radius: 10px;
+	border: 1px solid transparent;
+	margin: 2px 0;
+	cursor: pointer;
+	transition:
+		background var(--motion-fast) var(--ease-standard),
+		border-color var(--motion-fast) var(--ease-standard),
+		box-shadow var(--motion-base) var(--ease-standard),
+		transform var(--motion-base) var(--ease-standard);
+}
+.sr-row:hover {
+	background: var(--glass-inner);
+}
+/* Active = physically raised off the glass (the .doc-card.active look) */
+.sr-row.active {
+	background: var(--glass-bg-strong);
+	border-color: var(--glass-border);
+	box-shadow: var(--card-shadow);
+	transform: translateY(-1px);
+}
+.sr-title {
+	display: block;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--fg);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.sr-row.active .sr-title {
+	color: var(--accent);
+}
+.sr-snippet {
+	display: block;
+	font-family: var(--font-serif);
+	font-size: 12.5px;
+	line-height: 1.45;
+	color: var(--muted);
+	margin-top: 2px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.sr-row mark {
+	background: color-mix(in srgb, var(--accent) 22%, transparent);
+	color: inherit;
+	border-radius: 2px;
+	padding: 0 1px;
+}
+.search-empty {
+	padding: var(--space-6) var(--space-4);
+	font-size: 13px;
+	color: var(--muted);
+	text-align: center;
+}
+.search-foot {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-4);
+	border-top: 1px solid var(--border-soft);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+	flex-shrink: 0;
+}
+.search-foot .sep {
+	color: var(--border);
 }

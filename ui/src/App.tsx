@@ -1,3 +1,4 @@
+import { ChevronsLeft, ChevronsRight, Search } from "lucide-react";
 import {
 	type CSSProperties,
 	useCallback,
@@ -37,9 +38,17 @@ import {
 	type TreeNode,
 } from "./api";
 import { CommentsRail } from "./CommentsRail";
+import { commentSpanTitle } from "./comment-summary";
+import { DocPreview } from "./DocPreview";
 import { DocView } from "./DocView";
 import { displayTitle } from "./display";
-import { type DragItem, isNoOpDrop, moveDestinations, movedPath } from "./dnd";
+import {
+	basename,
+	type DragItem,
+	isNoOpDrop,
+	moveDestinations,
+	movedPath,
+} from "./dnd";
 import type { AtDoc } from "./editor/at";
 import {
 	type BranchAction,
@@ -48,8 +57,15 @@ import {
 	NewDocButton,
 } from "./Menus";
 import { ResolutionView } from "./ResolutionView";
+import { SearchModal } from "./SearchModal";
 import { Sidebar, SidebarResizeHandle } from "./Sidebar";
+import { Slideout } from "./Slideout";
 import { readStoredSidebarWidth, storeSidebarWidth } from "./sidebar-geometry";
+import {
+	readStoredSlideoutShare,
+	storeSlideoutShare,
+} from "./slideout-geometry";
+import { ThemeToggle } from "./ThemeToggle";
 
 function firstDoc(node: TreeNode): string | null {
 	for (const child of node.children ?? []) {
@@ -142,13 +158,28 @@ export function App() {
 	// amber word: Saved (committed, not yet synced) vs Synced (green).
 	const [synced, setSynced] = useState(true);
 
-	// --- comments (M4-5): App owns the sidecar state — the rail, the doc-bar
-	// badge, and DocView's create-notification all read from this one fetch;
+	// --- comments (M4-5): App owns the sidecar state — the pane's thread
+	// list and DocView's create-notification both read from this one fetch;
 	// every mutation re-runs it through refreshComments.
 	const [commentFile, setCommentFile] = useState<CommentFile>({
 		comments: {},
 	});
+	// #15, testing round 2026-08-26: the pane is the v0.5.0 rail again — always
+	// present (316px) with the open doc's threads. railOpen only matters
+	// ≤1180px, where the CSS turns the pane into the bottom sheet; a preview
+	// (previewPath) is what widens it into the draggable split.
 	const [railOpen, setRailOpen] = useState(false);
+	const [slideoutShare, setSlideoutShare] = useState(() =>
+		readStoredSlideoutShare(),
+	);
+	const applySlideoutShare = (share: number, commit: boolean) => {
+		setSlideoutShare(share);
+		if (commit) storeSlideoutShare(share);
+	};
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+	// True while the sidebar is collapsed because a preview opened (not the
+	// user's «) — only that collapse is undone when the preview closes.
+	const autoCollapsed = useRef(false);
 	const [railError, setRailError] = useState<string | null>(null);
 	// Doc→rail jump target; `n` re-arms repeated clicks on the same span.
 	const [spanFocus, setSpanFocus] = useState<{ id: string; n: number } | null>(
@@ -163,6 +194,21 @@ export function App() {
 		path: string;
 		n: number;
 	} | null>(null);
+
+	// --- Ctrl+K search (#14): the modal is app-global — the shortcut toggles
+	// it from anywhere, including mid-edit (the editor binds no Mod-K;
+	// preventDefault keeps the browser's own search focus out of the way).
+	const [searchOpen, setSearchOpen] = useState(false);
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+				e.preventDefault();
+				setSearchOpen((o) => !o);
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, []);
 
 	// Latest selected/dirty for the stable interval/focus sync callback.
 	const live = useRef({ selected, dirty });
@@ -246,6 +292,22 @@ export function App() {
 	// clicks, the rail's reply @ mentions, and body linkification. Titles
 	// ride along from meta (M4-3 b4) — paths stay the identity.
 	const docs = useMemo(() => docItems(tree, meta), [tree, meta]);
+	// The tree's folder paths — the PREVIEW's link dispatch set (#15 b4).
+	// The main pane passes its move destinations (historical, pre-filtered);
+	// a viewer resolving links wants the true tree.
+	const treeFolders = useMemo(() => {
+		const out: string[] = [];
+		const walk = (n: TreeNode) => {
+			for (const c of n.children ?? []) {
+				if (c.type === "dir") {
+					out.push(c.path);
+					walk(c);
+				}
+			}
+		};
+		if (tree) walk(tree);
+		return out;
+	}, [tree]);
 	// The header move picker's destinations (M4-3 b4, collision-aware M4-4
 	// b1): App pre-filters — the current parent and every folder already
 	// holding a child named like the doc are never offered, and root rides
@@ -739,12 +801,29 @@ export function App() {
 
 	// --- M4-3 b6: link-navigation callbacks ----------------------------------
 
+	// A search result open (#14, ⇧ variant #15 b4): plain opens go through
+	// the dirty guard like every other navigation — an unsaved buffer parks
+	// the open in the banner, never a silent drop. Shift asks for the
+	// slideout preview instead: a read, the buffer is untouched, so the
+	// queue is skipped by design.
+	function openFromSearch(path: string, opts?: { slideout?: boolean }) {
+		if (opts?.slideout) {
+			openPreviewDoc(path);
+			return;
+		}
+		guardAction(`Open ${path}`, () => setSelected(path));
+	}
+
 	// A doc link (optionally with a #fragment): navigate, and leave the
 	// fragment as the pending anchor — the new doc's EditorPane scrolls to it
-	// once the content and heading ids exist.
-	function onDocLink(path: string, anchor?: string) {
-		setSelected(path);
-		setPendingAnchor(anchor ?? null);
+	// once the content and heading ids exist. Routed through the dirty guard
+	// since #15 b4: read-mode comment selections can dirty the buffer, and
+	// this was the one navigation seam that could drop it silently.
+	function onDocLink(path: string, anchor?: string, headline?: string) {
+		guardAction(headline ?? `Open ${path}`, () => {
+			setSelected(path);
+			setPendingAnchor(anchor ?? null);
+		});
 	}
 
 	// A folder link: expand the sidebar path (ancestors + target), then select
@@ -755,6 +834,186 @@ export function App() {
 		const dir = tree ? findDir(tree, path) : null;
 		const first = dir ? firstDoc(dir) : null;
 		if (first) setSelected(first);
+	}
+
+	// --- #15: the pane's open/close seams + the collapse chrome ----------------
+	//
+	// Opening a PREVIEW auto-collapses the sidebar once to buy the split
+	// room: an already-collapsed sidebar keeps its own reason (the user's «,
+	// so nothing to restore later). The comments pane needs no room bought —
+	// it is the default, so its one open act (a span click) only lifts the
+	// ≤1180px sheet; the sidebar is never touched for it.
+	function openPreviewDoc(path: string, anchor?: string) {
+		onPreviewDocLink(path, anchor);
+		setRailOpen(true);
+		if (!sidebarCollapsed) {
+			setSidebarCollapsed(true);
+			autoCollapsed.current = true;
+		}
+	}
+
+	// Closing the preview returns the pane to the comments rail (and folds
+	// the mobile sheet) and restores the sidebar only when the automatic
+	// collapse still stands — a manual « (before or after the open) is never
+	// undone by it.
+	function closePreview() {
+		setPreviewPath(null);
+		setRailOpen(false);
+		if (autoCollapsed.current && sidebarCollapsed) setSidebarCollapsed(false);
+		autoCollapsed.current = false;
+	}
+
+	// The Escape chain's preview slot (#15 b5): true = a preview was open and
+	// this call closed it (EditorPane treats the Escape as spent, keeping
+	// edit-cancel for the next press); false = nothing was open. The
+	// comments state has no slot — the pane is permanent, nothing to close.
+	function closePreviewIfOpen() {
+		if (previewPath === null) return false;
+		closePreview();
+		return true;
+	}
+
+	// The ≤1180px sheet's fold — the desktop pane is always present, so a
+	// comments-state close can only mean this.
+	function closeSheet() {
+		setRailOpen(false);
+	}
+
+	// The « / » pair. A manual expand while a preview stays open clears
+	// the automatic flag — the pane never re-collapses (no fighting).
+	function collapseSidebar() {
+		setSidebarCollapsed(true);
+	}
+	function expandSidebar() {
+		setSidebarCollapsed(false);
+		autoCollapsed.current = false;
+	}
+
+	// --- #15 b4: the pane's Preview — a second, read-only doc ---------------
+	//
+	// The previewed path (+ its pending #fragment) and the fetched doc. The
+	// preview never touches the editor's doc or buffer — its navigation just
+	// re-targets these, which is why none of it goes through the navigation
+	// queue.
+	const [previewPath, setPreviewPath] = useState<string | null>(null);
+	const [previewAnchor, setPreviewAnchor] = useState<string | null>(null);
+	const [previewDoc, setPreviewDoc] = useState<DocResponse | null>(null);
+	const [previewError, setPreviewError] = useState<string | null>(null);
+	// A dead .md link clicked inside the preview — the quiet equivalent of
+	// DocView's link-not-found banner.
+	const [previewDeadLink, setPreviewDeadLink] = useState<string | null>(null);
+	const clearPreviewAnchor = useCallback(() => setPreviewAnchor(null), []);
+
+	// #15 b5: the Escape chain's window fallback — an Escape that reaches the
+	// window UN-prevented was consumed by no inline surface (the edit-mode
+	// editor preventDefaults every Escape it sees; read mode's Escapes arrive
+	// here by design, PM being keydown-inert on a non-editable view — the
+	// bubble's capture listener eats the selection-clearing ones). Modal
+	// first, then the preview: the modal usually closes itself (focus sits in
+	// its input), so this leg mostly covers focus escaping its trap.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: closePreview is re-created per render on purpose — its sidebar restore reads autoCollapsed (a ref), so the two open flags are the only state this listener branches on.
+	useEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.defaultPrevented) return;
+			if (searchOpen) {
+				e.preventDefault();
+				setSearchOpen(false);
+			} else if (previewPath !== null) {
+				e.preventDefault();
+				closePreview();
+			}
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [searchOpen, previewPath]);
+
+	// The preview's fetch — the main doc's read client, cancel-guarded like
+	// the sidecar fetch. Quiet both ways: DocPreview's skeleton while
+	// loading, its inline note on failure. ponytail: the doc is fetched per
+	// path change and kept afterwards — a preview opened again after edits
+	// elsewhere shows the last fetch until re-targeted; refetch on open if
+	// that ever reads stale.
+	useEffect(() => {
+		setPreviewDeadLink(null);
+		setPreviewError(null);
+		if (!previewPath) {
+			setPreviewDoc(null);
+			return;
+		}
+		let cancelled = false;
+		setPreviewDoc(null);
+		getDoc(previewPath)
+			.then((d) => {
+				if (!cancelled) setPreviewDoc(d);
+			})
+			.catch((e: unknown) => {
+				if (!cancelled)
+					setPreviewError(e instanceof Error ? e.message : String(e));
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [previewPath]);
+
+	// The previewed doc's OWN sidecar (testing round): a second fetch, fully
+	// separate from the main doc's — it feeds nothing but the preview's span
+	// tooltips (the thread summaries), never any reply/resolve UI. A failure
+	// is quiet: unknown ids fall back to the mark's "View comment".
+	const [previewComments, setPreviewComments] = useState<CommentFile>({
+		comments: {},
+	});
+	useEffect(() => {
+		if (!previewPath) {
+			setPreviewComments({ comments: {} });
+			return;
+		}
+		let cancelled = false;
+		getComments(previewPath)
+			.then((file) => {
+				if (!cancelled) setPreviewComments(file);
+			})
+			.catch(() => {
+				if (!cancelled) setPreviewComments({ comments: {} });
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [previewPath]);
+	// The stable identity matters as much as the map: EditorPane's title pass
+	// re-runs when this function changes, so the summaries land on spans that
+	// rendered before the fetch returned.
+	const previewTitleFor = useCallback(
+		(id: string) => {
+			const thread = previewComments.comments[id];
+			return thread ? commentSpanTitle(thread) : "View comment";
+		},
+		[previewComments],
+	);
+
+	// A doc link inside the preview stays inside the preview (locked): the
+	// same re-target, without re-opening anything.
+	function onPreviewDocLink(path: string, anchor?: string) {
+		setPreviewPath(path);
+		setPreviewAnchor(anchor ?? null);
+	}
+
+	// A folder link inside the preview: the sidebar path expands, but the
+	// main doc never moves — a preview click must not navigate the editor.
+	// (The main pane's folder links also select the folder's first doc.)
+	function onPreviewFolderLink(path: string) {
+		setExpandFolder((f) => ({ path, n: (f?.n ?? 0) + 1 }));
+	}
+
+	// Open in main pane (#15, testing round): the preview head's promote — fold
+	// the pane back to the comments rail and hand the previewed doc to the
+	// MAIN pane through the same guarded seam (a dirty buffer parks in the
+	// banner, never a silent drop); the 316px rail then shows the new doc's
+	// comments.
+	function promotePreview() {
+		const path = previewPath;
+		if (!path) return;
+		closePreview();
+		onDocLink(path, previewAnchor ?? undefined);
 	}
 
 	// LED + one-word status: amber = not synced yet (the word says which —
@@ -803,198 +1062,327 @@ export function App() {
 			(meta.drafts[selected] ?? []).some((e) => e.branch === meta.current),
 	);
 
+	// The preview head's "Preview · <title>" (#15) — the frontmatter title
+	// once loaded, the file basename until then.
+	const previewTitle =
+		previewPath !== null
+			? displayTitle(previewDoc?.frontmatter.title, basename(previewPath))
+			: null;
+
+	// The head controls render in two places (#15): the sidebar head, and
+	// the topbar that replaces it while the sidebar is collapsed — same
+	// elements, second location, no logic duplication.
+	const searchBtn = (
+		// Search (#14): ⌕ left of ＋ (owner order) — the modal is the
+		// keyboard-first path (Ctrl+K works anywhere).
+		<button
+			type="button"
+			className="tool-btn"
+			title="Search (Ctrl+K)"
+			aria-label="Search (Ctrl+K)"
+			onClick={() => setSearchOpen(true)}
+		>
+			<Search aria-hidden="true" />
+		</button>
+	);
+	const branchMenu = <BranchMenu current={branch} onAction={requestBranch} />;
+	// Resolution mode owns the merge act — the button hides until the
+	// standing merge finishes or aborts (both locations).
+	const mergeBtn = !inResolution && (
+		<button
+			type="button"
+			className="iconbtn"
+			disabled={!canMerge || dirty}
+			title={
+				canMerge
+					? dirty
+						? "save or discard changes to the open document first"
+						: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
+					: undefined
+			}
+			onClick={() => void runMerge()}
+		>
+			Merge
+		</button>
+	);
+	const newDocBtn = <NewDocButton onFileOp={runFileOp} />;
+
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
-			<div className="layout">
-				<aside
-					className="sidebar"
-					aria-label="Documents"
+			<div className="app-frame">
+				{/* Collapsed chrome (#15): while the sidebar is tucked away, the
+				    topbar carries what its head held — expand, brand, branch,
+				    Merge, new doc, search, theme, sync LED. The fixed actions
+				    (＋ ⌕ ThemeToggle) sit immediately right of Merge; the LED
+				    alone holds the far end (testing round, 2026-08-26). */}
+				{sidebarCollapsed && (
+					<header className="app-topbar">
+						<button
+							type="button"
+							className="tool-btn"
+							title="Expand sidebar"
+							aria-label="Expand sidebar"
+							onClick={expandSidebar}
+						>
+							<ChevronsRight aria-hidden="true" />
+						</button>
+						<span className="brand">fragmt</span>
+						{branchMenu}
+						{mergeBtn}
+						{/* The head-control order everywhere (owner, testing
+						    round): search, add, theme — collapse pairs with it
+						    in the sidebar head, expand leads the topbar. The
+						    sync LED lives in the rail head alone (redundant
+						    here). */}
+						{searchBtn}
+						{newDocBtn}
+						<ThemeToggle />
+						<span className="topbar-spacer" />
+					</header>
+				)}
+				<div
+					className="layout"
+					// Without a preview the pane is a fixed 316px column, so main
+					// must claim ALL free space — flex-grow 1. The 55/45 share
+					// only applies while the pane is flexed (preview open): per
+					// spec §9.7.1 a grow < 1 takes just grow × free-space, so a
+					// lone 0.55 grower leaves 45% of the layout dead.
 					style={
-						sidebarW === null
-							? undefined
-							: ({ "--sidebar-w": `${sidebarW}px` } as CSSProperties)
+						{
+							"--slideout-share": String(
+								previewPath !== null ? slideoutShare : 1,
+							),
+						} as CSSProperties
 					}
 				>
-					{/* Two-row head (item 11): brand + "+", then branch + Merge. */}
-					<div className="side-head">
-						<div className="side-head-row">
-							<span className="brand">fragmt</span>
-							<div className="side-head-spacer" />
-							<NewDocButton onFileOp={runFileOp} />
-						</div>
-						<div className="side-head-row side-head-branch">
-							<BranchMenu current={branch} onAction={requestBranch} />
-							{/* Resolution mode owns the merge act — the global button
-							    hides until the standing merge finishes or aborts. */}
-							{!inResolution && (
+					<aside
+						className={sidebarCollapsed ? "sidebar collapsed" : "sidebar"}
+						aria-label="Documents"
+						style={
+							sidebarW === null
+								? undefined
+								: ({ "--sidebar-w": `${sidebarW}px` } as CSSProperties)
+						}
+					>
+						{/* Two-row head (item 11): brand + "+", then branch + Merge. */}
+						<div className="side-head">
+							<div className="side-head-row">
+								<span className="brand">fragmt</span>
+								<div className="side-head-spacer" />
+								{searchBtn}
+								{newDocBtn}
+								{/* Moved from the rail head (#15) — the sidebar head is
+							    always reachable, slideout or not. Order per the
+							    testing round: search, add, theme, collapse. */}
+								<ThemeToggle />
+								{/* « collapses the sidebar (#15) — the topbar takes
+								    over while it's away. */}
 								<button
 									type="button"
-									className="iconbtn"
-									disabled={!canMerge || dirty}
-									title={
-										canMerge
-											? dirty
-												? "save or discard changes to the open document first"
-												: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
-											: undefined
-									}
-									onClick={() => void runMerge()}
+									className="tool-btn"
+									title="Collapse sidebar"
+									aria-label="Collapse sidebar"
+									onClick={collapseSidebar}
 								>
-									Merge
+									<ChevronsLeft aria-hidden="true" />
 								</button>
-							)}
+							</div>
+							<div className="side-head-row side-head-branch">
+								{branchMenu}
+								{mergeBtn}
+							</div>
 						</div>
-					</div>
-					<Sidebar
-						tree={tree}
-						selected={selected}
-						onSelect={setSelected}
-						meta={meta}
-						expandFolder={expandFolder}
-						onOpenGhost={(path, branchName) => void openGhost(path, branchName)}
-						onRestore={(items) => void runRestore(items)}
-						// Drag & drop (M4-3 b5 + M4-4 dogfood round): dropTargetValid
-						// blocks self-subtree drops; a drop back on the item's own
-						// parent is a silent no-op (isNoOpDrop) — the peaceful
-						// cancel — so anything reaching the move/delete flows is a
-						// real op.
-						onDropItem={(item: DragItem, folder: string) => {
-							if (isNoOpDrop(item, folder)) return;
-							item.type === "doc"
-								? moveDocTo(item.path, folder)
-								: requestMoveFolder(item.path, folder);
-						}}
-						onDropBin={(item: DragItem, name: string) =>
-							item.type === "doc"
-								? deleteDocAt(item.path, name)
-								: requestDeleteFolder(item.path, name)
-						}
-					/>
-					<SidebarResizeHandle onWidth={applySidebarW} />
-				</aside>
-				<main className="main">
-					{/* App-level failures (file ops, sync, branch commands) say
+						<Sidebar
+							tree={tree}
+							selected={selected}
+							onSelect={setSelected}
+							meta={meta}
+							expandFolder={expandFolder}
+							onOpenGhost={(path, branchName) =>
+								void openGhost(path, branchName)
+							}
+							onRestore={(items) => void runRestore(items)}
+							// Drag & drop (M4-3 b5 + M4-4 dogfood round): dropTargetValid
+							// blocks self-subtree drops; a drop back on the item's own
+							// parent is a silent no-op (isNoOpDrop) — the peaceful
+							// cancel — so anything reaching the move/delete flows is a
+							// real op.
+							onDropItem={(item: DragItem, folder: string) => {
+								if (isNoOpDrop(item, folder)) return;
+								item.type === "doc"
+									? moveDocTo(item.path, folder)
+									: requestMoveFolder(item.path, folder);
+							}}
+							onDropBin={(item: DragItem, name: string) =>
+								item.type === "doc"
+									? deleteDocAt(item.path, name)
+									: requestDeleteFolder(item.path, name)
+							}
+						/>
+						<SidebarResizeHandle onWidth={applySidebarW} />
+					</aside>
+					<main className="main">
+						{/* App-level failures (file ops, sync, branch commands) say
 					    what went wrong where the user is looking — a failed move
 					    must not read as "nothing happened". The merge-conflict
 					    fallback (M4-4 b3) is its own banner, never the sync one. */}
-					{error && (
-						<div
-							className="conflict-banner"
-							role="alert"
-							style={{ margin: "12px 24px 0" }}
-						>
-							<div>
-								<strong>Something failed</strong>
-								{error}
-							</div>
-							<button
-								type="button"
-								className="iconbtn subtle dismiss"
-								onClick={() => setError(null)}
+						{error && (
+							<div
+								className="conflict-banner"
+								role="alert"
+								style={{ margin: "12px 24px 0" }}
 							>
-								Dismiss
-							</button>
-						</div>
-					)}
-					{mergeConflict && (
-						<div
-							className="conflict-banner"
-							role="alert"
-							style={{ margin: "12px 24px 0" }}
-						>
-							<div>
-								<strong>Merge conflict</strong>
-								{mergeConflict}
+								<div>
+									<strong>Something failed</strong>
+									{error}
+								</div>
+								<button
+									type="button"
+									className="iconbtn subtle dismiss"
+									onClick={() => setError(null)}
+								>
+									Dismiss
+								</button>
 							</div>
-							<button
-								type="button"
-								className="iconbtn subtle dismiss"
-								onClick={() => setMergeConflict(null)}
+						)}
+						{mergeConflict && (
+							<div
+								className="conflict-banner"
+								role="alert"
+								style={{ margin: "12px 24px 0" }}
 							>
-								Dismiss
-							</button>
-						</div>
-					)}
-					{inResolution ? (
-						<ResolutionView onDone={mergeDone} />
-					) : (
-						<DocView
-							doc={doc}
-							selected={selected}
-							// A successful save commits locally — synced flips back
-							// to false: the LED reads Saved (amber), not Synced;
-							// the next sync confirms it.
-							onSaved={(d) => {
-								setDoc(d);
-								setSynced(false);
-								// A save is a commit — versions/drafts/bin moved.
-								refreshMeta();
-							}}
-							onReload={reloadSelected}
-							onDirtyChange={setDirty}
+								<div>
+									<strong>Merge conflict</strong>
+									{mergeConflict}
+								</div>
+								<button
+									type="button"
+									className="iconbtn subtle dismiss"
+									onClick={() => setMergeConflict(null)}
+								>
+									Dismiss
+								</button>
+							</div>
+						)}
+						{inResolution ? (
+							<ResolutionView onDone={mergeDone} />
+						) : (
+							<DocView
+								doc={doc}
+								selected={selected}
+								// A successful save commits locally — synced flips back
+								// to false: the LED reads Saved (amber), not Synced;
+								// the next sync confirms it.
+								onSaved={(d) => {
+									setDoc(d);
+									setSynced(false);
+									// A save is a commit — versions/drafts/bin moved.
+									refreshMeta();
+								}}
+								onReload={reloadSelected}
+								onDirtyChange={setDirty}
+								onCommentsChanged={refreshComments}
+								onSpanClick={(id) => {
+									// Span clicks are comment intents — the pane is the
+									// permanent rail already; this only lifts the ≤1180px
+									// sheet, then jumps the rail to the thread.
+									setRailOpen(true);
+									setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
+								}}
+								pendingAction={pendingAction}
+								onPendingActionCancel={() => setPendingAction(null)}
+								conflict={conflict}
+								onDismissConflict={() => setConflict(null)}
+								onEscapeSurfacesClear={closePreviewIfOpen}
+								onBeforeEdit={beforeEdit}
+								// Protected main (item 7): read-mode comments draft
+								// first — DocView awaits this before the combined POST
+								// (undefined off main: no interception).
+								onDraftFirst={onMain ? draftFirst : undefined}
+								docMeta={docMeta}
+								branch={branch}
+								led={led}
+								ledLabel={ledLabel}
+								draftBranch={draftBranch}
+								onOpenDraft={() => draftBranch && openDraft(draftBranch)}
+								onDraft={onDraft}
+								authors={meta?.authors ?? {}}
+								docs={docs}
+								onSelectDoc={onDocLink}
+								onOpenPreview={openPreviewDoc}
+								onSelectFolder={onSelectFolderLink}
+								pendingAnchor={pendingAnchor}
+								onAnchorConsumed={clearAnchor}
+								folders={moveDest.folders}
+								rootMoveValid={moveDest.rootValid}
+								onBeforeRename={beforeRename}
+								onMoveDoc={requestMoveDoc}
+								onDeleteDoc={requestDeleteDoc}
+								onRenamed={onRenamed}
+							/>
+						)}
+					</main>
+					{/* The right pane (#15, testing round): the v0.5.0 comments rail
+					    again — permanent, 316px, the open doc's threads — until a
+					    preview opens and widens it into the split. Hidden in
+					    resolution mode: the doc pane is taken over and its comments
+					    are mid-merge anyway. */}
+					{selected && !inResolution && (
+						<Slideout
+							open={railOpen}
+							preview={previewPath !== null}
 							commentCount={threads.length}
-							onOpenComments={() => setRailOpen(true)}
-							onCommentsChanged={refreshComments}
-							onSpanClick={(id) => {
-								setRailOpen(true);
-								setSpanFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
-							}}
-							pendingAction={pendingAction}
-							onPendingActionCancel={() => setPendingAction(null)}
-							conflict={conflict}
-							onDismissConflict={() => setConflict(null)}
-							onBeforeEdit={beforeEdit}
-							// Protected main (item 7): read-mode comments draft
-							// first — DocView awaits this before the combined POST
-							// (undefined off main: no interception).
-							onDraftFirst={onMain ? draftFirst : undefined}
-							docMeta={docMeta}
-							branch={branch}
+							previewTitle={previewTitle}
 							led={led}
 							ledLabel={ledLabel}
-							draftBranch={draftBranch}
-							onOpenDraft={() => draftBranch && openDraft(draftBranch)}
-							onDraft={onDraft}
-							authors={meta?.authors ?? {}}
-							docs={docs}
-							onSelectDoc={onDocLink}
-							onSelectFolder={onSelectFolderLink}
-							pendingAnchor={pendingAnchor}
-							onAnchorConsumed={clearAnchor}
-							folders={moveDest.folders}
-							rootMoveValid={moveDest.rootValid}
-							onBeforeRename={beforeRename}
-							onMoveDoc={requestMoveDoc}
-							onDeleteDoc={requestDeleteDoc}
-							onRenamed={onRenamed}
-						/>
+							onPromote={previewPath ? promotePreview : undefined}
+							onClose={previewPath !== null ? closePreview : closeSheet}
+							onShare={applySlideoutShare}
+						>
+							{previewPath === null ? (
+								<CommentsRail
+									threads={threads}
+									liveIds={liveIds}
+									agents={meta?.agents ?? []}
+									onClose={closeSheet}
+									focus={spanFocus}
+									onReply={(id, body) => railReply(id, body)}
+									onResolve={(id) => void railResolve(id, true)}
+									onReopen={(id) => void railResolve(id, false)}
+									onDelete={(id) => void railDelete(id)}
+									error={railError}
+									docs={docs}
+									onOpenDoc={setSelected}
+								/>
+							) : (
+								<DocPreview
+									path={previewPath}
+									doc={previewDoc}
+									error={previewError}
+									deadLink={previewDeadLink}
+									anchor={previewAnchor}
+									onAnchorConsumed={clearPreviewAnchor}
+									docs={docs}
+									folders={treeFolders}
+									onSelectDoc={onPreviewDocLink}
+									onSelectFolder={onPreviewFolderLink}
+									onLinkNotFound={setPreviewDeadLink}
+									spanTitleFor={previewTitleFor}
+								/>
+							)}
+						</Slideout>
 					)}
-				</main>
-				{/* The rail is a layout sibling of <main> (right margin column);
-				    the head carries the app's sync LED + theme (review decision 2).
-				    Hidden in resolution mode — the doc pane is taken over and its
-				    comments are mid-merge anyway. */}
-				{selected && !inResolution && (
-					<CommentsRail
-						threads={threads}
-						liveIds={liveIds}
-						agents={meta?.agents ?? []}
-						led={led}
-						ledLabel={ledLabel}
-						open={railOpen}
-						onClose={() => setRailOpen(false)}
-						focus={spanFocus}
-						onReply={(id, body) => railReply(id, body)}
-						onResolve={(id) => void railResolve(id, true)}
-						onReopen={(id) => void railResolve(id, false)}
-						onDelete={(id) => void railDelete(id)}
-						error={railError}
-						docs={docs}
-						onOpenDoc={setSelected}
-					/>
-				)}
+				</div>
 			</div>
+			{/* The Ctrl+K search dialog (#14) — a layout sibling, above
+			    everything; its opens route through guardAction (the
+			    navigation queue), so a dirty buffer never silently drops. */}
+			<SearchModal
+				open={searchOpen}
+				onClose={() => setSearchOpen(false)}
+				onOpen={openFromSearch}
+			/>
 		</>
 	);
 }
