@@ -12,7 +12,7 @@
 - HTTP server: Hono
 - License: MIT
 
-Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M4-2](milestones/M4-2-drafting-model.md) · [M4-3](milestones/M4-3-backlog-remediation.md) · [M4-4](milestones/M4-4-backlog-agent-surface.md) · [M5](milestones/M5-distributables-install.md) · [M6](milestones/M6-dogfood-hardening.md). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
+Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) · [M1](milestones/M1-read-only.md) · [M2](milestones/M2-round-trip-editing.md) · [M2-2](milestones/M2-2-editing-controls.md) · [M3](milestones/M3-files-and-branches.md) · [M4](milestones/M4-comments.md) · [M4-2](milestones/M4-2-drafting-model.md) · [M4-3](milestones/M4-3-backlog-remediation.md) · [M4-4](milestones/M4-4-backlog-agent-surface.md) · [M5](milestones/M5-distributables-install.md) · [M6](milestones/M6-dogfood-hardening.md) · [Search & link slideout](milestones/search-and-link-slideout.md) — the first backlog round, after which milestones were retired (see the closing note). Decisions behind them: tsx + Vitest, Biome, `docsRoot` configurable (default `.`), CI skeleton in M0 with the corpus test joining in M2.
 
 ## Build status
 
@@ -37,7 +37,8 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - **Shipped:** M4-3 backlog remediation — the post-M4-2 dogfooding items in seven subagent batches: edit-flip scroll/menu-cap/on-draft-badge quick fixes; the `authors` config map resolving real emails to GitHub avatars; branch deletion (`-d`, confirm `-D` for unmerged); sidebar geometry (16px guide-line indent, min row width with scroll-not-clip, indicators after the name, resizable, always-visible bin); file actions on the breadcrumb name under a frontmatter-`title` model (the filename never changes — links are the currency) with the corner-icon machinery deleted; navbar drag & drop (rows → folders, → "/" root, → bin); link completion (heading slugs + anchors incl. `doc.md#frag`, folder links incl. empty ones, `GET /api/raw/*` for non-md, dead-link note); and `.gitignore` respected across every tree-derived surface via one `ls-files` allow-list (tracked wins). Spec: [M4-3](milestones/M4-3-backlog-remediation.md). 216 tests (sync suite's pre-existing Windows timeout flake fixed with honest 20s limits).
 - **Shipped:** M4-4 backlog remediation 2 + the agent surface — collision-aware drag & drop and move-picker targets (client tree consult); the merge-conflict resolution engine (stand-conflicted merge, `parseConflicts` hunk editor with ours/theirs/edit, structural `mergeSidecars` under the approved survival rules, conclude-merge `git commit --no-edit`, a one-middleware write-guard while `MERGE_HEAD` stands, honest abort fallback for non-doc conflicts); and the agent surface: `fragmt agent status · comment · draft` (AXI-style TOON output, `help[]` hints, exit codes 0/1/2) with `--author` identity, the delimited AGENTS.md block on `init` (create/append/refresh, nothing outside the markers), the `agents` config list + UI agent chip. MCP dropped from the plan — the CLI is the agent contract, HTTP stays UI-private. /api/meta performance stays deferred with measurements recorded in BACKLOG.md. Spec: [M4-4](milestones/M4-4-backlog-agent-surface.md); five reviewed subagent batches + docs. 287 tests.
 - **Shipped:** M5 distributables & install — `fragmt@0.5.0` published to npm 2026-08-21 (provenance-attested, GitHub Release with auto notes); `release.yml` publishes on tag push. The live pipeline taught three npm gotchas, all recorded in the spec: `NODE_AUTH_TOKEN` (not a bare `NPM_TOKEN` env var), `publishConfig.access=public` required for a first `--provenance` publish, and 2FA-or-bypass-token required for creating/publishing (the bypass checkbox on the granular token; account mode does not lift it — trusted publishing migration dated January 2027). The tarball smoke test also caught the CLI's direct-invocation guard breaking under symlinked node installs (nvm4w junctions) — fixed with a realpath comparison. Spec: [M5](milestones/M5-distributables-install.md); 294 tests.
-- **Next:** post-v1 roadmap locked in a Lavish round 2026-08-21 (issues #14–#23, index in BACKLOG.md): v1.x = search (#14), link slideout (#15), nested docs repo (#16); then multi-user + PR wiring leads (#20), OKF follows (#21), harness bridge after auth (#22), MCP reconsidered with remote deployment (#23). M6 (dogfood hardening, opening with the Linux/macOS testing pass) closes v1.
+- **Shipped:** search + link slideout — the first backlog-driven round (issues #14 + #15, branch `feat/search-slideout` → v0.6.0). Search: `searchDocs` server-side flat scan (title + body, case-insensitive substring, title-first ordering, ~110-char snippets, cap 50, no index — measure first) behind `GET /api/search?q=`; Ctrl/Cmd+K centered modal (works mid-edit, focus trap + restore, 250ms debounce ≥2 chars, ↑↓ wrap + hover-sync, Enter/click opens through the navigation queue, Shift+Enter/Shift+click previews in the slideout), ⌕ in the brand row. Slideout: the permanent comment rail became a two-mode side pane (55/45 default, 7px drag divider clamped 40–60% persisted via `fragmt.slideoutShare` — the sidebar-geometry pattern in %) — Comments mode preserves the rail, Preview mode is a read-only second EditorPane whose doc links open inside it (dead links get a quiet note); edit-mode link clicks always preview (the buffer never navigates away), Shift+click + the hover-↗ zone (last 18px) preview, promote-to-editor routes through the queue; opening auto-collapses the sidebar once (manual re-expand sticks, close restores only the automatic collapse) and a collapsed topbar (» brand · BranchMenu · Merge · ＋ · ⌕ · LED — same components, second location) keeps the fixed actions reachable; the Escape chain is now modal → popover → slash/@ → bubble → selection → slideout → edit-cancel. Spec: [search & link slideout](milestones/search-and-link-slideout.md). 322 tests (294 → 322).
+- **Next:** nothing scheduled — the plan closed with that round (2026-08-26): milestones retired, the backlog issues are the engine (index in [BACKLOG.md](BACKLOG.md)), M6 dogfooding runs long. See the closing note below.
 
 ## M0 — Environment prep
 
@@ -157,7 +158,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 ## <span data-c="d13d457e-564a-4e9d-9bc5-f5239144f512">M6 — Dogfood hardening</span>
 
-**Goal:** the definition of done, literally exercised. **Proves:** v1 is done. Was M5 until the 2026-08-20 renumber; publish readiness lives in M5 now.
+**Goal:** the definition of done, literally exercised — now as a long-running milestone, not a scheduled one (re-framed 2026-08-26 when milestones were retired): the owner and downloaders test daily, file issues, and the backlog orders what bites; v1 closes with 1.0.0 when it's done, on the existing tag-push pipeline. **Proves:** v1 is done. Was M5 until the 2026-08-20 renumber; publish readiness lives in M5 now.
 
 - [ ] Run fragmt on this repo's own docs daily
 - [ ] Fix whatever bites during daily use
@@ -168,7 +169,7 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 
 | Item | Deferred to |
 | --- | --- |
-| Search UI | v1.x — #14; doc ordering and draft diff view stay "when they hurt" (gutter rung: #18) |
+| Search UI | shipped 2026-08-26 in the first backlog-driven round (#14 → v0.6.0); doc ordering and draft diff view stay "when they hurt" (gutter rung: #18) |
 | PR create/review in UI, auth/multi-user | leads the post-v1 era — #20 |
 | OKF support (init --okf, frontmatter editor, trust stamping) | after multi-user — #21 |
 | Agent-in-UI (harness bridge, client-side agent tools) | after multi-user — #22 |
@@ -182,3 +183,9 @@ Detailed, implementation-exact specs: [M0](milestones/M0-environment-prep.md) ·
 - **Git edge states** (rebase conflicts, dirty tree) → `sync()` never force-pushes, commits before rebasing, conflicts abort + surface.
 - **Out-of-tool edits orphan comment spans** → accepted; orphan display designed in (M4).
 - **Windows paths / line-endings** → author dogfoods on Windows day one.
+
+## Plan closed — 2026-08-26
+
+Milestones are retired. The M0–M5 sections above (with M2-2, M4-2…M4-4) are the fixed record of how v1 got built; M6 stays open as the long-running dogfooding milestone — no scheduled close, 1.0.0 when it's done. From here the engine is the backlog: GitHub issues carrying the `backlog` label, indexed in [BACKLOG.md](BACKLOG.md), specced in [milestones/](milestones/) when picked up, released on the existing tag-push pipeline.
+
+The first backlog-driven PR closed the same day: search (#14) + link slideout (#15) on `feat/search-slideout` → v0.6.0 (spec: [search & link slideout](milestones/search-and-link-slideout.md); 294 → 322 tests). Every later release follows the same shape — round, not milestone.
