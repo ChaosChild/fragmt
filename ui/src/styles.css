@@ -1058,6 +1058,12 @@ body {
 	align-items: flex-start;
 	gap: var(--space-4);
 }
+/* The action bar pins right (testing round 2026-08-26): the buttons end
+   the banner's line regardless of how long the headline runs. */
+.conflict-banner .doc-actions {
+	margin-left: auto;
+	flex-shrink: 0;
+}
 .conflict-banner strong {
 	color: var(--fg);
 	font-weight: 600;
@@ -1088,34 +1094,6 @@ body {
 	width: 6px;
 	height: 6px;
 	box-shadow: none;
-}
-.theme-toggle {
-	background: transparent;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	cursor: pointer;
-	color: var(--muted);
-	width: 32px;
-	height: 32px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-	transition:
-		color var(--motion-fast) var(--ease-standard),
-		border-color var(--motion-fast) var(--ease-standard);
-}
-.theme-toggle:hover {
-	color: var(--accent);
-	border-color: var(--accent);
-}
-.theme-toggle:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-.theme-toggle svg {
-	width: 15px;
-	height: 15px;
 }
 
 .rail-body {

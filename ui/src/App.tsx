@@ -1130,18 +1130,15 @@ export function App() {
 						<span className="brand">fragmt</span>
 						{branchMenu}
 						{mergeBtn}
-						{newDocBtn}
+						{/* The head-control order everywhere (owner, testing
+						    round): search, add, theme — collapse pairs with it
+						    in the sidebar head, expand leads the topbar. The
+						    sync LED lives in the rail head alone (redundant
+						    here). */}
 						{searchBtn}
+						{newDocBtn}
 						<ThemeToggle />
 						<span className="topbar-spacer" />
-						<span
-							className={`sync-indicator${led === "amber" ? " warn" : led === "red" ? " err" : ""}`}
-							role="status"
-							title={ledLabel}
-						>
-							<span className={`led ${led}`} aria-hidden="true" />
-							{ledLabel}
-						</span>
 					</header>
 				)}
 				<div
@@ -1174,10 +1171,11 @@ export function App() {
 								<span className="brand">fragmt</span>
 								<div className="side-head-spacer" />
 								{searchBtn}
-								{/* Moved from the rail head (#15) — the sidebar head is
-								    always reachable, slideout or not. */}
-								<ThemeToggle />
 								{newDocBtn}
+								{/* Moved from the rail head (#15) — the sidebar head is
+							    always reachable, slideout or not. Order per the
+							    testing round: search, add, theme, collapse. */}
+								<ThemeToggle />
 								{/* « collapses the sidebar (#15) — the topbar takes
 								    over while it's away. */}
 								<button
