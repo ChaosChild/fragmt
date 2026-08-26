@@ -164,7 +164,7 @@ export function App() {
 	const [commentFile, setCommentFile] = useState<CommentFile>({
 		comments: {},
 	});
-	// #15, dogfooded 2026-08-26: the pane is the v0.5.0 rail again — always
+	// #15, testing round 2026-08-26: the pane is the v0.5.0 rail again — always
 	// present (316px) with the open doc's threads. railOpen only matters
 	// ≤1180px, where the CSS turns the pane into the bottom sheet; a preview
 	// (previewPath) is what widens it into the draggable split.
@@ -955,7 +955,7 @@ export function App() {
 		};
 	}, [previewPath]);
 
-	// The previewed doc's OWN sidecar (dogfood round): a second fetch, fully
+	// The previewed doc's OWN sidecar (testing round): a second fetch, fully
 	// separate from the main doc's — it feeds nothing but the preview's span
 	// tooltips (the thread summaries), never any reply/resolve UI. A failure
 	// is quiet: unknown ids fall back to the mark's "View comment".
@@ -1004,7 +1004,7 @@ export function App() {
 		setExpandFolder((f) => ({ path, n: (f?.n ?? 0) + 1 }));
 	}
 
-	// Open in main pane (#15, dogfooded): the preview head's promote — fold
+	// Open in main pane (#15, testing round): the preview head's promote — fold
 	// the pane back to the comments rail and hand the previewed doc to the
 	// MAIN pane through the same guarded seam (a dirty buffer parks in the
 	// banner, never a silent drop); the 316px rail then shows the new doc's
@@ -1115,7 +1115,7 @@ export function App() {
 				    topbar carries what its head held — expand, brand, branch,
 				    Merge, new doc, search, theme, sync LED. The fixed actions
 				    (＋ ⌕ ThemeToggle) sit immediately right of Merge; the LED
-				    alone holds the far end (dogfood round, 2026-08-26). */}
+				    alone holds the far end (testing round, 2026-08-26). */}
 				{sidebarCollapsed && (
 					<header className="app-topbar">
 						<button
@@ -1325,7 +1325,7 @@ export function App() {
 							/>
 						)}
 					</main>
-					{/* The right pane (#15, dogfooded): the v0.5.0 comments rail
+					{/* The right pane (#15, testing round): the v0.5.0 comments rail
 					    again — permanent, 316px, the open doc's threads — until a
 					    preview opens and widens it into the split. Hidden in
 					    resolution mode: the doc pane is taken over and its comments
