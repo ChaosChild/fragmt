@@ -57,12 +57,12 @@ markdown and its full git history.
 
 ## Status
 
-**Beta — [`fragmt@0.5.0`](https://www.npmjs.com/package/fragmt) is on npm;
-v0.6.0 (search + link slideout) tags right after that round merges.** The
-full v1 feature set works: editing, the file/folder lifecycle, branches and
-drafting with in-UI merge resolution, comments, the agent CLI. What stands
-between this and 1.0 is M6 — dogfood hardening, a long-running milestone: v1
-closes with 1.0.0 when it's done, not on a schedule.
+**Beta — [`fragmt@0.6.0`](https://www.npmjs.com/package/fragmt) is on npm.**
+The full v1 feature set works: editing, the file/folder lifecycle, branches and
+drafting with in-UI merge resolution, comments, the agent CLI — and, since
+0.6.0, Ctrl+K search and side-by-side link previews. What stands between this
+and 1.0 is M6 — dogfood hardening, a long-running milestone: v1 closes with
+1.0.0 when it's done, not on a schedule.
 
 | Milestone | State |
 | --- | --- |
@@ -76,7 +76,7 @@ closes with 1.0.0 when it's done, not on a schedule.
 | M4-3 — backlog remediation (header file actions, titles, drag & drop, links, gitignore) | shipped |
 | M4-4 — backlog 2 + agent surface (merge resolution in-UI, `fragmt agent` CLI, AGENTS.md) | shipped |
 | M5 — distributables & install (npm publish, GitHub Releases, npx-first) | shipped — v0.5.0 on npm |
-| Search + link slideout (#14, #15) — first backlog round (milestones retired) | shipped — v0.6.0 tags on merge |
+| Search + link slideout (#14, #15) — first backlog round (milestones retired) | shipped — v0.6.0 on npm |
 | M6 — dogfood hardening | long-running — 1.0.0 when it's done |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
