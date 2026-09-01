@@ -20,6 +20,7 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 
 - /api/meta history-walk performance (2026-08-18, M4-2 planning; measured 2026-08-20) – #17
 - npm trusted publishing migration – before January 2027 (2026-08-21, M5 release round) – #19
+- Avatar resolution for plain commit emails – verified GitHub emails can't map to a login without an authors entry; verified-emails rung is the lean (2026-09-01, round-2 testing) – #30
 
 ### Future (post-v2)
 
