@@ -1,4 +1,4 @@
-// M4-4 b3: resolution mode's pure seams (ui/src/resolve.ts — the dnd.ts
+// M4-4 b3: resolution mode's pure seams (ui/src/resolve.ts – the dnd.ts
 // pattern). assembleContent is the one function the hunk cards' preview and
 // the Stage button both render through; sidecarSummaryLine is the sidecar
 // card's one readable line from the b2 mergeSidecars counts.
@@ -7,12 +7,12 @@ import type { ConflictPart, SidecarMergeSummary } from "../ui/src/api.js";
 import { assembleContent, sidecarSummaryLine } from "../ui/src/resolve.js";
 
 describe("assembleContent", () => {
-	test("no conflicts — text passes through verbatim", () => {
+	test("no conflicts – text passes through verbatim", () => {
 		const parts: ConflictPart[] = [{ text: "# doc\n\nbody\n" }];
 		expect(assembleContent(parts, [])).toBe("# doc\n\nbody\n");
 	});
 
-	test("one hunk — ours, theirs, and an edited pick", () => {
+	test("one hunk – ours, theirs, and an edited pick", () => {
 		const parts: ConflictPart[] = [
 			{ text: "# t\n\n" },
 			{ ours: "main line\n", theirs: "draft line\n" },
@@ -29,7 +29,7 @@ describe("assembleContent", () => {
 		);
 	});
 
-	test("several hunks — picks apply in order", () => {
+	test("several hunks – picks apply in order", () => {
 		const parts: ConflictPart[] = [
 			{ ours: "a\n", theirs: "A\n" },
 			{ text: "mid\n" },

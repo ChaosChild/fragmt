@@ -18,9 +18,9 @@ const LinkIcon = <Link aria-hidden="true" />;
 
 /**
  * The contextual surface (M2-2 formatting, M4 comment). Selection or image
- * click; right-click (no selection needed — turn-into then applies to the
+ * click; right-click (no selection needed – turn-into then applies to the
  * cursor's block) stays edit-only. Read mode mounts the SAME bubble with only
- * the Comment action (M4 review decision 1) — the anchoring flow runs on the
+ * the Comment action (M4 review decision 1) – the anchoring flow runs on the
  * non-editable instance and never flips the mode. Right-click replaces the
  * browser's native context menu inside the edit area only; Ctrl+V and
  * friends are unaffected.
@@ -91,7 +91,7 @@ export function BubbleToolbar({
 		}
 	}, [editor]);
 
-	// Escape while the bubble is visible closes the bubble — never edit mode.
+	// Escape while the bubble is visible closes the bubble – never edit mode.
 	// Capture phase, so PM and the pane's Escape handler can't cancel editing
 	// underneath an open surface (the Escape order contract's bubble leg).
 	useEffect(() => {
@@ -205,7 +205,7 @@ function BubbleBody({
 	// surface; popover panes stay open until submitted or cancelled.
 	const linkInputRef = useRef<HTMLInputElement>(null);
 	const commentRef = useRef<HTMLTextAreaElement>(null);
-	// The composer's anchor: the selection captured when the pane opened —
+	// The composer's anchor: the selection captured when the pane opened –
 	// focusing the textarea must not be able to move what a comment marks.
 	const [anchor, setAnchor] = useState<{
 		from: number;
@@ -263,7 +263,7 @@ function BubbleBody({
 	);
 
 	// The comment action (M4 review decision 1): opens the composer on the
-	// selection captured at click — the mark and the quote snapshot both come
+	// selection captured at click – the mark and the quote snapshot both come
 	// from that stored range, so focusing the textarea cannot drift them.
 	// Hidden without a selection: a forced (right-click) bubble can sit on a
 	// bare caret, and there is nothing to anchor there.
@@ -294,9 +294,9 @@ function BubbleBody({
 
 	// Anchoring (M4 spec's contract): apply the mark locally with a fresh
 	// UUID, then hand the persistence of BOTH ends to DocView (doc first,
-	// sidecar second — its business). Commands dispatch through
+	// sidecar second – its business). Commands dispatch through
 	// view.dispatch, which is NOT gated by editable (read-mode setContent
-	// already relies on that), so the same chain works in both modes — the
+	// already relies on that), so the same chain works in both modes – the
 	// mode never flips. Collapsing to the range end hides the bubble.
 	const submitComment = () => {
 		const body = commentRef.current?.value.trim();

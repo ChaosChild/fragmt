@@ -13,14 +13,14 @@ import { canonicalBody, DocNotFoundError, resolveDocPath } from "./docs.js";
 import { git } from "./git.js";
 import { localUser } from "./identity.js";
 
-/** Target path already exists — the server maps this to 409. */
+/** Target path already exists – the server maps this to 409. */
 export class PathExistsError extends Error {}
 
 /**
  * Worktree mutations here are fs-level (writeFileSync/renameSync/rmSync), not
  * `git mv`/`git rm`: commitAs stages with `git add -- <files>` and commits with
  * a pathspec-limited `git commit -- <files>`, and `git add` fails outright on a
- * path `git rm`/`git mv` already dropped from the index — while after a plain
+ * path `git rm`/`git mv` already dropped from the index – while after a plain
  * fs removal the index entry is still there, so `git add` stages the deletion
  * and the pathspec commit records it. Same result either way: one commit per
  * op, R100 renames, `git log --follow` intact. As in writeDoc, the identity is
@@ -28,12 +28,12 @@ export class PathExistsError extends Error {}
  * untouched.
  */
 
-/** Repo-root-relative POSIX path — the shape commitAs stages and commits. */
+/** Repo-root-relative POSIX path – the shape commitAs stages and commits. */
 function repoRel(repoRoot: string, abs: string): string {
 	return relative(repoRoot, abs).split(sep).join("/");
 }
 
-/** Unwind a failed move: the fs rename back, plus unstaging — `git add`
+/** Unwind a failed move: the fs rename back, plus unstaging – `git add`
  *  stages what it can before refusing an ignored path, so the source
  *  deletion would otherwise sit in the index (a keep-`.gitkeep` staged in
  *  the same failed commit unwinds the same way). Best-effort: never masks
@@ -61,7 +61,7 @@ async function rollbackMove(
 
 /**
  * M4-4 dogfood round: when a move empties a folder of its last markdown, the
- * M1 prune rule would drop it from every tree-derived surface — including as
+ * M1 prune rule would drop it from every tree-derived surface – including as
  * a drop target, so the move could not be undone in the UI (the 2026-08-20
  * corpus.md dogfood: tests/fixtures vanished mid-drag-back). Same contract
  * as createFolder: a committed `.gitkeep` keeps the folder visible. Returns
@@ -106,7 +106,7 @@ export async function createDoc(
 
 /** Move/rename a doc in one commit; both ends pass the containment guard.
  *  The rename happens before the commit (the M3 seam needs the fs move), so
- *  a failed commit rolls the rename back — the doc is never stranded at its
+ *  a failed commit rolls the rename back – the doc is never stranded at its
  *  destination with no commit recording the move. */
 export async function moveDoc(
 	repoRoot: string,
@@ -166,7 +166,7 @@ export async function deleteDoc(
 }
 
 /**
- * Create a folder as a committed `.gitkeep` — git tracks no empty directories,
+ * Create a folder as a committed `.gitkeep` – git tracks no empty directories,
  * and as a dotfile `.gitkeep` never shows in the M1 tree (a folder holding .md
  * files needs none, but keeping it costs nothing and survives the last doc
  * moving away).
@@ -195,7 +195,7 @@ export async function createFolder(
 /**
  * Rename a folder in one commit: a single renameSync moves the whole directory,
  * so no doc inside can be orphaned, and commitAs records the old and new trees
- * together. (`git mv <dir>` stages a move the commitAs seam cannot express —
+ * together. (`git mv <dir>` stages a move the commitAs seam cannot express –
  * see the note atop this file.)
  */
 export async function renameFolder(
@@ -229,7 +229,7 @@ export async function renameFolder(
 		);
 		return { sha };
 	} catch (e) {
-		// Same rollback as moveDoc — the subtree returns untouched.
+		// Same rollback as moveDoc – the subtree returns untouched.
 		await rollbackMove(repoRoot, fromAbs, toAbs, keep ? [keep] : []);
 		if (keep) rmSync(join(dirname(fromAbs), ".gitkeep"), { force: true });
 		throw e;
@@ -238,7 +238,7 @@ export async function renameFolder(
 
 /**
  * Delete a folder and everything under it in one commit (the fs-level
- * equivalent of `git rm -r` — see the note atop this file). Missing folder →
+ * equivalent of `git rm -r` – see the note atop this file). Missing folder →
  * DocNotFoundError (server: 404).
  */
 export async function deleteFolder(

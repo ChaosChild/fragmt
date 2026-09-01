@@ -4,7 +4,7 @@ import { commitAs } from "./commit.js";
 import { canonicalBody, prepareDocWrite, resolveDocPath } from "./docs.js";
 import { localUser } from "./identity.js";
 
-/** No such comment thread in the sidecar — the server maps this to 404. */
+/** No such comment thread in the sidecar – the server maps this to 404. */
 export class ThreadNotFoundError extends Error {}
 
 export interface CommentThread {
@@ -24,7 +24,7 @@ export type CommentFile = { comments: Record<string, CommentThread> };
 
 /** Where a doc's comment threads live: `<repoRoot>/.docs/comments/<docPath>.json`. */
 export function sidecarPath(repoRoot: string, docPath: string): string {
-	// The sidecar lives under .docs/, OUTSIDE docsRoot — but containment is
+	// The sidecar lives under .docs/, OUTSIDE docsRoot – but containment is
 	// base-relative, so the shared resolveDocPath guard applies unchanged by
 	// passing the sidecar root as the "docsRoot" (kind "folder": the path ends
 	// in .md.json, not .md; traversal rules are identical). One guard, no
@@ -47,13 +47,13 @@ export async function readComments(
 	return JSON.parse(readFileSync(abs, "utf8")) as CommentFile;
 }
 
-/** Repo-root-relative POSIX path — the shape commitAs stages and commits. */
+/** Repo-root-relative POSIX path – the shape commitAs stages and commits. */
 function repoRel(repoRoot: string, abs: string): string {
 	return relative(repoRoot, abs).split(sep).join("/");
 }
 
 /**
- * Serialize a sidecar to disk (no commit) — the write half of writeComments,
+ * Serialize a sidecar to disk (no commit) – the write half of writeComments,
  * shared by the combined doc+sidecar ops so their ONE commit covers both
  * files. JSON.stringify keeps object key order stable across
  * read-modify-write, so diffs touch only what changed; tab indent + one
@@ -143,7 +143,7 @@ export async function addReply(
 	return writeComments(repoRoot, docPath, file, user);
 }
 
-/** Set a thread's resolved flag in one commit (the span stays — resolve ≠ delete). */
+/** Set a thread's resolved flag in one commit (the span stays – resolve ≠ delete). */
 export async function setResolved(
 	repoRoot: string,
 	docPath: string,
@@ -173,7 +173,7 @@ export async function deleteThread(
 /**
  * Remove a thread's `<span data-c="id">` and its matching `</span>` from a
  * doc body, keeping the inner text (pure). Linear indexOf walk to the next
- * close tag — comment marks never nest, so the first `</span>` after the
+ * close tag – comment marks never nest, so the first `</span>` after the
  * open tag is the match. An unknown id (or an unbalanced span) returns the
  * body unchanged.
  */
@@ -192,7 +192,7 @@ export function stripCommentSpan(body: string, id: string): string {
 
 /**
  * Create a thread AND write the doc body carrying its span in ONE commit
- * (message `Comment on <docPath>`) — the M4-2 anchoring contract. The full
+ * (message `Comment on <docPath>`) – the M4-2 anchoring contract. The full
  * writeDoc discipline via the shared prepareDocWrite: identity resolved and
  * the stale-hash check on `baseHash` done BEFORE any disk write, frontmatter
  * reattached byte-for-byte, body LF-canonical. Author comes from the same
@@ -272,7 +272,7 @@ export async function deleteThreadWithDoc(
  * The orphan rule (pure): a sidecar thread is live iff its id appears as a
  * `data-c="<id>"` span in the doc markdown; absent → orphaned (the quote
  * snapshot keeps it readable). Ids are UUIDs, so a plain substring scan is
- * safe — no user text ever reaches the needle.
+ * safe – no user text ever reaches the needle.
  */
 export function reconcileThreads(
 	docMarkdown: string,

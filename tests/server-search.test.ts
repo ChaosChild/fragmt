@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { createApp, startServer } from "../src/server/index.js";
 
-// The /api/search surface (#14) — same harness as server-m3.test.ts: a real
+// The /api/search surface (#14) – same harness as server-m3.test.ts: a real
 // git repo behind the app.
 
 let root: string;

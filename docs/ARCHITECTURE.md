@@ -1,14 +1,14 @@
 # Architecture
 
-Git-native documentation environment with Notion-style *editing UX* — explicitly **not** a Notion clone, and not a CMS (see positioning in REQUIREMENTS.md; nearest relative is Wiki.js, differentiated by being agentic-ready from the ground up). GitHub repos are the storage backend — no hosted database, no server-side storage. Working title: TBD.
+Git-native documentation environment with Notion-style *editing UX* – explicitly **not** a Notion clone, and not a CMS (see positioning in REQUIREMENTS.md; nearest relative is Wiki.js, differentiated by being agentic-ready from the ground up). GitHub repos are the storage backend – no hosted database, no server-side storage. Working title: TBD.
 
 ## Core decisions
 
 ### 1. Markdown is the canonical storage format
 
 - Docs are plain CommonMark + YAML frontmatter, readable and renderable on GitHub, editable by any tool (vim, agents, Obsidian).
-- ProseMirror JSON is the **editor's runtime model only** — never persisted.
-- Rationale: storing editor JSON would kill readable diffs, `git blame`, PR review, and GitHub-native rendering — the entire point of using GitHub as the backend.
+- ProseMirror JSON is the **editor's runtime model only** – never persisted.
+- Rationale: storing editor JSON would kill readable diffs, `git blame`, PR review, and GitHub-native rendering – the entire point of using GitHub as the backend.
 - Folder structure = navigation tree. A repo-level config file (e.g. `.fragmt.json`) holds ordering/metadata that folders can't express.
 
 ### 2. Comments
@@ -17,8 +17,8 @@ Two types, two mechanisms:
 
 **Inline comments (self-notes, lightweight annotations):**
 
-- Anchoring: a ProseMirror **mark** carrying only an ID, serialized into the markdown as a minimal inline wrapper (e.g. `<span data-c="abc123">text</span>`). Marks travel with text through edits via ProseMirror position mapping — same mechanism Notion/Linear use.
-- Thread content (author, body, replies, resolved) lives in a sidecar file per doc: `.docs/comments/<doc-path>.json`, keyed by mark ID. Committed like any other change — versioned, syncable, multi-user-safe, readable by MCP/CLI for free.
+- Anchoring: a ProseMirror **mark** carrying only an ID, serialized into the markdown as a minimal inline wrapper (e.g. `<span data-c="abc123">text</span>`). Marks travel with text through edits via ProseMirror position mapping – same mechanism Notion/Linear use.
+- Thread content (author, body, replies, resolved) lives in a sidecar file per doc: `.docs/comments/<doc-path>.json`, keyed by mark ID. Committed like any other change – versioned, syncable, multi-user-safe, readable by MCP/CLI for free.
 - Snapshot the quoted text once at creation (in the sidecar) purely for orphan display, not anchoring.
 - Known limit: edits outside the editor can delete the span → comment orphans. Degradation: show orphan thread + quote snapshot + git history. Agents editing via our CLI/MCP are instructed to preserve spans.
 
@@ -44,8 +44,8 @@ Two types, two mechanisms:
 
 - Every mutation flows through one function shaped like `commitAs(user, change)`.
   - v1: `user` from local git config; auth middleware is a no-op.
-  - v2: `user` from GitHub OAuth session (Device Flow — no hosted callback needed). Commit with author = user, committer = app (how GitHub's own web editor attributes edits).
-- Web UI talks to the server **over HTTP API only** — never assumes localhost, never touches the filesystem. Same binary serves localhost (v1) and a cloud box (v2).
+  - v2: `user` from GitHub OAuth session (Device Flow – no hosted callback needed). Commit with author = user, committer = app (how GitHub's own web editor attributes edits).
+- Web UI talks to the server **over HTTP API only** – never assumes localhost, never touches the filesystem. Same binary serves localhost (v1) and a cloud box (v2).
 - No users table, no roles: **GitHub repo collaborator permissions are the authorization system.** Push access = edit access.
 
 ### 6. One core library, thin heads
@@ -62,14 +62,14 @@ The MCP server is nearly free once core exists. Because everything is markdown i
 ### 7. Editor
 
 - **Decision: Tiptap** + a custom comment mark (\~35 lines: parseHTML `span[data-c]`, renderHTML keeps `data-c`) + `tiptap-markdown` (`html: true`).
-- BlockNote was rejected: it round-trips general content fine but strips `<span data-c>` comment spans on markdown export — disqualifying, since comments must live inline in canonical markdown (see §2).
-- Evidence: round-trip spike against a full markdown corpus — see `docs/SPIKE.md`.
+- BlockNote was rejected: it round-trips general content fine but strips `<span data-c>` comment spans on markdown export – disqualifying, since comments must live inline in canonical markdown (see §2).
+- Evidence: round-trip spike against a full markdown corpus – see `docs/SPIKE.md`.
 - Caveats carried forward: YAML frontmatter must be stripped before parse and reattached after (neither editor round-trips it); GFM table column alignment is lost in both editors and accepted for now; headless Tiptap in Node needs a DOM shim (`happy-dom`); StarterKit needs `@tiptap/extension-list`, `-table`, and `-image` added for full GFM coverage.
 
 ## Non-goals
 
 - Notion **databases** (tables-as-DB, kanban, relations, rollups). This is where open-source Notion replicas die. We are docs + drafts + comments, git-native, agent-native.
-- Real-time collaborative cursors (CRDT/Yjs) — branches are the collaboration model.
+- Real-time collaborative cursors (CRDT/Yjs) – branches are the collaboration model.
 - Storing anything server-side that isn't in the repo.
 
 ## v1 → v2 path

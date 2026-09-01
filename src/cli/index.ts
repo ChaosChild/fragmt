@@ -8,7 +8,7 @@ import { runAgent } from "./agent.js";
 
 /** Top-level usage text. Exported so tests can assert on it. */
 export const usage = `\
-fragmt — git-native documentation environment
+fragmt – git-native documentation environment
 
 Usage:
   fragmt init [--root <path>]
@@ -27,7 +27,7 @@ Commands:
 /** Parse argv and dispatch. Exits the process. */
 export async function main(argv: string[]): Promise<void> {
 	// The agent namespace carries its own strict flag set (thread/body/…), so
-	// it parses itself — main's parseArgs only knows the operator flags.
+	// it parses itself – main's parseArgs only knows the operator flags.
 	if (argv[0] === "agent") {
 		const repoRoot = resolveRepoRoot("agent");
 		process.exit(await runAgent(argv.slice(1), repoRoot));
@@ -121,7 +121,7 @@ async function runServe(portFlag: string | undefined): Promise<void> {
 }
 
 // Compare realpaths: ESM resolves import.meta.url through symlinks, while
-// argv[1] arrives as the invoked path — nvm4w-style junctions make the raw
+// argv[1] arrives as the invoked path – nvm4w-style junctions make the raw
 // URL comparison fail, silently skipping main().
 const invokedDirectly = (() => {
 	try {

@@ -6,7 +6,7 @@ import {
 	parseConflicts,
 } from "../src/core/conflict.js";
 
-// parseConflicts — pure marker splitting (M4-4 b2). The load-bearing contract
+// parseConflicts – pure marker splitting (M4-4 b2). The load-bearing contract
 // beyond shape: parts keep their line newlines, so reassembling with a side
 // chosen per hunk reproduces a well-formed file minus the marker lines.
 
@@ -85,7 +85,7 @@ test("malformed markers throw ConflictParseError", () => {
 	).toThrow(ConflictParseError);
 });
 
-// mergeSidecars — the approved survival rules (Q4), one per row.
+// mergeSidecars – the approved survival rules (Q4), one per row.
 
 const open = { author: "Seed", body: "open", at: "2026-01-01T00:00:00.000Z" };
 const thread = (

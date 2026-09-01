@@ -1,6 +1,6 @@
 /**
  * Link-click resolution: what a click on an anchor in the document should do.
- * Pure — the tree's known paths decide everything; both read mode
+ * Pure – the tree's known paths decide everything; both read mode
  * (EditorPane's onClick) and edit mode (Ctrl/Cmd+click) route through this one
  * helper. Extended M4-3 b6 from the doc-only set to the full dispatch:
  *
@@ -16,11 +16,11 @@
  * | dir-joined reading escapes docsRoot (".." past root)  | default (unchanged)      |
  * |   or normalizes to "" ("." / "./" / "/")              |                          |
  * | nothing matched and the candidate ends .md            | dead {href}              |
- * |   (case-insensitive — dead .md must not fall to raw)  |                          |
+ * |   (case-insensitive – dead .md must not fall to raw)  |                          |
  * | any other relative href                               | raw {path} → /api/raw/   |
  *
  * Fragments decode like the body; the anchor rides along as-authored (already
- * slug-shaped by convention — GitHub writes #hello-world, we assign the same
+ * slug-shaped by convention – GitHub writes #hello-world, we assign the same
  * slugs to headings), never re-slugified.
  */
 
@@ -56,13 +56,13 @@ function decode(value: string): string {
 	try {
 		return decodeURIComponent(value);
 	} catch {
-		return value; // malformed % sequence — resolve the raw text
+		return value; // malformed % sequence – resolve the raw text
 	}
 }
 
 /**
  * Resolve one anchor href against the current doc. `knownDocs`/`knownFolders`
- * are the tree's paths (folders exclude the "" root — a link to the docsRoot
+ * are the tree's paths (folders exclude the "" root – a link to the docsRoot
  * itself has no in-app destination and stays default).
  */
 export function resolveLinkTarget(
@@ -125,7 +125,7 @@ export function resolveLinkTarget(
  * The heading-id slug (M4-3 b6): lowercase, keep Unicode letters/digits plus
  * hyphens and spaces, strip other punctuation, collapse whitespace/separator
  * runs to a single "-", trim edges. Empty → "section"; duplicates get -1, -2…
- * suffixes (counter unbounded — noted ponytail ceiling). GitHub-gfm-compatible
+ * suffixes (counter unbounded – noted ponytail ceiling). GitHub-gfm-compatible
  * for the ASCII common case: "Hello, World!" → "hello-world".
  */
 export function slugifyHeading(text: string, seen: Set<string>): string {

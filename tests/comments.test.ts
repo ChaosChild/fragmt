@@ -78,7 +78,7 @@ const lastCommitFiles = (root: string) =>
 
 /**
  * A doc on disk + a raw-git seed commit, independent of the code under test.
- * Returns the canonical base hash the writeDoc contract hashes — of the BODY
+ * Returns the canonical base hash the writeDoc contract hashes – of the BODY
  * (frontmatter stripped), the same split readDoc performs.
  */
 function seedDoc(root: string, docPath: string, body: string): string {
@@ -362,7 +362,7 @@ test("reply/resolve/delete on a missing thread throw ThreadNotFoundError", async
 		ThreadNotFoundError,
 	);
 
-	expect(count(root)).toBe(2); // seed + seedDoc — nothing since
+	expect(count(root)).toBe(2); // seed + seedDoc – nothing since
 });
 
 test("reconcileThreads: live iff the data-c span is present (mixed case)", () => {
@@ -382,7 +382,7 @@ test("reconcileThreads: live iff the data-c span is present (mixed case)", () =>
 		},
 	};
 
-	// Two live (resolved counts as live — resolve ≠ delete), one orphaned.
+	// Two live (resolved counts as live – resolve ≠ delete), one orphaned.
 	const doc =
 		'a <span data-c="live-1">x</span> b <span data-c="live-2">y</span>';
 	const { live, orphaned } = reconcileThreads(doc, file);

@@ -5,16 +5,16 @@ import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
 /**
  * The @ reference menu (M4-2 item 5): typing "@" queries the tree's docs
  * (title + docsRoot-relative path) and Enter applies StarterKit's link mark
- * (href = the path verbatim — the form links in docs use, e.g. docs/PLAN.md).
+ * (href = the path verbatim – the form links in docs use, e.g. docs/PLAN.md).
  * Mirrors slash.ts: the extension owns trigger/query/exit and hands the menu
  * state to callbacks, so the React surface lives in the UI and headless
  * builds stay React-free. `docs` is a getter (not an array) so the list
  * stays live across tree refreshes without remounting the editor.
  */
 export interface AtDoc {
-	/** Display title — the file name without .md. */
+	/** Display title – the file name without .md. */
 	title: string;
-	/** docsRoot-relative path — the link href, used verbatim. */
+	/** docsRoot-relative path – the link href, used verbatim. */
 	path: string;
 }
 
@@ -50,7 +50,7 @@ export function applyAtReference(
 	doc: AtDoc,
 ): void {
 	// insertContentAt (not insertContent): the position-explicit form
-	// Suggestion's range implies — the chain's selection may sit elsewhere.
+	// Suggestion's range implies – the chain's selection may sit elsewhere.
 	editor
 		.chain()
 		.focus()

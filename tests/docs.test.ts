@@ -65,12 +65,12 @@ test.each([
 
 test("readDoc maps a missing doc to a thrown error (not a fs crash)", () => {
 	writeFileSync(join(root, "a.md"), "# a");
-	// Valid path shape, but the file is absent — readDoc must throw, not resolve
+	// Valid path shape, but the file is absent – readDoc must throw, not resolve
 	// to an unrelated location.
 	expect(() => readDoc(root, ".", "missing.md")).toThrow();
 });
 
-// --- setTitle (M4-3 b4): the display-name write — path never changes ------
+// --- setTitle (M4-3 b4): the display-name write – path never changes ------
 
 const AUTHOR = "Docs Test|docs@example.com";
 const gitDirs: string[] = [];

@@ -7,7 +7,7 @@ import { localUser } from "./identity.js";
 
 export class DocPathError extends Error {}
 export class DocNotFoundError extends Error {}
-/** Base-hash mismatch — the file changed between load and save. */
+/** Base-hash mismatch – the file changed between load and save. */
 export class StaleDocError extends Error {}
 
 /** sha256 hex of a doc body. Shared by the readDoc response and writeDoc check. */
@@ -19,7 +19,7 @@ export function docHash(markdown: string): string {
  * The canonical body shape readDoc returns and writeDoc compares against:
  * LF endings, no leading newlines, exactly one trailing newline (empty stays
  * empty). The editor drops leading blank lines on parse, so keeping them in
- * the served body would make every first save rewrite the fence boundary —
+ * the served body would make every first save rewrite the fence boundary –
  * normalizing on both sides keeps the hash contract stable and the diff
  * minimal.
  */
@@ -42,7 +42,7 @@ export interface Doc {
 /**
  * Resolve a docsRoot-relative path and enforce it stays under docsRoot and
  * (for docs) ends with .md. Shared by readDoc (M1), writeDoc (M2), and the
- * files.ts ops (M3). Trust boundary — the server maps violations to 400.
+ * files.ts ops (M3). Trust boundary – the server maps violations to 400.
  * Folder ops pass kind "folder" and the raw-file route passes kind "raw"
  * (M4-3 b6) to allow a path without the .md extension; the traversal rules
  * are identical for all kinds.
@@ -77,7 +77,7 @@ export function readDoc(
 		throw new DocNotFoundError(docPath);
 	}
 	// gray-matter caches parses by content, and the cached copy drops the
-	// non-enumerable `matter` field — any options object bypasses the cache.
+	// non-enumerable `matter` field – any options object bypasses the cache.
 	// Without this, a second read of the same doc loses its raw frontmatter.
 	const parsed = matter(readFileSync(abs, "utf8"), {});
 	return {
@@ -94,7 +94,7 @@ export interface DocWritePrep {
 	user: { name: string; email: string };
 	/** The current file's body, canonicalized (the string `baseHash` hashed). */
 	current: string;
-	/** Final file bytes for a normalized body — raw frontmatter reattached byte-for-byte. */
+	/** Final file bytes for a normalized body – raw frontmatter reattached byte-for-byte. */
 	raw: (normalized: string) => string;
 }
 
@@ -105,7 +105,7 @@ export interface DocWritePrep {
  * (a missing identity leaves the working tree untouched), stale check, and a
  * `raw` that reattaches the CURRENT file's frontmatter + fence gap
  * byte-for-byte (never re-serialize the YAML). Throws DocPathError,
- * DocNotFoundError, GitIdentityError, or StaleDocError — all before disk.
+ * DocNotFoundError, GitIdentityError, or StaleDocError – all before disk.
  */
 export async function prepareDocWrite(
 	repoRoot: string,
@@ -124,7 +124,7 @@ export async function prepareDocWrite(
 		throw new StaleDocError(`doc changed since load: ${docPath}`);
 	}
 	// Keep the whitespace between the fence and the body byte-for-byte from
-	// the current file — dropping it puts the fence itself into the diff.
+	// the current file – dropping it puts the fence itself into the diff.
 	const gap = parsed.matter ? (parsed.content.match(/^\n+/)?.[0] ?? "") : "";
 	return {
 		abs,
@@ -140,12 +140,12 @@ export async function prepareDocWrite(
 /**
  * Save a doc body and commit it. Steps, per the M2 spec:
  * 1. traversal guard (shared with readDoc);
- * 2. git identity present — checked before anything is written, so a missing
+ * 2. git identity present – checked before anything is written, so a missing
  *    identity leaves the working tree untouched (spec checks it at commit time;
  *    checking first just avoids stranding a half-written save);
- * 3. stale check — sha256 of the current body must equal `baseHash`;
+ * 3. stale check – sha256 of the current body must equal `baseHash`;
  * 4. reattach the CURRENT file's raw frontmatter byte-for-byte (never
- *    re-serialize the YAML — the diff must not touch what wasn't edited);
+ *    re-serialize the YAML – the diff must not touch what wasn't edited);
  * 5. write LF, exactly one trailing newline, fence-to-body gap preserved;
  * 6. commit through the `commitAs` seam.
  */
@@ -174,14 +174,14 @@ export async function writeDoc(
 }
 
 /**
- * Set/overwrite the frontmatter `title` — the display-name model (M4-3 b4).
+ * Set/overwrite the frontmatter `title` – the display-name model (M4-3 b4).
  * The FILE PATH NEVER CHANGES, so every existing link keeps resolving; the
  * name decouples from the filename. The raw YAML is edited line-wise, never
  * re-serialized: a top-level `title:` line is replaced in place (position
  * kept), an absent one appends at the fence's end, and every other key keeps
  * its bytes. The body reattaches through the writeDoc discipline (LF, one
  * trailing newline, fence gap preserved) and the write follows the same
- * order: traversal, existence, git identity — all before any disk write.
+ * order: traversal, existence, git identity – all before any disk write.
  * One commit: `Rename <docPath> to <title>`.
  */
 export async function setTitle(
@@ -203,7 +203,7 @@ export async function setTitle(
 	// and hashes in the title round-trip through gray-matter verbatim.
 	const line = `title: ${JSON.stringify(value)}`;
 	// gray-matter's `matter` runs from just after the opening fence to just
-	// before the "\n---" closer — writeDoc's `---${matter}\n---` reattach is
+	// before the "\n---" closer – writeDoc's `---${matter}\n---` reattach is
 	// byte-exact, and the line edit keeps that shape.
 	const gap = parsed.content.match(/^\n+/)?.[0] ?? "";
 	const front = parsed.matter

@@ -68,7 +68,7 @@ function treePaths(node: ReturnType<typeof listTree>): string[] {
 	return [...self, ...(node.children ?? []).flatMap(treePaths)];
 }
 
-/** Every folder path in the tree — the drop-target surface. */
+/** Every folder path in the tree – the drop-target surface. */
 function folderPaths(node: ReturnType<typeof listTree>): string[] {
 	const self = node.type === "dir" && node.path !== "" ? [node.path] : [];
 	return [...self, ...(node.children ?? []).flatMap(folderPaths)];
@@ -114,13 +114,13 @@ test("moveDoc is one commit; content and history follow the rename", async () =>
 	);
 });
 
-test("moveDoc empties the source folder — a .gitkeep keeps it visible and droppable", async () => {
+test("moveDoc empties the source folder – a .gitkeep keeps it visible and droppable", async () => {
 	const root = repo();
 	seed(root);
 	await createDoc(root, ".", "docs/a.md", "# A\n");
 
 	// The 2026-08-20 dogfood: moving the last doc out made tests/fixtures
-	// vanish from every tree surface — no drop target to undo with.
+	// vanish from every tree surface – no drop target to undo with.
 	await moveDoc(root, ".", "docs/a.md", "b.md");
 
 	expect(count(root)).toBe(3); // still ONE commit for the whole move
@@ -129,7 +129,7 @@ test("moveDoc empties the source folder — a .gitkeep keeps it visible and drop
 	expect(run(root, ["show", "--name-only", "--format=", "HEAD"])).toContain(
 		"docs/.gitkeep",
 	);
-	// The folder stays in the tree — a visible, droppable undo target.
+	// The folder stays in the tree – a visible, droppable undo target.
 	expect(folderPaths(listTree(root, "."))).toContain("docs");
 	expect(treePaths(listTree(root, "."))).toEqual(["b.md", "seed.md"]);
 });
@@ -154,7 +154,7 @@ test("renameFolder keeps the emptied parent visible the same way", async () => {
 	await createFolder(root, ".", "docs/a/inner");
 	await createDoc(root, ".", "docs/a/inner/only.md", "# Only\n");
 
-	// Moving the folder away empties docs/a — its keep lands in the same
+	// Moving the folder away empties docs/a – its keep lands in the same
 	// commit, and docs/a stays in the tree.
 	await renameFolder(root, ".", "docs/a/inner", "b/inner");
 
@@ -277,7 +277,7 @@ test("folder ops: existing target → PathExistsError, missing folder → DocNot
 test("moves roll back when the commit fails (ignored destination)", async () => {
 	const root = repo();
 	seed(root);
-	// A destination git refuses to stage — `git add` errors on ignored
+	// A destination git refuses to stage – `git add` errors on ignored
 	// paths, so commitAs throws AFTER the fs rename (the M4-3 dogfood
 	// stranded-file bug: the rename must unwind, not strand).
 	writeFileSync(join(root, ".gitignore"), "ignored/\n");

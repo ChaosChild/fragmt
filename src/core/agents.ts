@@ -1,19 +1,19 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** The managed block's fences (v1 — a future copy bump moves the version). */
+/** The managed block's fences (v1 – a future copy bump moves the version). */
 export const AGENTS_BEGIN = "<!-- fragmt:begin v1 -->";
 export const AGENTS_END = "<!-- fragmt:end -->";
 
 /** The agent rules (M4-4 b5, approved copy): protected main, tool-owned
  *  sidecars, always --author, state via `fragmt agent status`. */
-export const AGENTS_BODY = `## fragmt — docs environment for this repo
+export const AGENTS_BODY = `## fragmt – docs environment for this repo
 These docs are maintained through fragmt (git-native drafting).
 Rules for agents:
-- NEVER edit docs on main directly — main is protected. Run \`fragmt agent draft <doc>\` first; merge when done.
-- NEVER hand-edit \`.docs/comments/*.json\` sidecars — use \`fragmt agent comment\`.
+- NEVER edit docs on main directly – main is protected. Run \`fragmt agent draft <doc>\` first; merge when done.
+- NEVER hand-edit \`.docs/comments/*.json\` sidecars – use \`fragmt agent comment\`.
 - ALWAYS pass \`--author "Your Name <you@example.invalid>"\` so your work is attributable.
-- State check: \`fragmt agent status\`. Doc bodies are plain markdown — read them directly.
+- State check: \`fragmt agent status\`. Doc bodies are plain markdown – read them directly.
 - New anchored comment threads are a UI act (they need a text selection); reply and resolve via the CLI.
 `;
 
@@ -22,7 +22,7 @@ Rules for agents:
  * create it holding only the block; file without the markers → append the
  * block after a blank line; markers present → replace exactly between them
  * (a re-run of `fragmt init` refreshes to the current copy). NOTHING
- * outside the markers is ever touched — the rest of the file belongs to
+ * outside the markers is ever touched – the rest of the file belongs to
  * the repo.
  */
 export function writeAgentsBlock(repoRoot: string): void {

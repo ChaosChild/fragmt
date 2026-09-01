@@ -18,7 +18,7 @@ export function readStoredSidebarWidth(): number | null {
 	return clampSidebarWidth(n);
 }
 
-/** Persist the sidebar width (pointerup — one write per drag, not per move). */
+/** Persist the sidebar width (pointerup – one write per drag, not per move). */
 export function storeSidebarWidth(width: number): void {
 	localStorage.setItem(SIDEBAR_W_KEY, String(width));
 }

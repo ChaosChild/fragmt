@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { createApp, startServer } from "../src/server/index.js";
 
-// PUT /api/docs/* — the write path. Needs a real git repo with an identity,
+// PUT /api/docs/* – the write path. Needs a real git repo with an identity,
 // unlike the read-only tests in server.test.ts.
 
 let root: string;

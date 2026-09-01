@@ -146,7 +146,7 @@ test("title: frontmatter title extracted in the snippet read; absent/non-string 
 	const meta = await repoMeta(root, "docs");
 	expect(meta.docs["titled.md"].title).toBe("The Doc");
 	expect(meta.docs["plain.md"].title).toBeNull();
-	// A non-string title is "no title" — the file name is the display name.
+	// A non-string title is "no title" – the file name is the display name.
 	expect(meta.docs["numeric.md"].title).toBeNull();
 });
 
@@ -159,7 +159,7 @@ test("mainBranch: master falls back, main preferred when both exist", async () =
 	expect(await mainBranch(root)).toBe("main");
 });
 
-test("null main: no draft model — drafts empty, HEAD walks still run", async () => {
+test("null main: no draft model – drafts empty, HEAD walks still run", async () => {
 	const root = repo("trunk");
 	write(root, "docs/only.md", "# only\n");
 	commit(root, "A <a@example.com>", "seed");
@@ -226,7 +226,7 @@ test("authors: the config map verbatim in RepoMeta; {} without a config", async 
 		"x@example.com": "x",
 	});
 
-	// No config (or an unreadable one) never fails the walk — just no map.
+	// No config (or an unreadable one) never fails the walk – just no map.
 	rmSync(join(root, ".fragmt.json"));
 	expect((await repoMeta(root, "docs")).authors).toEqual({});
 });
@@ -242,7 +242,7 @@ test("agents: the config list verbatim in RepoMeta; [] without a config", async 
 	);
 	expect((await repoMeta(root, "docs")).agents).toEqual(["Claude", "Rex"]);
 
-	// No config never fails the walk — just no agents.
+	// No config never fails the walk – just no agents.
 	rmSync(join(root, ".fragmt.json"));
 	expect((await repoMeta(root, "docs")).agents).toEqual([]);
 });

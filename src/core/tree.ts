@@ -12,10 +12,10 @@ export interface TreeNode {
 
 /**
  * Everything git considers part of the repo beneath docsRoot, as
- * docsRoot-relative POSIX paths: `--cached` is the index (tracked files —
+ * docsRoot-relative POSIX paths: `--cached` is the index (tracked files –
  * ignore rules never apply to them, tracked wins), `--others
  * --exclude-standard` adds the untracked files the ignore rules let through.
- * ponytail: one spawn per tree refresh, never cached — raise/batch if a repo
+ * ponytail: one spawn per tree refresh, never cached – raise/batch if a repo
  * ever makes it measurable.
  *
  * null = git refused (not a repo, git missing) → the caller falls back to
@@ -59,7 +59,7 @@ export async function gitAllowList(
 }
 
 /** Does any allowed path sit inside `dir`? (allow entries are files, so a
- *  plain prefix check suffices — the root "" is never tested against it.) */
+ *  plain prefix check suffices – the root "" is never tested against it.) */
 function hasAllowedUnder(allow: Set<string>, dir: string): boolean {
 	for (const p of allow) if (p.startsWith(`${dir}/`)) return true;
 	return false;
@@ -73,7 +73,7 @@ function buildDir(
 ): TreeNode {
 	const dirs: TreeNode[] = [];
 	const docs: TreeNode[] = [];
-	// Skip dot-folders (covers .git, .docs, .claude, …) plus build/dep dirs —
+	// Skip dot-folders (covers .git, .docs, .claude, …) plus build/dep dirs –
 	// ALWAYS, allow-list or not: it also guards the no-git fallback walk.
 	for (const ent of readdirSync(abs, { withFileTypes: true })) {
 		if (
@@ -86,12 +86,12 @@ function buildDir(
 		const childPath = path === "" ? ent.name : `${path}/${ent.name}`;
 		if (ent.isDirectory()) {
 			// .gitignore filter (M4-3 b7): a dir with nothing allowed beneath it
-			// is dead — a fully ignored dir disappears, unread even. (A dir whose
+			// is dead – a fully ignored dir disappears, unread even. (A dir whose
 			// only allowed content is a tracked `dir/.gitkeep` still passes: the
 			// marker itself is allow-listed.)
 			if (allow !== undefined && !hasAllowedUnder(allow, childPath)) continue;
 			const node = buildDir(ent.name, childPath, join(abs, ent.name), allow);
-			// Prune directories with no .md anywhere beneath them — unless the
+			// Prune directories with no .md anywhere beneath them – unless the
 			// dir carries a committed .gitkeep (createFolder's marker, and the
 			// M4-4 dogfood keep for a folder emptied by a move), or a kept
 			// child folder: .gitkeep visibility must hold down the whole chain,
@@ -112,7 +112,7 @@ function buildDir(
 	}
 	dirs.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
 	docs.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-	// Dirs first, then docs — both alphabetical (case-insensitive).
+	// Dirs first, then docs – both alphabetical (case-insensitive).
 	return { name, path, type: "dir", children: [...dirs, ...docs] };
 }
 
@@ -120,7 +120,7 @@ function buildDir(
  * Build the folder tree rooted at docsRoot. Root node: name ".", path "".
  * `allow` (gitAllowList's product) filters the tree down to what git tracks
  * or tolerates; absent → today's behavior (hardcoded skips + docless prune)
- * exactly — init's adopted-doc count keeps the two-arg call.
+ * exactly – init's adopted-doc count keeps the two-arg call.
  */
 export function listTree(
 	repoRoot: string,

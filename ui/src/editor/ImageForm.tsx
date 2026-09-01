@@ -71,7 +71,7 @@ export function ImageForm({
 }
 
 /**
- * Fixed-position popover that inserts an image node at a stored position —
+ * Fixed-position popover that inserts an image node at a stored position –
  * used by the slash menu's Image item, where the cursor may have moved
  * between picking the item and submitting the form.
  */

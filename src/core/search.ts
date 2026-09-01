@@ -3,7 +3,7 @@ import { readDoc } from "./docs.js";
 import { gitAllowList, listTree, type TreeNode } from "./tree.js";
 
 export interface SearchHit {
-	/** docsRoot-relative POSIX path — the identity everywhere else too. */
+	/** docsRoot-relative POSIX path – the identity everywhere else too. */
 	path: string;
 	/** Display title: frontmatter `title`, else the file name sans .md. */
 	title: string;
@@ -22,7 +22,7 @@ function treeDocPaths(node: TreeNode, out: string[] = []): string[] {
 	return out;
 }
 
-/** The display-name rule (ui/display.ts's twin — the server never imports
+/** The display-name rule (ui/display.ts's twin – the server never imports
  *  ui): frontmatter `title` when a non-empty string, else the name sans .md. */
 function displayTitle(title: unknown, name: string): string {
 	return typeof title === "string" && title.trim()
@@ -42,7 +42,7 @@ function snippet(flat: string, idx: number): string {
 
 /**
  * Flat substring scan over the CURRENT worktree's allow-listed docs (#14):
- * case-insensitive `q` against frontmatter title + body — no history walk, no
+ * case-insensitive `q` against frontmatter title + body – no history walk, no
  * index. Title hits first, then body-only hits, tree order within each group.
  * A trimmed query shorter than 2 chars is a non-error empty result.
  */
@@ -65,7 +65,7 @@ export async function searchDocs(
 			frontmatterTitle = doc.frontmatter.title;
 			body = doc.markdown;
 		} catch {
-			continue; // vanished between the tree walk and the read — not a hit
+			continue; // vanished between the tree walk and the read – not a hit
 		}
 		const title = displayTitle(frontmatterTitle, basename(path));
 		// The match and the window both live on the flattened body (one
@@ -81,7 +81,7 @@ export async function searchDocs(
 		else if (bodyIdx !== -1)
 			bodyHits.push({ path, title, snippet: snippet(flat, bodyIdx) });
 	}
-	// ponytail: flat scan + cap 50 — add an index when a real repo measurably
+	// ponytail: flat scan + cap 50 – add an index when a real repo measurably
 	// hurts (measure first, same discipline as /api/meta's walks).
 	return [...titleHits, ...bodyHits].slice(0, 50);
 }

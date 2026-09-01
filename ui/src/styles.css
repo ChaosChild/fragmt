@@ -1,10 +1,10 @@
 /* ─────────────────────────────────────────────────────────────
-   fragmt — "a reading room with a voice"
+   fragmt – "a reading room with a voice"
    Silver/platinum (light) / gunmetal (dark). One royal-blue accent.
    v2: glass inbox sidebar · email-style doc header · no top bar.
    ───────────────────────────────────────────────────────────── */
 :root {
-	/* Silver / platinum — cool steel */
+	/* Silver / platinum – cool steel */
 	--bg: #e8ecf0;
 	--pane: #dfe4ea;
 	--surface: #f4f6f9;
@@ -12,7 +12,7 @@
 	--muted: #535c67;
 	--border: #cbd2da;
 	--border-soft: #dce1e7;
-	/* Royal blue — 7.79:1 on silver, 9.25:1 white-on-accent */
+	/* Royal blue – 7.79:1 on silver, 9.25:1 white-on-accent */
 	--accent: #1f39b0;
 	--accent-on: #ffffff;
 	--accent-hover: #182d8f;
@@ -63,7 +63,7 @@
 		0 1px 2px rgba(30, 40, 55, 0.12), 0 10px 34px rgba(30, 40, 55, 0.16);
 }
 [data-theme="dark"] {
-	/* Gunmetal night — deep blue-steel charcoal */
+	/* Gunmetal night – deep blue-steel charcoal */
 	--bg: #151a20;
 	--pane: #191f26;
 	--surface: #1d242c;
@@ -115,7 +115,7 @@ body {
 	color: var(--fg);
 }
 
-/* Ambient tint — quiet color behind the glass so the blur reads.
+/* Ambient tint – quiet color behind the glass so the blur reads.
    Static, no animation: a reading room, not a lava lamp. */
 .ambient {
 	position: fixed;
@@ -150,7 +150,7 @@ body {
 	gap: var(--space-3);
 }
 
-/* Shared editorial label — like a book's running header */
+/* Shared editorial label – like a book's running header */
 .label-meta {
 	font-family: var(--font-mono);
 	font-size: 11px;
@@ -160,7 +160,7 @@ body {
 	color: var(--muted);
 }
 
-/* Sync LED — one dot, three truths */
+/* Sync LED – one dot, three truths */
 .led {
 	width: 8px;
 	height: 8px;
@@ -182,7 +182,7 @@ body {
 	box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
-/* ═══ SIDEBAR — the inbox. One glass object in the room. ═══════ */
+/* ═══ SIDEBAR – the inbox. One glass object in the room. ═══════ */
 .sidebar {
 	width: var(--sidebar-w);
 	min-width: var(--sidebar-w);
@@ -203,7 +203,7 @@ body {
 		background: var(--surface);
 	}
 }
-/* Drag handle on the sidebar's right edge (M4-3 b3) — App writes
+/* Drag handle on the sidebar's right edge (M4-3 b3) – App writes
    --sidebar-w on the .sidebar element; hidden ≤768px, where the drawer
    override owns the width. */
 .sidebar-resize {
@@ -278,7 +278,7 @@ body {
 	height: 13px;
 }
 
-/* Search — exact word, filters the list live */
+/* Search – exact word, filters the list live */
 .side-search {
 	position: relative;
 	padding: 0 var(--space-4) var(--space-3);
@@ -345,7 +345,7 @@ body {
 	display: flex;
 }
 
-/* Doc list — Gmail rows, not XP tree. Horizontal scroll (not clip): deep
+/* Doc list – Gmail rows, not XP tree. Horizontal scroll (not clip): deep
    nesting keeps a readable row minimum (M4-3 b3), so the list scrolls. */
 .doc-list {
 	flex: 1;
@@ -355,7 +355,7 @@ body {
 	list-style: none;
 }
 
-/* Shared slim scrollbar — every scroll region wears the same quiet rail */
+/* Shared slim scrollbar – every scroll region wears the same quiet rail */
 .doc-list,
 .main,
 .rail-body,
@@ -490,7 +490,7 @@ body {
 	padding: 0 1px;
 }
 
-/* Folder groups — expand in place, children are the same cards */
+/* Folder groups – expand in place, children are the same cards */
 .folder-row {
 	display: flex;
 	align-items: center;
@@ -541,7 +541,7 @@ body {
 	line-height: 1.6;
 	letter-spacing: 0;
 }
-/* Guide-line indent (M4-3 b3): padding + border only — 16px per level. */
+/* Guide-line indent (M4-3 b3): padding + border only – 16px per level. */
 .folder-children {
 	list-style: none;
 	padding-left: var(--space-4);
@@ -565,13 +565,13 @@ body {
 	display: block;
 }
 
-/* ═══ MAIN — the page itself ═══════════════════════════════════ */
+/* ═══ MAIN – the page itself ═══════════════════════════════════ */
 .main {
 	/* The split's one flex variable (#15): main grows the share, the pane
-	   grows the rest — grow ratios, so the fixed sidebar and the divider
+	   grows the rest – grow ratios, so the fixed sidebar and the divider
 	   come out first. Without a preview App feeds the variable 1, so main
 	   (the lone grower next to the fixed 316px pane) claims ALL free
-	   space — spec §9.7.1: a grow factor under 1 takes only grow ×
+	   space – spec §9.7.1: a grow factor under 1 takes only grow ×
 	   free-space, never the whole remainder. */
 	flex: var(--slideout-share) 1 0%;
 	overflow-y: auto;
@@ -607,8 +607,8 @@ body {
 	color: var(--fg);
 	font-weight: 500;
 }
-/* M4-3 b4: the breadcrumb name + its three file-action icons — rename,
-   move, delete — one tight cluster on the doc-bar line, both modes. */
+/* M4-3 b4: the breadcrumb name + its three file-action icons – rename,
+   move, delete – one tight cluster on the doc-bar line, both modes. */
 .doc-bar-main {
 	display: flex;
 	align-items: center;
@@ -616,7 +616,7 @@ body {
 	min-width: 0;
 }
 /* The inline rename box: the name becomes an input with icon confirm/cancel
-   (never text buttons — review decision); errors sit inline after it. */
+   (never text buttons – review decision); errors sit inline after it. */
 .rename-form {
 	display: flex;
 	align-items: center;
@@ -700,12 +700,12 @@ body {
 	border-color: transparent;
 }
 
-/* ═══ COMMENTS — the pane's default state (#15, dogfooded 2026-08-26) ═
+/* ═══ COMMENTS – the pane's default state (#15, dogfooded 2026-08-26) ═
    The v0.5.0 rail restored: a permanent margin column for the open doc's
    threads. The pane rules live in the #15 block below; these style the
    thread list the column holds. */
 
-/* Document header — the email parallel: who, which version, when,
+/* Document header – the email parallel: who, which version, when,
    sync state, and the draft escape hatch. */
 .doc-head {
 	display: flex;
@@ -797,17 +797,17 @@ body {
 	color: var(--accent);
 	background: var(--accent-tint);
 	border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-	/* Non-clickable badge (M4-3) — no pointer affordance. */
+	/* Non-clickable badge (M4-3) – no pointer affordance. */
 	cursor: default;
 }
 .draft-pill.on-draft:hover {
 	border-color: var(--accent);
 }
 
-/* Markdown typography — fragmt reading mode (Newsreader). Both modes
+/* Markdown typography – fragmt reading mode (Newsreader). Both modes
    render through the same ProseMirror div (M4: read mode is the editor
    with editable: false), so these rules and the injected ProseMirror
-   styles apply identically — the two modes cannot drift apart. */
+   styles apply identically – the two modes cannot drift apart. */
 .markdown {
 	font-family: var(--font-serif);
 	font-optical-sizing: auto;
@@ -818,7 +818,7 @@ body {
 	/* Same injection disables ligatures (`font-variant-ligatures: none;
 	   font-feature-settings: "liga" 0`). Newsreader ships ligatures; they
 	   change glyph widths, so every long line would rewrap differently
-	   between the injected and inherited values. Disable them here too —
+	   between the injected and inherited values. Disable them here too –
 	   identical metrics everywhere. */
 	font-variant-ligatures: none;
 	font-feature-settings: "liga" 0;
@@ -952,7 +952,7 @@ body {
 	border-radius: var(--radius);
 }
 
-/* Comment anchors in text — visible by default, click to jump to thread */
+/* Comment anchors in text – visible by default, click to jump to thread */
 .comment-highlight {
 	background: var(--accent-tint);
 	border-radius: 2px;
@@ -979,15 +979,15 @@ body {
 }
 
 /* ═══ EDITOR ═══════════════════════════════════════════════════ */
-/* One rendering path (M4): the .edit-area wrapper mounts in BOTH modes —
-   read mode is the same editor non-editable — so every ProseMirror-structure
+/* One rendering path (M4): the .edit-area wrapper mounts in BOTH modes –
+   read mode is the same editor non-editable – so every ProseMirror-structure
    rule below applies in both. No border or focus chrome: the document is the
    surface. */
 .edit-area {
 	min-height: 55vh;
 }
 /* Focus lands on the inner `.ProseMirror` contenteditable, and the browser
-   draws its default outline on the focused element itself — the removal must
+   draws its default outline on the focused element itself – the removal must
    target that element, not the wrapper. No focus chrome in either mode: the
    document is the surface. */
 .edit-area .ProseMirror:focus,
@@ -999,11 +999,11 @@ body {
 }
 /* StarterKit wraps block text in <p>; plain markdown typography keeps most
    of it inline. Tight bullet/ordered lists (tiptap-markdown renders the
-   `tight` class — verified in the live DOM) must collapse their paragraph
+   `tight` class – verified in the live DOM) must collapse their paragraph
    margin; loose lists keep it, exactly like loose markdown rendering. Task
    items are the only node producing `li > div > p` (Tiptap renders them
-   tight regardless — the taskList ul carries no `tight` class), and table
-   cells render "block+" as a paragraph per cell — zero those always. */
+   tight regardless – the taskList ul carries no `tight` class), and table
+   cells render "block+" as a paragraph per cell – zero those always. */
 .edit-area .tight > li > p,
 .edit-area li > div > p,
 .edit-area td > p,
@@ -1021,21 +1021,21 @@ body {
 .edit-area li[data-checked] > label input {
 	cursor: pointer;
 	/* The label/div/p chain carries no whitespace node between checkbox
-	   and text — this margin recreates the one-space gap of the source. */
+	   and text – this margin recreates the one-space gap of the source. */
 	margin-right: 0.25em;
 }
-/* Task items show only the checkbox — no disc marker beside it. */
+/* Task items show only the checkbox – no disc marker beside it. */
 .markdown li.task-list-item,
 .markdown li[data-checked] {
 	list-style: none;
 }
-/* remark-gfm's checkbox — kept for any remaining static render (e.g. rail
+/* remark-gfm's checkbox – kept for any remaining static render (e.g. rail
    quotes); the editor path pins its own gap above. */
 .markdown li.task-list-item > input {
 	margin-right: 0;
 }
 /* Tiptap injects `.ProseMirror pre { white-space: pre-wrap }` (author
-   origin, beats the inherited value) — the UA `pre` scrolls via
+   origin, beats the inherited value) – the UA `pre` scrolls via
    overflow-x. Restore it so long lines overflow identically. */
 .edit-area pre {
 	white-space: pre;
@@ -1075,9 +1075,9 @@ body {
 	flex-shrink: 0;
 }
 
-/* ═══ COMMENTS — the slideout's Comments mode (#15; was the rail) ═══
+/* ═══ COMMENTS – the slideout's Comments mode (#15; was the rail) ═══
    The thread list renders inside the slideout pane (rules below); the old
-   rail head is gone — the mode tabs and close live in .slideout-head, and
+   rail head is gone – the mode tabs and close live in .slideout-head, and
    the sync indicator / theme toggle outlived it in the topbar and the
    sidebar head. */
 .sync-indicator {
@@ -1151,7 +1151,7 @@ body {
 	color: var(--fg);
 }
 /* The agent chip (M4-4 b5): rides inside the author span when the name is
-   in meta's agents list — the draft-pill's warn tint, chip-sized. */
+   in meta's agents list – the draft-pill's warn tint, chip-sized. */
 .agent-chip {
 	font-family: var(--font-mono);
 	font-size: 10px;
@@ -1201,7 +1201,7 @@ body {
 }
 /* ── M4-5 rail interactivity: the staged rules above cover the static card;
 	   these add what rendering it as live controls needs. ── */
-/* The live quote is a real <button> (jump-to-doc) — UA resets on top of the
+/* The live quote is a real <button> (jump-to-doc) – UA resets on top of the
    staged rule; the orphan quote stays a plain div. */
 .comment-quote {
 	display: block;
@@ -1213,7 +1213,7 @@ body {
 	text-align: left;
 	cursor: pointer;
 }
-/* Cursor honesty (fix 5): the card is not the control — only the quote
+/* Cursor honesty (fix 5): the card is not the control – only the quote
    button jumps, so only it gets the pointer and the hover/focus chrome.
    Scoped to the button so the orphan's plain-div quote stays inert. */
 button.comment-quote:hover {
@@ -1247,7 +1247,7 @@ button.comment-quote:hover {
 	outline: none;
 	box-shadow: var(--focus-ring);
 }
-/* Replies after the opening comment — a quieter indent. */
+/* Replies after the opening comment – a quieter indent. */
 .comment-reply {
 	margin: var(--space-3) 0 0 var(--space-3);
 	padding-left: var(--space-3);
@@ -1260,7 +1260,7 @@ button.comment-quote:hover {
 .sync-indicator.err {
 	color: var(--danger);
 }
-/* "Show resolved (N)" and "Show N earlier replies" — label-meta supplies
+/* "Show resolved (N)" and "Show N earlier replies" – label-meta supplies
    the font/color; both are quiet expander buttons (a11y floor: 32px + ring). */
 .show-resolved,
 .show-earlier {
@@ -1281,7 +1281,7 @@ button.comment-quote:hover {
 .show-earlier:hover {
 	color: var(--accent);
 }
-/* A failed reply/resolve/delete — shown at the top of the rail body. */
+/* A failed reply/resolve/delete – shown at the top of the rail body. */
 .rail-error {
 	font-family: var(--font-mono);
 	font-size: 11px;
@@ -1289,12 +1289,12 @@ button.comment-quote:hover {
 	padding: 0 var(--space-1) var(--space-3);
 }
 
-/* ── #15: the right pane — the rail, widened only by a preview ──── */
-/* Default (dogfooded 2026-08-26): the v0.5.0 comments rail restored —
+/* ── #15: the right pane – the rail, widened only by a preview ──── */
+/* Default (dogfooded 2026-08-26): the v0.5.0 comments rail restored –
    always present, fixed 316px, the open doc's threads. A preview
    (.preview) widens it into the draggable split; ≤1180px the RESPONSIVE
    block below turns the pane into the bottom sheet the rail used to be
-   (.open) — desktop has no closed state to own. */
+   (.open) – desktop has no closed state to own. */
 .slideout {
 	display: flex;
 	flex-direction: column;
@@ -1307,7 +1307,7 @@ button.comment-quote:hover {
 	min-width: 0;
 	flex: calc(1 - var(--slideout-share)) 1 0%;
 }
-/* The 7px drag strip between main and the pane — hover/press tints it the
+/* The 7px drag strip between main and the pane – hover/press tints it the
    accent; the grip is the centered 2×26 bar. */
 .slideout-divider {
 	width: 7px;
@@ -1338,7 +1338,7 @@ button.comment-quote:hover {
 	background: var(--accent);
 }
 /* Head: the preview state's chrome (title, open-in-main, close) and, in
-   the comments state, the restored v0.5.0 rail head — "COMMENTS · N" +
+   the comments state, the restored v0.5.0 rail head – "COMMENTS · N" +
    the sync LED. The close is preview-only on desktop (the rail has no
    closed state there); the ≤1180px sheet re-shows it as its fold. */
 .slideout-head {
@@ -1383,10 +1383,10 @@ button.comment-quote:hover {
 	width: 15px;
 	height: 15px;
 }
-/* The tab pair was here — gone with the tabs themselves (dogfood round,
+/* The tab pair was here – gone with the tabs themselves (dogfood round,
    2026-08-26): the pane's two states are previewPath's presence. */
-/* The head's title line — "Preview · <title>" in the preview state,
-   "Comments · N" in the rail's — the v0.5.0 rail-title styling. */
+/* The head's title line – "Preview · <title>" in the preview state,
+   "Comments · N" in the rail's – the v0.5.0 rail-title styling. */
 .slideout-title {
 	flex: 0 1 auto;
 	min-width: 0;
@@ -1407,14 +1407,14 @@ button.comment-quote:hover {
 	display: flex;
 	flex-direction: column;
 }
-/* Preview body (b4) — the pane's own scroll region, .rail-body's shape. */
+/* Preview body (b4) – the pane's own scroll region, .rail-body's shape. */
 .preview-body {
 	flex: 1;
 	min-height: 0;
 	overflow-y: auto;
 	padding: var(--space-5) var(--space-4) var(--space-8);
 }
-/* The quiet load state — static skeleton bars, nothing to animate (and
+/* The quiet load state – static skeleton bars, nothing to animate (and
 	   prefers-reduced-motion keeps it honest). */
 .preview-skeleton {
 	padding: var(--space-2) 0;
@@ -1438,12 +1438,12 @@ button.comment-quote:hover {
 	margin-bottom: 0;
 }
 /* The preview renders the doc's comment highlights with it, but they are
-	   not controls there — no pointer, no jump (the bubble is unmounted). */
+	   not controls there – no pointer, no jump (the bubble is unmounted). */
 .slideout .comment-highlight {
 	cursor: inherit;
 }
 
-/* ── #15: collapse chrome — the topbar the collapsed sidebar wears ── */
+/* ── #15: collapse chrome – the topbar the collapsed sidebar wears ── */
 .app-frame {
 	display: flex;
 	flex-direction: column;
@@ -1478,7 +1478,7 @@ button.comment-quote:hover {
 }
 /* The sidebar head's stretching rules un-stretch here: the branch menu
    sizes to its name (ellipsizing past 150px) and Merge never widens the
-   bar — same look as the sidebar's row 2, without the full-width pull. */
+   bar – same look as the sidebar's row 2, without the full-width pull. */
 .app-topbar .branch-dd {
 	width: auto;
 	max-width: 150px;
@@ -1487,7 +1487,7 @@ button.comment-quote:hover {
 	flex-shrink: 0;
 }
 
-/* ═══ TOP BAR — mobile / tablet only ═══════════════════════════ */
+/* ═══ TOP BAR – mobile / tablet only ═══════════════════════════ */
 .topbar {
 	display: none;
 	height: var(--topbar-h);
@@ -1610,14 +1610,14 @@ button.comment-quote:hover {
 	}
 	.slideout-divider {
 		display: none;
-	} /* the sheet is full-width — nothing to split */
+	} /* the sheet is full-width – nothing to split */
 	/* The comments state's head returns here (the sheet's title + fold);
-	   the preview head needs no help — it never hides. */
+	   the preview head needs no help – it never hides. */
 	.slideout:not(.preview) .slideout-head {
 		display: flex;
 	}
 	/* The sheet's fold: the comments close returns ≤1180 (hidden on
-	   desktop above — the rail has no closed state there). */
+	   desktop above – the rail has no closed state there). */
 	.slideout:not(.preview) .slideout-close {
 		display: flex;
 	}
@@ -1668,7 +1668,7 @@ button.comment-quote:hover {
 	} /* the drawer owns the width here */
 	.side-head {
 		display: flex;
-	} /* drawer gets brand back — it's the menu */
+	} /* drawer gets brand back – it's the menu */
 	.side-head .branch-dd {
 		display: none;
 	} /* branch stays in top bar */
@@ -1841,7 +1841,7 @@ button.comment-quote:hover {
 .slash-menu {
 	width: 264px;
 	max-width: calc(100vw - 24px);
-	/* One cap for both popups — the @ menu lists every doc, so without it
+	/* One cap for both popups – the @ menu lists every doc, so without it
 	   it grows to full-screen height. The keyboard handler scrolls the
 	   selected item into view inside this container (M4-3). */
 	max-height: min(340px, calc(100vh - 32px));
@@ -1897,7 +1897,7 @@ button.comment-quote:hover {
 	bottom: calc(100% + 6px);
 	width: min(300px, 100%);
 }
-/* A linkified doc path in a comment body — inline-link look, button
+/* A linkified doc path in a comment body – inline-link look, button
    semantics (keyboard-reachable like every other rail control). */
 .doc-ref {
 	padding: 0;
@@ -1948,7 +1948,7 @@ button.comment-quote:hover {
 	border-color: var(--accent);
 	box-shadow: var(--focus-ring);
 }
-/* Comment composer (M4) — the input treatment on a body-font textarea */
+/* Comment composer (M4) – the input treatment on a body-font textarea */
 .popover-form textarea {
 	font-family: var(--font-body);
 	font-size: 13px;
@@ -1996,7 +1996,7 @@ button.comment-quote:hover {
 	min-height: 32px; /* a11y floor: ≥32px hit targets (§9) */
 }
 /* Tree row = full-width select target (M4-3 b4: the corner-icon overlay is
-   gone — the file actions live on the doc head's breadcrumb line now). */
+   gone – the file actions live on the doc head's breadcrumb line now). */
 .tree-row {
 	display: flex;
 	align-items: center;
@@ -2021,7 +2021,7 @@ button.comment-quote:hover {
 	flex-shrink: 0;
 }
 /* Visible-but-subtle square icon button (new doc, branch delete, doc-head
-   file actions) — 32px target */
+   file actions) – 32px target */
 .tool-btn {
 	display: inline-flex;
 	align-items: center;
@@ -2047,7 +2047,7 @@ button.comment-quote:hover {
 	width: 15px;
 	height: 15px;
 }
-/* Fixed glass menu (branch list, row actions, new-doc form) — rendered
+/* Fixed glass menu (branch list, row actions, new-doc form) – rendered
    through a portal to body, so the sidebar's backdrop-filter (a containing
    block for fixed descendants) can neither clip nor contain it. */
 .menu-popover {
@@ -2138,7 +2138,7 @@ button.comment-quote:hover {
 	align-items: center;
 	gap: var(--space-3);
 }
-/* Row 2 (branch + Merge): the branch menu stretches full width — the name
+/* Row 2 (branch + Merge): the branch menu stretches full width – the name
    ellipsizes, the button's title carries the whole branch. */
 .side-head-branch .menu-wrap {
 	flex: 1;
@@ -2161,7 +2161,7 @@ button.comment-quote:hover {
 	cursor: default;
 	pointer-events: none;
 }
-/* Recycle bin (item 9) — pinned below the doc list; every Restore sits on
+/* Recycle bin (item 9) – pinned below the doc list; every Restore sits on
    the same right edge, Restore all right-aligned beneath them. */
 .recycle-bin {
 	flex-shrink: 0;
@@ -2233,7 +2233,7 @@ button.comment-quote:hover {
 .folder-row.dragging {
 	opacity: 0.45;
 }
-/* Cheap drag affordance — grab at rest, grabbing once pressed (the drag
+/* Cheap drag affordance – grab at rest, grabbing once pressed (the drag
    itself owns the cursor via dropEffect). */
 .doc-card[draggable="true"],
 .folder-row[draggable="true"] {
@@ -2243,7 +2243,7 @@ button.comment-quote:hover {
 .folder-row[draggable="true"]:active {
 	cursor: grabbing;
 }
-/* Folder-row target: the accent tint + inset ring — the same shadow-not-
+/* Folder-row target: the accent tint + inset ring – the same shadow-not-
    border family as focus-visible/hover, so nothing shifts layout. */
 .folder-row.drop-target {
 	color: var(--accent);
@@ -2266,7 +2266,7 @@ button.comment-quote:hover {
 	color: var(--danger);
 }
 
-/* ── M4-4 b3: merge resolution — the main-pane takeover ───────── */
+/* ── M4-4 b3: merge resolution – the main-pane takeover ───────── */
 .resolve-pane {
 	width: 100%;
 	max-width: var(--reading-max);
@@ -2297,7 +2297,7 @@ button.comment-quote:hover {
 	color: var(--muted);
 	font-weight: 500;
 }
-/* One card per conflicting file — the surface family of the sidebar cards,
+/* One card per conflicting file – the surface family of the sidebar cards,
    raised off the pane. */
 .resolve-file {
 	background: var(--surface);
@@ -2424,7 +2424,7 @@ button.comment-quote:hover {
 	overflow-wrap: anywhere;
 }
 
-/* ── #14: Ctrl+K search modal — Spotlight-style centered dialog ── */
+/* ── #14: Ctrl+K search modal – Spotlight-style centered dialog ── */
 /* The dim backdrop (click = close) and the glass card on top of everything
    (above menu-popover's 70). Rows echo the sidebar card language: hover is
    the inner glass, the active row is the raised .doc-card.active look. */

@@ -32,11 +32,11 @@ export function findRepoRoot(from: string): string {
 	}
 }
 
-/** Parse `.fragmt.json`. Fails loudly (with the file path) — no silent defaults. */
+/** Parse `.fragmt.json`. Fails loudly (with the file path) – no silent defaults. */
 export function loadConfig(repoRoot: string): Config {
 	const file = configPath(repoRoot);
 	if (!existsSync(file)) {
-		throw new ConfigError("not initialized — run fragmt init");
+		throw new ConfigError("not initialized – run fragmt init");
 	}
 	let parsed: unknown;
 	try {
@@ -68,7 +68,7 @@ export function loadConfig(repoRoot: string): Config {
 		config.authors = authors;
 	}
 	// agents: optional display-name list (the agent chip). A non-array is
-	// ignored; entries that are not non-empty strings drop silently — the
+	// ignored; entries that are not non-empty strings drop silently – the
 	// same cosmetic-only stance as authors.
 	const rawAgents = (parsed as Record<string, unknown>).agents;
 	if (Array.isArray(rawAgents)) {

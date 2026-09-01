@@ -1,11 +1,11 @@
 import { GitError, git } from "./git.js";
 
-/** Repo-local git identity is missing — the server maps this to 409. */
+/** Repo-local git identity is missing – the server maps this to 409. */
 export class GitIdentityError extends Error {}
 
 /**
  * `git config user.name` / `user.email`. Throws GitIdentityError when either
- * is unset anywhere git looks (repo, global, system) — committing with a
+ * is unset anywhere git looks (repo, global, system) – committing with a
  * fabricated author is worse than refusing to save.
  */
 export async function localUser(

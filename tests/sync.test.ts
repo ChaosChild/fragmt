@@ -25,7 +25,7 @@ function run(cwd: string, args: string[]): void {
 }
 
 /**
- * Clone with autocrlf disabled for the invocation — with the global
+ * Clone with autocrlf disabled for the invocation – with the global
  * autocrlf=true on this machine the initial checkout would be CRLF against an
  * LF index, and every later pull/rebase would die on phantom "unstaged
  * changes". The repo-local config below covers later checkouts.
@@ -94,7 +94,7 @@ const status = (root: string) =>
 		encoding: "utf8",
 	}).trim();
 
-/** Both rebase state dirs must be gone — no rebase left in progress. */
+/** Both rebase state dirs must be gone – no rebase left in progress. */
 const rebaseInProgress = (root: string) =>
 	existsSync(join(root, ".git", "rebase-merge")) ||
 	existsSync(join(root, ".git", "rebase-apply"));
@@ -142,7 +142,7 @@ test("conflict: B's divergent commit aborts the rebase and leaves B untouched", 
 	expect(readFileSync(join(b, "f.md"), "utf8")).toBe("B edit\n");
 	expect(status(b)).toBe("");
 	expect(rebaseInProgress(b)).toBe(false);
-	// Origin still holds A's side — B never force-pushed over it.
+	// Origin still holds A's side – B never force-pushed over it.
 	const originMain = execFileSync("git", ["rev-parse", "origin/main"], {
 		cwd: a,
 		encoding: "utf8",

@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { createApp, startServer } from "../src/server/index.js";
 
-// The M4-2 acceptance flow 1–2, end to end over HTTP — the exact call order
+// The M4-2 acceptance flow 1–2, end to end over HTTP – the exact call order
 // the UI's protected-main interception produces: a doc born on main, drafted,
-// edited on the draft, merged — main carries the edit, the branch is gone.
+// edited on the draft, merged – main carries the edit, the branch is gone.
 
 let root: string;
 let server: Server;
@@ -22,7 +22,7 @@ beforeEach(async () => {
 		cwd: root,
 	});
 	// Byte-exact body assertions need blobs to keep what we wrote
-	// (server-m42.test.ts pattern — a host autocrlf would smudge checkouts).
+	// (server-m42.test.ts pattern – a host autocrlf would smudge checkouts).
 	execFileSync("git", ["config", "core.autocrlf", "false"], { cwd: root });
 	writeFileSync(join(root, "seed.md"), "# seed\n");
 	execFileSync("git", ["add", "-A"], { cwd: root });
@@ -55,7 +55,7 @@ test("create → draft → edit → merge lands the edit on main and drops the b
 	});
 	expect(made.status).toBe(200);
 
-	// 2. Draft it — the protected-main checkout the UI performs first.
+	// 2. Draft it – the protected-main checkout the UI performs first.
 	const draft = await api("POST", "/api/draft", { docPath: "docs/flow.md" });
 	expect(draft.status).toBe(200);
 	expect(await draft.json()).toEqual({ current: "drafts/flow", reused: false });
@@ -84,7 +84,7 @@ test("create → draft → edit → merge lands the edit on main and drops the b
 	).json()) as { markdown: string };
 	expect(onMain.markdown).toBe("# flow\nedited on the draft\n");
 
-	// 6. The branch vanished — the dropdown lists only main.
+	// 6. The branch vanished – the dropdown lists only main.
 	expect(await (await api("GET", "/api/branches")).json()).toEqual({
 		current: "main",
 		branches: ["main"],

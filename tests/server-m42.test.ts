@@ -8,7 +8,7 @@ import type { RepoMeta } from "../src/core/index.js";
 import { createApp, startServer } from "../src/server/index.js";
 
 // M4-2 server surface: /api/meta, /api/draft, /api/merge, /api/restore. Same
-// harness as server-m3.test.ts — a real git repo with an identity behind the app.
+// harness as server-m3.test.ts – a real git repo with an identity behind the app.
 
 let root: string;
 let server: Server;
@@ -22,7 +22,7 @@ beforeEach(async () => {
 		cwd: root,
 	});
 	// Byte-exact assertions below need blobs to keep what we wrote
-	// (comments.test.ts pattern — a host autocrlf would smudge checkouts).
+	// (comments.test.ts pattern – a host autocrlf would smudge checkouts).
 	execFileSync("git", ["config", "core.autocrlf", "false"], { cwd: root });
 	writeFileSync(join(root, "a.md"), "---\ntitle: A\n---\n# body\n");
 	execFileSync("git", ["add", "-A"], { cwd: root });
@@ -111,7 +111,7 @@ test("POST /api/merge: 200 {sha}, branch gone, back on main; on main → 400", a
 	expect((await api("POST", "/api/merge")).status).toBe(400);
 });
 
-test("POST /api/merge: diverged main → 409 {conflict:true, stood:true} — the merge stands for in-UI resolution", async () => {
+test("POST /api/merge: diverged main → 409 {conflict:true, stood:true} – the merge stands for in-UI resolution", async () => {
 	await api("POST", "/api/draft", { docPath: "a.md" });
 	writeFileSync(join(root, "a.md"), "# draft\n");
 	execFileSync("git", ["commit", "-qam", "draft edit"], { cwd: root });

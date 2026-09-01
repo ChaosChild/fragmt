@@ -19,7 +19,7 @@ import {
 	type MarkdownMarkSpec,
 	type MarkdownStorage,
 } from "tiptap-markdown";
-// "./slash.js" (not "./slash"): this file is typechecked by BOTH configs —
+// "./slash.js" (not "./slash"): this file is typechecked by BOTH configs –
 // the root nodenext program reaches it via tests/roundtrip.test.ts.
 import {
 	type AtDoc,
@@ -35,7 +35,7 @@ import {
 } from "./slash.js";
 
 // tiptap-markdown attaches `storage.markdown` but doesn't augment the core
-// Storage interface itself — do it here so every consumer is typed.
+// Storage interface itself – do it here so every consumer is typed.
 declare module "@tiptap/core" {
 	interface Storage {
 		markdown: MarkdownStorage;
@@ -45,7 +45,7 @@ declare module "@tiptap/core" {
 /**
  * Comment anchor mark (ARCHITECTURE §2): a ProseMirror mark carrying only an
  * id, serialized into markdown as `<span data-c="...">text</span>`.
- * TypeScript port of the spike's mark — behavior unchanged on purpose; the
+ * TypeScript port of the spike's mark – behavior unchanged on purpose; the
  * round-trip corpus test judges any change to it.
  */
 export const CommentMark = Mark.create({
@@ -67,7 +67,7 @@ export const CommentMark = Mark.create({
 
 	// The DOM render carries .comment-highlight (read-mode visibility, M4).
 	// The markdown tags are pinned EXPLICITLY because tiptap-markdown's
-	// fallback for unconfigured marks serializes through renderHTML — the
+	// fallback for unconfigured marks serializes through renderHTML – the
 	// class would leak into the saved file and break the corpus gate.
 	addStorage(): { markdown: MarkdownMarkSpec } {
 		return {
@@ -83,7 +83,7 @@ export const CommentMark = Mark.create({
 
 	renderHTML({ HTMLAttributes }) {
 		// tabindex/role make the read-mode highlight a keyboard-reachable
-		// jump-to-thread control (app.html's reference markup) — the staged
+		// jump-to-thread control (app.html's reference markup) – the staged
 		// .comment-highlight:focus-visible ring exists for exactly this.
 		// ponytail: attrs stay on in edit mode too (renderHTML has no mode
 		// context); tab stops inside the editable are the accepted ceiling.
@@ -104,7 +104,7 @@ export const CommentMark = Mark.create({
 });
 
 /**
- * tiptap-markdown's tight-lists extension only covers bulletList/orderedList —
+ * tiptap-markdown's tight-lists extension only covers bulletList/orderedList –
  * taskList serializes loose (blank lines between items), so a single checkbox
  * edit would rewrite the whole list. Mirror its `tight` attribute for taskList
  * (same parsing rule: tight unless the item holds an explicit paragraph).
@@ -133,12 +133,12 @@ export const TightTaskList = Extension.create({
 });
 
 /**
- * The editor's extension set — single source of truth. The React editor AND
+ * The editor's extension set – single source of truth. The React editor AND
  * tests/roundtrip.test.ts both build from this factory, so any change to the
  * editor config is judged by the permanent corpus gate.
  *
  * The optional callbacks wire the slash menu's UI (state/keydown/image handoff)
- * without making the extension set React-bound — headless consumers omit them.
+ * without making the extension set React-bound – headless consumers omit them.
  */
 export function editorExtensions(
 	slash?: {
@@ -146,7 +146,7 @@ export function editorExtensions(
 		onKeyDown?: SlashKeydownHandler;
 		onImage?: (insertAt: number) => void;
 	},
-	// The @ references (M4-2 item 5) — omitted by headless consumers, in
+	// The @ references (M4-2 item 5) – omitted by headless consumers, in
 	// which case the extension is NOT added at all (mirrors slash's
 	// optionality one step further: no docs, no plugin, no corpus impact).
 	at?: {
@@ -158,7 +158,7 @@ export function editorExtensions(
 	return [
 		// openOnClick off in BOTH directions: Tiptap's own click plugin
 		// window.opens on plain clicks in edit mode, and read mode would
-		// fall through to browser navigation — EditorPane's onClick is the
+		// fall through to browser navigation – EditorPane's onClick is the
 		// single click authority (doc → in-app, external → new tab).
 		StarterKit.configure({ link: { openOnClick: false } }),
 		CommentMark,

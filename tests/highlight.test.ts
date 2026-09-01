@@ -1,4 +1,4 @@
-// #14 b2: the search modal's <mark> source — pure segmentation, tested
+// #14 b2: the search modal's <mark> source – pure segmentation, tested
 // without React (dnd.test.ts's model: the component stays a thin render over
 // this). Match at start/middle/end/multiple, case-insensitive, no-match
 // passthrough, plus the trim and empty-query words the modal feeds it.

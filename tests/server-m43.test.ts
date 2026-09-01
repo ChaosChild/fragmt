@@ -14,7 +14,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { createApp, startServer } from "../src/server/index.js";
 
 // M4-3 server surface: DELETE /api/branches/:name, PATCH /api/docs/* {title}.
-// Same harness as server-m42.test.ts — a real git repo with an identity
+// Same harness as server-m42.test.ts – a real git repo with an identity
 // behind the app.
 
 let root: string;
@@ -48,7 +48,7 @@ function api(method: string, path: string): Promise<Response> {
 	return fetch(`http://localhost:${port}${path}`, { method });
 }
 
-/** PATCH with a JSON body — the doc route's two-way dispatch ({to}/{title}). */
+/** PATCH with a JSON body – the doc route's two-way dispatch ({to}/{title}). */
 function patchDoc(path: string, body: unknown): Promise<Response> {
 	return fetch(`http://localhost:${port}${path}`, {
 		method: "PATCH",
@@ -63,7 +63,7 @@ function gitOut(args: string[]): string {
 }
 
 /**
- * Raw HTTP request (server.test.ts's pattern) — `fetch` collapses `..` in the
+ * Raw HTTP request (server.test.ts's pattern) – `fetch` collapses `..` in the
  * path client-side, so the traversal guard needs a socket to be reached.
  */
 function rawGet(path: string): Promise<{ status: number; body: string }> {
@@ -95,7 +95,7 @@ test("DELETE /api/branches: merged branch gone, still on current; slashed names 
 	expect(res.status).toBe(200);
 	expect(await res.json()).toEqual({ ok: true });
 
-	// Slashed names arrive percent-encoded — one router segment, decoded
+	// Slashed names arrive percent-encoded – one router segment, decoded
 	// back by the param (the api.ts helper always encodeURIComponent's).
 	const slashed = await api("DELETE", "/api/branches/drafts%2Fa");
 	expect(slashed.status).toBe(200);
@@ -136,7 +136,7 @@ test("DELETE /api/branches: unmerged → 409 {unmerged:true}; force → 200", as
 	const body = (await blocked.json()) as { unmerged: boolean; error: string };
 	expect(body.unmerged).toBe(true);
 	expect(body.error).toMatch(/not fully merged/i);
-	// Refused without force — the branch survives to be force-deleted.
+	// Refused without force – the branch survives to be force-deleted.
 	expect(gitOut(["branch", "--list", "drafts/w"])).not.toBe("");
 
 	const forced = await api("DELETE", "/api/branches/drafts%2Fw?force=1");
@@ -169,7 +169,7 @@ test("PATCH /api/docs/*: {to} still moves (the dispatch keeps its other arm)", a
 	expect(readFileSync(join(root, "moved.md"), "utf8")).toBe("# body\n");
 });
 
-test("PATCH /api/docs/*: exactly one of to/title — both/neither/blank → 400", async () => {
+test("PATCH /api/docs/*: exactly one of to/title – both/neither/blank → 400", async () => {
 	const both = await patchDoc("/api/docs/a.md", { title: "T", to: "b.md" });
 	expect(both.status).toBe(400);
 	const neither = await patchDoc("/api/docs/a.md", {});
@@ -201,7 +201,7 @@ test("GET /api/raw: 200 with the mapped content-type (md text, image binary-safe
 	expect(Buffer.from(await png.arrayBuffer())).toEqual(pngBytes);
 });
 
-test("GET /api/raw: svg and html serve as text/plain — never execute in the app origin", async () => {
+test("GET /api/raw: svg and html serve as text/plain – never execute in the app origin", async () => {
 	writeFileSync(join(root, "pic.svg"), '<svg onload="alert(1)"/>');
 	writeFileSync(join(root, "page.html"), "<script>alert(1)</script>");
 	const svg = await api("GET", "/api/raw/pic.svg");
@@ -254,7 +254,7 @@ test("GET /api/tree: ignored paths never render; tracked and untracked-not-ignor
 		name: string;
 		children?: { name: string }[];
 	};
-	// a.md (tracked seed) + new.md; the scratch/ dir and ignored.md are gone —
+	// a.md (tracked seed) + new.md; the scratch/ dir and ignored.md are gone –
 	// every tree-derived surface (sidebar, @ menu, move picker) reads this
 	// route, so the filter is inherited everywhere at once.
 	expect(body.name).toBe(".");

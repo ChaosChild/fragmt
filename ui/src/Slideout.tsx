@@ -3,11 +3,11 @@ import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import { clampSlideoutShare } from "./slideout-geometry";
 
 /**
- * The 7px drag divider between <main> and the slideout pane (#15) — the
+ * The 7px drag divider between <main> and the slideout pane (#15) – the
  * sidebar resize handle's pattern (SidebarResizeHandle) in percentages
  * instead of pixels: pointer capture carries the drag, App owns the value
  * and persists it on pointerup. Pure decoration for a11y, like the sidebar
- * handle — no keyboard resize; the clamp bounds keep both panes usable.
+ * handle – no keyboard resize; the clamp bounds keep both panes usable.
  */
 function SlideoutDivider({
 	onShare,
@@ -48,13 +48,13 @@ function SlideoutDivider({
 
 /**
  * The right pane (#15, dogfooded 2026-08-26): the v0.5.0 comments rail,
- * restored as the default — a permanent 316px margin column with the open
- * doc's threads — that widens into the draggable split only while a preview
+ * restored as the default – a permanent 316px margin column with the open
+ * doc's threads – that widens into the draggable split only while a preview
  * is open (the head row, with the previewed title, open-in-main, and close,
  * exists in that state alone). No mode tabs: the two states are previewPath's
  * presence, nothing to switch. `open` matters only where the CSS turns the
  * pane into the bottom sheet (≤1180px); the head row in the comments state
- * is that sheet's affordance — desktop CSS hides it with the whole head.
+ * is that sheet's affordance – desktop CSS hides it with the whole head.
  */
 export function Slideout({
 	open,
@@ -70,14 +70,14 @@ export function Slideout({
 }: {
 	/** The ≤1180px bottom sheet's open state (App owns it). */
 	open: boolean;
-	/** A preview is open — the wide split state, with its head row. */
+	/** A preview is open – the wide split state, with its head row. */
 	preview: boolean;
 	/** The comments head's "Comments · N" (the sheet's title line). */
 	commentCount: number;
-	/** The previewed doc's display title — the head's "Preview · <title>"
+	/** The previewed doc's display title – the head's "Preview · <title>"
 	 *  line (null with nothing previewed). */
 	previewTitle: string | null;
-	/** The sync LED + one-word status (App's), the rail head's right end —
+	/** The sync LED + one-word status (App's), the rail head's right end –
 	 *  the v0.5.0 header restored (testing round 2026-08-26). */
 	led: string;
 	ledLabel: string;
@@ -108,7 +108,7 @@ export function Slideout({
 					)}
 					<span className="slideout-spacer" />
 					{/* The rail head's right end (v0.5.0): the sync LED + word.
-					    Preview state keeps it too — the split hides the sidebar,
+					    Preview state keeps it too – the split hides the sidebar,
 					    so this stays the one always-visible sync cue. Hidden
 					    ≤1180px (the topbar's LED covers it there). */}
 					<span
@@ -120,7 +120,7 @@ export function Slideout({
 						{ledLabel}
 					</span>
 					{/* Open in main pane (#15): the previewed doc becomes the
-					    main one — through the navigation queue. The icon reads
+					    main one – through the navigation queue. The icon reads
 					    as move-to-main, not edit. */}
 					{preview && onPromote && (
 						<button

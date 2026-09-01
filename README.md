@@ -7,14 +7,14 @@
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 A git-native documentation environment for small dev teams, start-ups, and solo
-developers — an affordable alternative to Notion, AppFlowy, and other expensive
+developers – an affordable alternative to Notion, AppFlowy, and other expensive
 documentation tools. **Your GitHub repo is the storage**: docs stay plain
 markdown, readable on GitHub, diffable, reviewable via PRs, and directly usable
 by AI coding agents.
 
 **What this is not:** an open-source Notion clone (only the editing UX is
 Notion-style), and not a CMS. The emphasis is documentation. Nearest relative:
-Wiki.js — differentiated by being **agentic-ready from the ground up**: the
+Wiki.js – differentiated by being **agentic-ready from the ground up**: the
 agent surface is the CLI itself (`fragmt agent`), riding the same core library
 as the UI.
 
@@ -22,14 +22,14 @@ as the UI.
 
 Documentation tools make you choose between a nice editor and owning your
 content. Notion and Confluence give you the editor and keep the content in their
-database — export is lossy, history and diffs live inside their pane instead of
+database – export is lossy, history and diffs live inside their pane instead of
 your toolchain, and your AI coding agent can't read any of it without an API
 integration. Plain markdown in git gives you
 ownership, review, and agent-readability, but the editing experience is a text
 editor.
 
 fragmt refuses the trade. The files on disk are ordinary markdown in your own
-repo — nothing proprietary, nothing to migrate off, no database. The editor on
+repo – nothing proprietary, nothing to migrate off, no database. The editor on
 top is Notion-style. Delete fragmt tomorrow and you still have a folder of
 markdown and its full git history.
 
@@ -49,7 +49,7 @@ markdown and its full git history.
 - Notion-style WYSIWYG editing over plain markdown; save = git commit; drafts =
   branches; review = PRs.
 - Inline comments anchored as editor marks, threads stored in versioned sidecar
-  files — no comment backend.
+  files – no comment backend.
 - Ctrl/Cmd+K search across titles and bodies; a permanent comments rail beside
   the doc that widens into a read-only preview pane for side-by-side reading.
 - v2: same binary hosted for teams; GitHub OAuth for identity; GitHub
@@ -57,62 +57,62 @@ markdown and its full git history.
 
 ## Status
 
-**Beta — [`fragmt@0.6.0`](https://www.npmjs.com/package/fragmt) is on npm.**
+**Beta – [`fragmt@0.6.0`](https://www.npmjs.com/package/fragmt) is on npm.**
 The full v1 feature set works: editing, the file/folder lifecycle, branches and
-drafting with in-UI merge resolution, comments, the agent CLI — and, since
+drafting with in-UI merge resolution, comments, the agent CLI – and, since
 0.6.0, Ctrl+K search and side-by-side link previews. What stands between this
-and 1.0 is M6 — dogfood hardening, a long-running milestone: v1 closes with
+and 1.0 is M6 – dogfood hardening, a long-running milestone: v1 closes with
 1.0.0 when it's done, not on a schedule.
 
 | Milestone | State |
 | --- | --- |
-| M0 — environment prep | shipped |
-| M1 — read-only (init, serve, tree + doc API, UI shell) | shipped |
-| M2 — round-trip editing (Tiptap, save = commit) | shipped |
-| M2-2 — editing controls (bubble, slash, right-click) | shipped |
-| M3 — files & branches | shipped |
-| M4 — inline comments | shipped |
-| M4-2 — dogfood polish (cards, headers, protected main, merge) | shipped |
-| M4-3 — backlog remediation (header file actions, titles, drag & drop, links, gitignore) | shipped |
-| M4-4 — backlog 2 + agent surface (merge resolution in-UI, `fragmt agent` CLI, AGENTS.md) | shipped |
-| M5 — distributables & install (npm publish, GitHub Releases, npx-first) | shipped — v0.5.0 on npm |
-| Search + link slideout (#14, #15) — first backlog round (milestones retired) | shipped — v0.6.0 on npm |
-| M6 — dogfood hardening | long-running — 1.0.0 when it's done |
+| M0 – environment prep | shipped |
+| M1 – read-only (init, serve, tree + doc API, UI shell) | shipped |
+| M2 – round-trip editing (Tiptap, save = commit) | shipped |
+| M2-2 – editing controls (bubble, slash, right-click) | shipped |
+| M3 – files & branches | shipped |
+| M4 – inline comments | shipped |
+| M4-2 – dogfood polish (cards, headers, protected main, merge) | shipped |
+| M4-3 – backlog remediation (header file actions, titles, drag & drop, links, gitignore) | shipped |
+| M4-4 – backlog 2 + agent surface (merge resolution in-UI, `fragmt agent` CLI, AGENTS.md) | shipped |
+| M5 – distributables & install (npm publish, GitHub Releases, npx-first) | shipped – v0.5.0 on npm |
+| Search + link slideout (#14, #15) – first backlog round (milestones retired) | shipped – v0.6.0 on npm |
+| M6 – dogfood hardening | long-running – 1.0.0 when it's done |
 
 Today you can browse a repo's docs in the UI, edit them in a Notion-style
-WYSIWYG editor, and save — each save is a git commit under your local git
+WYSIWYG editor, and save – each save is a git commit under your local git
 identity, with frontmatter preserved byte-for-byte and a stale-base-hash guard
-against concurrent edits. Formatting is mouse-reachable — a selection or
+against concurrent edits. Formatting is mouse-reachable – a selection or
 right-click bubble for headings, quotes, links, and table structure, a `/`
-menu for inserting blocks and images — no markdown knowledge required. Docs
-and folders have a full lifecycle (create, rename/move, delete — one commit
+menu for inserting blocks and images – no markdown knowledge required. Docs
+and folders have a full lifecycle (create, rename/move, delete – one commit
 each); branches can be created and switched in the UI for drafting, and the
 server keeps the local clone synced with its remote (pull --rebase + push,
 never force) on an interval, on focus, and before editing. Inline comments
 anchor to text as marks in the markdown itself, with threads versioned in
-JSON sidecars — comment from read mode or edit mode, replies and resolve in
+JSON sidecars – comment from read mode or edit mode, replies and resolve in
 the permanent right-margin rail, orphans detected
 against the live document.
 
 **Search and side-by-side reading.** Ctrl/Cmd+K opens a centered search
-palette — anywhere, mid-edit — with results as title and snippet (title hits
+palette – anywhere, mid-edit – with results as title and snippet (title hits
 first, capped at 50); ↑/↓ wrap, hover syncs, Enter opens, and a dirty editor
 is protected: navigation through it shows a save/discard/cancel banner,
 never a silent drop. Shift+Enter previews the result instead. The comments
 rail is a permanent 316px column beside every doc; while a preview is open
 it widens into a draggable 55/45 split (clamped 40–60%, persisted) holding
-the second, read-only pane: doc links open inside it — read-mode Shift+click
+the second, read-only pane: doc links open inside it – read-mode Shift+click
 or edit-mode Ctrl/Cmd+click previews from the body (a plain edit click just
-places the cursor) — anchors scroll, dead links get a quiet note, spans
+places the cursor) – anchors scroll, dead links get a quiet note, spans
 carry thread summaries as tooltips, and an open-in-main button moves the
 previewed doc into the main pane through the same guarded navigation.
 Closing the preview returns the pane to the 316px rail. Only a preview open
 collapses the sidebar once («» restores it, a manual choice sticks), and
 while collapsed a compact top bar keeps branch, merge, new-doc, search, and
-theme reachable. Escape closes surfaces in a fixed order — modal, popover,
-slash/@ menus, bubble, selection, preview — before it cancels editing.
+theme reachable. Escape closes surfaces in a fixed order – modal, popover,
+slash/@ menus, bubble, selection, preview – before it cancels editing.
 
-**Main is protected** — whether the branch actually is or not. Editing (or
+**Main is protected** – whether the branch actually is or not. Editing (or
 commenting on, or creating) a doc on main automatically starts a draft
 branch (`drafts/<doc>`, no prompt) and the write lands there; the sidebar
 marks drafted docs with chips and ghost cards, the doc head shows author,
@@ -122,34 +122,34 @@ Deletions are reversible from the sidebar's recycle bin, `@` references
 insert navigable doc links, and comment actions are one git commit each.
 
 **Docs carry human titles.** The name in the content header is the
-frontmatter `title:` when present, else the filename — and the same rule
+frontmatter `title:` when present, else the filename – and the same rule
 feeds the sidebar cards and the `@` menu. Renaming edits the title in one
 commit; the file itself is never renamed, so existing links keep working.
 Move and delete sit beside rename as header icons, and the whole file
-lifecycle is also draggable — rows onto folders (move), onto the tree
+lifecycle is also draggable – rows onto folders (move), onto the tree
 background (move to the root), onto the bin (delete, with a confirm). The
 sidebar resizes, keeps nested cards readable at any depth, and respects
-`.gitignore` — ignored folders never appear on any tree-derived surface,
+`.gitignore` – ignored folders never appear on any tree-derived surface,
 while force-added tracked files still do. Links inside docs all go
 somewhere sane: in-app navigation with `#heading` anchors, folder links,
 non-markdown files served raw in a new tab, and a quiet note for dead
 ones. Dead draft branches delete from the dropdown (`-d`, asking twice
 before `-D` on unmerged), an optional `authors` map in `.fragmt.json`
 resolves avatars for real email addresses, and failures surface as a
-banner in the content pane — never silence.
+banner in the content pane – never silence.
 
 **Merge conflicts resolve in the tool.** When a draft's merge into main
 conflicts, the merge stands and the UI becomes a resolution view: per-hunk
 ours/theirs choices (or a free-edit box) for docs, a structural merge with
 one-click overrides for comment sidecars, and a single conclude-merge commit
 when everything is staged. While a merge stands, every other write is
-refused — the resolution owns the repo. Conflicts in files fragmt can't
+refused – the resolution owns the repo. Conflicts in files fragmt can't
 resolve (non-docs) abort cleanly with an honest message instead.
 
 **Agents are first-class users.** `fragmt agent` is an AXI-style CLI surface
 for AI coding agents: `status` reads branch/draft/merge state, `comment`
 lists and replies on threads (sidecars are never hand-edited), `draft`
-starts and merges — with token-lean output and next-step hints. Mutations
+starts and merges – with token-lean output and next-step hints. Mutations
 take `--author "Your Name <you@example.invalid>"` so an agent's commits and
 comments carry its identity, and an optional `agents` list in
 `.fragmt.json` marks those authors with a chip in the UI. `fragmt init`
@@ -181,7 +181,7 @@ Initialized fragmt
 ```
 
 `serve` prints the URL to open. The tool always operates on the repo it is
-run in — point it at your own docs by running the same two commands from
+run in – point it at your own docs by running the same two commands from
 inside any git clone.
 
 > **Platforms:** v0.x is tested on Windows; Linux and macOS verification is
@@ -202,18 +202,18 @@ fragmt --help
 
 | Command | Notes |
 | --- | --- |
-| `init` | Must run inside a git clone. Writes `.fragmt.json` at the repo root and reports how many markdown files were adopted. Never overwrites an existing config — a second run prints `already initialized` and exits 0. Also writes the fragmt block into `AGENTS.md` (see [Agents](#agents)). |
+| `init` | Must run inside a git clone. Writes `.fragmt.json` at the repo root and reports how many markdown files were adopted. Never overwrites an existing config – a second run prints `already initialized` and exits 0. Also writes the fragmt block into `AGENTS.md` (see [Agents](#agents)). |
 | `init --root docs` | Scope fragmt to a subfolder instead of the whole repo. The path must be a directory inside the repo. |
 | `serve` | Requires `init` to have run. Binds a free port chosen by the OS and prints the URL. |
 | `serve --port 4400` | Pin the port. |
 
-The `agent` verbs are the machine surface — see [Agents](#agents).
+The `agent` verbs are the machine surface – see [Agents](#agents).
 
 ## Agents
 
 AI coding agents are first-class users. The contract is the `fragmt agent`
 CLI (AXI-style: token-lean output, aggregates inline, `help[]` next-step
-hints, errors on stdout, exit codes 0/1/2, no interactive prompts) — not the
+hints, errors on stdout, exit codes 0/1/2, no interactive prompts) – not the
 HTTP API, which stays the UI's private transport.
 
 | Verb | What it does |
@@ -225,15 +225,15 @@ HTTP API, which stays the UI's private transport.
 | `fragmt agent draft docs/x.md` | Starts (or reuses) the doc's draft branch. |
 | `fragmt agent draft docs/x.md --merge` | Merges the draft into main. |
 
-Doc bodies are plain markdown — agents read and diff them directly; the CLI
+Doc bodies are plain markdown – agents read and diff them directly; the CLI
 matters for drafts, comments, and merge state. New anchored comment threads
 stay a UI act (they need a text selection). Mutations accept `--author`
 (git-style `Name <address>`; a bare name gets a deterministic noreply
 address) so an agent's commits and comment replies carry its identity
-instead of the operator's — add the agent's display name to the `agents`
+instead of the operator's – add the agent's display name to the `agents`
 list in `.fragmt.json` and the UI marks its comments with an `agent` chip.
 
-`fragmt init` writes the rules into `AGENTS.md` — the file is created if
+`fragmt init` writes the rules into `AGENTS.md` – the file is created if
 absent, or a delimited `<!-- fragmt:begin -->…<!-- fragmt:end -->` block is
 appended to an existing one; nothing outside the markers is ever touched,
 and re-running `init` refreshes the block.
@@ -254,13 +254,13 @@ surface:
 }
 ```
 
-- **`docsRoot`** — path, relative to the repo root, that fragmt treats as the
+- **`docsRoot`** – path, relative to the repo root, that fragmt treats as the
   documentation tree. `"."` means the entire repo.
-- **`order`** — reserved for explicit doc ordering (v1.x). Always `{}` for now.
-- **`authors`** — optional map of commit emails to GitHub usernames; avatars
+- **`order`** – reserved for explicit doc ordering (v1.x). Always `{}` for now.
+- **`authors`** – optional map of commit emails to GitHub usernames; avatars
   resolve through it before the keyless `@users.noreply.github.com` heuristic.
   Invalid entries are ignored; the whole key is optional.
-- **`agents`** — optional list of agent display names; comments authored by
+- **`agents`** – optional list of agent display names; comments authored by
   these names render with an `agent` chip in the UI. Invalid entries are
   ignored.
 
@@ -269,8 +269,8 @@ path rather than falling back to a silent default.
 
 ## HTTP API
 
-The UI never touches the filesystem — it talks to the server over this API
-only. (The agent surface is the CLI, not this API — see
+The UI never touches the filesystem – it talks to the server over this API
+only. (The agent surface is the CLI, not this API – see
 [Agents](#agents).)
 
 | Method | Route | Returns |
@@ -301,25 +301,25 @@ only. (The agent surface is the CLI, not this API — see
 
 Tree rules: dot-folders, `node_modules`, and `dist` are skipped; anything a
 `.gitignore` excludes disappears too (one `git ls-files` allow-list per
-refresh — tracked files always win over ignore rules); directories with no
+refresh – tracked files always win over ignore rules); directories with no
 markdown anywhere beneath them are pruned, unless they hold a `.gitkeep`
 (a folder created for docs about to be written stays visible); directories
 sort before documents, both alphabetically and case-insensitively.
 
 Errors are typed rather than generic. A path that escapes `docsRoot` or does
 not end in `.md` is a **400**, including percent-encoded forms such as
-`..%2f` — the traversal guard inspects the raw request line before framework
+`..%2f` – the traversal guard inspects the raw request line before framework
 normalization can collapse the segments. A well-formed path with no file behind
 it is a **404**. Saves carry a `baseHash` (the sha256 of the body as loaded):
-if the file changed on disk in between — another tool, another save, git —
+if the file changed on disk in between – another tool, another save, git –
 the save is a **409** and the file is left untouched. A missing git identity
-(`user.name`/`user.email` unset anywhere git looks) is also a **409** — fragmt
+(`user.name`/`user.email` unset anywhere git looks) is also a **409** – fragmt
 never invents a commit author.
 
 ## Project layout
 
 ```
-src/core/     filesystem, config, git — no HTTP, no process I/O
+src/core/     filesystem, config, git – no HTTP, no process I/O
 src/server/   Hono routes: parse request → call core → serialize
 src/cli/      argv parsing and process exit codes
 ui/           React + Vite; talks to the server only over /api
@@ -332,13 +332,13 @@ Built on TypeScript, Node 22, [Hono](https://hono.dev), React 19 + Vite,
 [Tiptap 3](https://tiptap.dev) + [tiptap-markdown](https://github.com/aguingand/tiptap-markdown)
 for the editor, and
 [gray-matter](https://github.com/jonschlinkert/gray-matter) for frontmatter.
-Git is a thin `execFile` wrapper around system git — no libgit2, no
+Git is a thin `execFile` wrapper around system git – no libgit2, no
 isomorphic-git. Tiptap was chosen over BlockNote because it survived the
 [round-trip spike](docs/SPIKE.md).
 
 ## Development
 
-From source (the contributor path) — after this, `npx fragmt …` works like
+From source (the contributor path) – after this, `npx fragmt …` works like
 the installed one:
 
 ```sh
@@ -350,7 +350,7 @@ npx fragmt init && npx fragmt serve
 The dev loop:
 
 ```sh
-npm run dev:server   # API on :4400 (no watch — branch ops in the managed repo would restart a watcher mid-request)
+npm run dev:server   # API on :4400 (no watch – branch ops in the managed repo would restart a watcher mid-request)
 npm run dev:ui       # UI on :5173, proxies /api
 npm run typecheck
 npm test
@@ -361,23 +361,23 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full loop and conventions.
 
 ## Documentation
 
-- [Product requirements](docs/REQUIREMENTS.md) — who it's for and what v1 owes them
-- [Architecture](docs/ARCHITECTURE.md) — storage model, comment anchoring, git layer
-- [Design principles](docs/DESIGN.md) — UI tokens, reading column, sidebar spec
-- [v1 build plan](docs/PLAN.md) — the closed milestone record, risks, and what was cut
-- [Backlog](docs/BACKLOG.md) — the work queue (GitHub issues) and graduation log
-- [Milestone specs](docs/milestones/) — implementation-exact, M0 through M5 plus the first backlog round
-- [Editor spike](docs/SPIKE.md) — markdown round-trip fidelity; why Tiptap won
+- [Product requirements](docs/REQUIREMENTS.md) – who it's for and what v1 owes them
+- [Architecture](docs/ARCHITECTURE.md) – storage model, comment anchoring, git layer
+- [Design principles](docs/DESIGN.md) – UI tokens, reading column, sidebar spec
+- [v1 build plan](docs/PLAN.md) – the closed milestone record, risks, and what was cut
+- [Backlog](docs/BACKLOG.md) – the work queue (GitHub issues) and graduation log
+- [Milestone specs](docs/milestones/) – implementation-exact, M0 through M5 plus the first backlog round
+- [Editor spike](docs/SPIKE.md) – markdown round-trip fidelity; why Tiptap won
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The build plan's milestone record is
 public and closed; work is picked from the backlog, so the most useful
 contribution right now is dogfooding and issue reports. Open an issue before
-a large PR — scope is deliberately tight, and the "Cut from v1" table in the
+a large PR – scope is deliberately tight, and the "Cut from v1" table in the
 plan is load-bearing.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Andrei Migatchev and
+MIT – see [LICENSE](LICENSE). Copyright (c) 2026 Andrei Migatchev and
 [contributors](https://github.com/ChaosChild/fragmt/graphs/contributors).

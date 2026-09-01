@@ -1,7 +1,7 @@
 import { git } from "./git.js";
 
 /**
- * THE mutation seam (ARCHITECTURE §5). Every write in fragmt ends here —
+ * THE mutation seam (ARCHITECTURE §5). Every write in fragmt ends here –
  * v1 commits as the local git identity; v2 will pass the authenticated user.
  *
  * `files` are repo-root-relative POSIX paths, staged and committed together.

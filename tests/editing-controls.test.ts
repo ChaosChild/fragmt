@@ -179,7 +179,7 @@ describe("placeholder hint", () => {
 describe("doc load resets the caret to the top (Edit-flip scroll)", () => {
 	// EditorPane's load effect (M4-3): setContent is a whole-doc replace
 	// that maps the caret to the doc's END, so the Edit-flip focus()
-	// scrolled the end into view. The reset runs in read mode too — the
+	// scrolled the end into view. The reset runs in read mode too – the
 	// non-editable view stays focusable, so a text selection is safe.
 	test("setContent alone lands at the end; the load sequence lands at the start", () => {
 		const e = new Editor({
@@ -191,7 +191,7 @@ describe("doc load resets the caret to the top (Edit-flip scroll)", () => {
 		e.commands.setContent("# top\n\nbody text");
 		expect(e.state.selection.from).toBe(e.state.doc.content.size - 1);
 		// The load effect's reset: position 0 clamps to the first valid text
-		// position (PM positions start at 1) — the doc start.
+		// position (PM positions start at 1) – the doc start.
 		e.commands.setTextSelection(0);
 		expect(e.state.selection.from).toBe(1);
 		// The Edit flip keeps the caret (and so the scroll) at the top.

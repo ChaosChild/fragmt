@@ -17,7 +17,7 @@ import { shortDate } from "./Sidebar";
 /**
  * The email-parallel avatar (item 3): the config authors map first (email →
  * GitHub username, App passes it from meta), then the keyless GitHub noreply
- * heuristic — `123456+user@` or `user@` — either way
+ * heuristic – `123456+user@` or `user@` – either way
  * avatars.githubusercontent.com/<user>?s=76; a load error or non-matching
  * email falls back to the author's initials.
  */
@@ -62,11 +62,11 @@ function Avatar({
 
 /**
  * The doc pane: reading mode by default (DESIGN §3), one explicit Edit action
- * flips the SAME mounted Tiptap editor to editable (M4 review decision 3 —
+ * flips the SAME mounted Tiptap editor to editable (M4 review decision 3 –
  * one rendering path, no reflow between modes). Save commits via PUT; a 409
  * shows a non-destructive banner and keeps the user's buffer (M2 spec).
- * Comment anchoring (M4-2) is one combined POST — doc body and sidecar
- * thread in a single server-side commit — without ever flipping the mode.
+ * Comment anchoring (M4-2) is one combined POST – doc body and sidecar
+ * thread in a single server-side commit – without ever flipping the mode.
  * The comments rail lives in App, always present beside this pane; DocView
  * only forwards highlight-span clicks to it.
  */
@@ -113,75 +113,75 @@ export function DocView({
 	onDirtyChange: (dirty: boolean) => void;
 	/** Bumps App's sidecar refetch after a successful create. */
 	onCommentsChanged: () => void;
-	/** A comment highlight was activated in the doc — jump the rail to it. */
+	/** A comment highlight was activated in the doc – jump the rail to it. */
 	onSpanClick: (id: string) => void;
-	/** An action blocked on the save-or-discard choice — a branch switch or
+	/** An action blocked on the save-or-discard choice – a branch switch or
 	 *  a header file op (M3, generalized M4-3 b4); the headline names it and
 	 *  `go` runs after Save/Discard (App clears its state). */
 	pendingAction: { headline: string; go: () => void } | null;
 	onPendingActionCancel: () => void;
-	/** Sync conflict message (M3) — the calm banner, never a merge UI. */
+	/** Sync conflict message (M3) – the calm banner, never a merge UI. */
 	conflict: string | null;
 	onDismissConflict: () => void;
-	/** The Escape chain's slideout slot (#15 b5, App) — forwarded verbatim to
+	/** The Escape chain's slideout slot (#15 b5, App) – forwarded verbatim to
 	 *  EditorPane: true = the slideout was open and the Escape closed it. */
 	onEscapeSurfacesClear?: () => boolean;
 	/** Pre-edit gate (App): true = flip to edit mode. On main, App drafts
-	 *  first (protected main) and returns false on failure — the banner is
+	 *  first (protected main) and returns false on failure – the banner is
 	 *  App's; DocView stays dumb. */
 	onBeforeEdit: () => Promise<boolean>;
 	/** Protected main: awaited before the combined comment POST when the doc
 	 *  write must go through a draft (App provides it only on main). */
 	onDraftFirst?: () => Promise<boolean>;
-	/** The open doc's git metadata (author/version/date) — the doc-head lines. */
+	/** The open doc's git metadata (author/version/date) – the doc-head lines. */
 	docMeta?: DocMeta;
-	/** Current branch name — the "vN · branch" segment. */
+	/** Current branch name – the "vN · branch" segment. */
 	branch: string | null;
-	/** App's LED color/word — reused verbatim in the head (one vocabulary). */
+	/** App's LED color/word – reused verbatim in the head (one vocabulary). */
 	led: string;
 	ledLabel: string;
 	/** The branch a draft pill would check out; null = no pill (App computes). */
 	draftBranch: string | null;
 	onOpenDraft: () => void;
-	/** On a non-main branch touching THIS doc — the pill's non-clickable
+	/** On a non-main branch touching THIS doc – the pill's non-clickable
 	 *  flip side, the "on draft" badge (App computes; M4-3). */
 	onDraft: boolean;
-	/** email → GitHub username — Avatar's first lookup (App, from meta). */
+	/** email → GitHub username – Avatar's first lookup (App, from meta). */
 	authors: Record<string, string>;
-	/** The tree's docs — the editor's @ menu and link-click doc set (M4-2). */
+	/** The tree's docs – the editor's @ menu and link-click doc set (M4-2). */
 	docs: AtDoc[];
-	/** An in-doc link resolved to a tree doc — navigate in-app (App); the
+	/** An in-doc link resolved to a tree doc – navigate in-app (App); the
 	 *  #fragment rides along and scrolls after the new doc renders (M4-3 b6). */
 	onSelectDoc: (path: string, anchor?: string) => void;
-	/** A doc-link click chose the slideout preview (#15) — edit-mode clicks
+	/** A doc-link click chose the slideout preview (#15) – edit-mode clicks
 	 *  (any modifier) and read-mode Shift/hover-↗ hits; App opens the pane. */
 	onOpenPreview: (path: string, anchor?: string) => void;
-	/** An in-doc link resolved to a tree folder — App expands it in the
+	/** An in-doc link resolved to a tree folder – App expands it in the
 	 *  sidebar and selects its first doc (M4-3 b6). */
 	onSelectFolder: (path: string) => void;
 	/** A cross-doc #fragment waiting to scroll after the doc loads (App owns
 	 *  it; EditorPane consumes it). */
 	pendingAnchor: string | null;
-	/** The pending anchor was consumed — App clears it. */
+	/** The pending anchor was consumed – App clears it. */
 	onAnchorConsumed: () => void;
 	/** Collision-free move destinations (M4-4 b1, App pre-filters): every
 	 *  tree folder except the current parent and folders already holding a
-	 *  child named like this doc — a guaranteed 409 is never offered. */
+	 *  child named like this doc – a guaranteed 409 is never offered. */
 	folders: string[];
-	/** Root ("") is offerable — true only from a subfolder and only when
+	/** Root ("") is offerable – true only from a subfolder and only when
 	 *  root holds no same-named child (App computes; M4-4 b1). */
 	rootMoveValid: boolean;
 	/** Pre-rename gate (App): on main a title write is a doc-body write, so
 	 *  the draft starts (and checks out) first; false = App bannered and
 	 *  the box stays closed. The dirty gate is DocView's banner (below). */
 	onBeforeRename: () => Promise<boolean>;
-	/** Move to a tree folder ("" = docsRoot root) — App runs the dirty guard
+	/** Move to a tree folder ("" = docsRoot root) – App runs the dirty guard
 	 *  and the existing move op; selection follows the new path. */
 	onMoveDoc: (folder: string) => void;
-	/** Delete the open doc — App runs the dirty guard, the confirm, and the
+	/** Delete the open doc – App runs the dirty guard, the confirm, and the
 	 *  existing delete op; the display name rides along for the confirm. */
 	onDeleteDoc: (displayName: string) => void;
-	/** A title landed — App reloads the doc (frontmatter changed) + meta. */
+	/** A title landed – App reloads the doc (frontmatter changed) + meta. */
 	onRenamed: () => void;
 }) {
 	const [editing, setEditing] = useState(false);
@@ -200,18 +200,18 @@ export function DocView({
 	const [resetCount, setResetCount] = useState(0);
 	// M4-3 b4 header file actions: the move picker's anchored popover, the
 	// rename box, and its blocked-on-dirty state (the local flavor of
-	// pendingAction — the box opens after the choice).
+	// pendingAction – the box opens after the choice).
 	const moveMenu = useMenu();
 	const [renaming, setRenaming] = useState(false);
 	const [renameValue, setRenameValue] = useState("");
 	const [renameError, setRenameError] = useState<string | null>(null);
 	const [renameBusy, setRenameBusy] = useState(false);
 	const [pendingRename, setPendingRename] = useState(false);
-	// M4-3 b6: the dead-link note's payload — a relative .md link that matched
+	// M4-3 b6: the dead-link note's payload – a relative .md link that matched
 	// nothing in the tree. Cleared on doc change (the note describes the open
 	// doc's links) and by its Dismiss button.
 	const [linkNotFound, setLinkNotFound] = useState<string | null>(null);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `selected` is the change trigger — the note describes the open doc's links and clears with it.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `selected` is the change trigger – the note describes the open doc's links and clears with it.
 	useEffect(() => {
 		setLinkNotFound(null);
 	}, [selected]);
@@ -219,7 +219,7 @@ export function DocView({
 	const editorRef = useRef<EditorPaneHandle>(null);
 	const paneRef = useRef<HTMLDivElement>(null);
 
-	// The confirm banners render at the top of the pane — bring them into view
+	// The confirm banners render at the top of the pane – bring them into view
 	// when one appears, otherwise a mid-document Esc raises it unseen.
 	useEffect(() => {
 		if (confirmingCancel || pendingAction || pendingRename) {
@@ -237,7 +237,7 @@ export function DocView({
 		<div className="conflict-banner" role="alert">
 			<div>
 				<strong>Sync conflict</strong>
-				{conflict} Resolve the file in your editor or on GitHub — the next sync
+				{conflict} Resolve the file in your editor or on GitHub – the next sync
 				picks up the result.
 			</div>
 			<button
@@ -262,13 +262,13 @@ export function DocView({
 	const file = segs[segs.length - 1];
 	const dir = segs.slice(0, -1).join(" / ");
 	// The display-name model (M4-3 b4): frontmatter title, else the basename
-	// sans .md — the sidebar cards and the @ menu resolve the same way.
+	// sans .md – the sidebar cards and the @ menu resolve the same way.
 	const displayName = displayTitle(doc?.frontmatter.title, file);
 
 	// --- header file actions (M4-3 b4) --------------------------------------
 	// Rename gates in the spec's order: a dirty buffer raises the
 	// save-or-discard banner first (the branch-switch mechanism, local here
-	// because the box opens afterwards), then App's gate — on main the title
+	// because the box opens afterwards), then App's gate – on main the title
 	// write is a doc-body write, so a draft starts first. The file path
 	// never changes; only the frontmatter title does.
 	function requestRename() {
@@ -304,7 +304,7 @@ export function DocView({
 		try {
 			await setTitle(doc.path, title);
 		} catch (e) {
-			// The box stays open — the error sits inline next to the input.
+			// The box stays open – the error sits inline next to the input.
 			setRenameError(e instanceof Error ? e.message : String(e));
 			return;
 		} finally {
@@ -330,7 +330,7 @@ export function DocView({
 					onFocus={(e) => e.target.select()}
 					onKeyDown={(e) => {
 						if (e.key === "Escape") {
-							// Consumed (#15 b5): the box is an Escape surface —
+							// Consumed (#15 b5): the box is an Escape surface –
 							// the window fallback must not also close the
 							// slideout on the same press.
 							e.preventDefault();
@@ -398,7 +398,7 @@ export function DocView({
 							</button>
 							<MenuPopover anchor={moveMenu.anchor} popRef={moveMenu.popRef}>
 								{/* App pre-filters (M4-4 b1): folders here are collision-free
-								    already — the current parent and occupied folders never
+								    already – the current parent and occupied folders never
 								    arrive, and root rides on rootMoveValid. */}
 								{rootMoveValid && (
 									<button
@@ -459,7 +459,7 @@ export function DocView({
 			return true;
 		} catch (e) {
 			if (e instanceof SaveError && e.status === 409) {
-				setSaveError("changed on disk — copy your changes, then reload");
+				setSaveError("changed on disk – copy your changes, then reload");
 			} else {
 				setSaveError(e instanceof Error ? e.message : String(e));
 			}
@@ -480,17 +480,17 @@ export function DocView({
 
 	// Comment anchoring (M4-2's one-commit contract): the mark is already
 	// applied locally by the composer; ONE POST carries the serialized doc
-	// body + base hash AND the thread — the server writes both files in a
+	// body + base hash AND the thread – the server writes both files in a
 	// single commit. A failure (e.g. a stale base hash → 409) leaves disk
 	// untouched; the banner shows it and the buffer's mark just sits there
-	// until saved or discarded. The mode is never flipped — commenting from
+	// until saved or discarded. The mode is never flipped – commenting from
 	// read mode stays in read mode.
 	async function handleComment(id: string, quote: string, body: string) {
 		if (!doc || saving) return;
 		setSaving(true);
 		setSaveError(null);
 		try {
-			// Protected main: on main the doc write drafts first (App) — the
+			// Protected main: on main the doc write drafts first (App) – the
 			// baseHash and serialized body stay valid, a fresh checkout
 			// doesn't change file content. False = App bannered; no POST.
 			if (onDraftFirst && !(await onDraftFirst())) return;
@@ -501,7 +501,7 @@ export function DocView({
 				docBody: editorRef.current?.getMarkdown() ?? "",
 				docBaseHash: doc.hash,
 			});
-			// The doc changed on disk (mark included) — refetch for the
+			// The doc changed on disk (mark included) – refetch for the
 			// canonical body + hash the next save or comment builds on.
 			setDirty(false);
 			onReload();
@@ -539,7 +539,7 @@ export function DocView({
 
 	// The shared save-or-discard banner: Keep editing keeps the buffer;
 	// Discard or a successful Save clears it and continues with `onGo`.
-	// One shape, three users — a blocked branch switch (App's pendingAction),
+	// One shape, three users – a blocked branch switch (App's pendingAction),
 	// a blocked header file op (same), and a blocked rename (the box opens
 	// afterwards, so its continue is local).
 	const guardBanner = (
@@ -601,7 +601,7 @@ export function DocView({
 		);
 
 	// The doc-head meta line (item 3): "vN · branch · saved <time>" in read
-	// mode, "editing vN · branch" in edit mode, then the sync LED + word —
+	// mode, "editing vN · branch" in edit mode, then the sync LED + word –
 	// the rail's one-word vocabulary, reused.
 	const syncWord = editing ? "unsaved changes" : ledLabel.toLowerCase();
 	const lineSegs: string[] = [];
@@ -613,7 +613,7 @@ export function DocView({
 	if (!editing && docMeta) lineSegs.push(`saved ${shortDate(docMeta.date)}`);
 
 	// One rendering path (M4 review decision 3): the editor is mounted in
-	// BOTH modes — read is `editable: false` on the same instance, Edit/Save/
+	// BOTH modes – read is `editable: false` on the same instance, Edit/Save/
 	// Cancel are mode flips with no remount (only a discard bumps the key to
 	// drop the buffer). The pane classes share their layout rule; the editor
 	// carries the `markdown` typography class, so the document reads
@@ -622,7 +622,7 @@ export function DocView({
 		<div className={editing ? "editor-pane" : "doc-pane"} ref={paneRef}>
 			<div className="doc-bar">{docBar}</div>
 			{/* Dead-link note (M4-3 b6): a relative link that looks like a doc but
-			    matches nothing — said plainly under the breadcrumb, dismissable,
+			    matches nothing – said plainly under the breadcrumb, dismissable,
 			    never a tab hijack. Same visual family as the conflict banner. */}
 			{linkNotFound && (
 				<div className="conflict-banner" role="status">
@@ -647,7 +647,7 @@ export function DocView({
 						authors={authors}
 					/>
 					<div className="dh-main">
-						<div className="dh-author">{docMeta?.author ?? "—"}</div>
+						<div className="dh-author">{docMeta?.author ?? "–"}</div>
 						<div className="dh-line">
 							{lineSegs.map((s, i) => (
 								<span key={s}>
@@ -667,13 +667,13 @@ export function DocView({
 						</div>
 					</div>
 					{/* The draft pill (item 3): only on main, when a draft elsewhere
-					    touches this doc — click checks the draft out (App). Its flip
+					    touches this doc – click checks the draft out (App). Its flip
 					    side (M4-3): on a draft branch touching THIS doc, a
-					    NON-clickable "on draft" badge (span — nothing to click). */}
+					    NON-clickable "on draft" badge (span – nothing to click). */}
 					{draftBranch && (
 						<button type="button" className="draft-pill" onClick={onOpenDraft}>
 							<Pencil aria-hidden="true" />
-							draft exists — open
+							draft exists – open
 						</button>
 					)}
 					{onDraft && <span className="draft-pill on-draft">on draft</span>}
@@ -705,7 +705,7 @@ export function DocView({
 								className="iconbtn"
 								onClick={() => {
 									// App gates the flip (protected main: draft
-									// first) — only a true enters edit mode.
+									// first) – only a true enters edit mode.
 									void onBeforeEdit().then((proceed) => {
 										if (!proceed) return;
 										setEditing(true);

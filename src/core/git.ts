@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-/** Typed git failure — carries the exit code and both streams for diagnosis. */
+/** Typed git failure – carries the exit code and both streams for diagnosis. */
 export class GitError extends Error {
 	constructor(
 		message: string,
@@ -71,7 +71,7 @@ export async function checkoutBranch(
 	await git(repoRoot, ["checkout", name]);
 }
 
-/** `git log` with caller-owned format/filters — raw trimmed stdout. */
+/** `git log` with caller-owned format/filters – raw trimmed stdout. */
 export async function logCommits(
 	repoRoot: string,
 	args: string[],
@@ -79,7 +79,7 @@ export async function logCommits(
 	return git(repoRoot, ["log", ...args]);
 }
 
-/** `git show <ref>` — file content by ref. */
+/** `git show <ref>` – file content by ref. */
 export async function showRef(repoRoot: string, ref: string): Promise<string> {
 	return git(repoRoot, ["show", ref]);
 }

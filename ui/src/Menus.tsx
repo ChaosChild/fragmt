@@ -26,7 +26,7 @@ export type BranchAction =
 	| { kind: "create"; name: string }
 	| { kind: "delete"; name: string };
 
-/** Docs must end in .md (core rule) — keep free-form input forgiving. */
+/** Docs must end in .md (core rule) – keep free-form input forgiving. */
 function toDocPath(input: string): string {
 	const t = input.trim().replace(/^\/+/, "");
 	return t.toLowerCase().endsWith(".md") ? t : `${t}.md`;
@@ -55,7 +55,7 @@ export function useMenu() {
 		};
 		const onKey = (e: KeyboardEvent) => {
 			// Consumed, and marked so (#15 b5): an open popover always wins
-			// the Escape chain — the window fallback (and any future
+			// the Escape chain – the window fallback (and any future
 			// ordering) can see this Escape never reaches the slideout leg.
 			if (e.key === "Escape") {
 				e.preventDefault();
@@ -82,7 +82,7 @@ export function useMenu() {
 }
 
 /**
- * Fixed glass popover portalled to document.body — the sidebar's
+ * Fixed glass popover portalled to document.body – the sidebar's
  * backdrop-filter is a containing block for fixed descendants and would
  * otherwise clip/misplace it.
  */
@@ -165,7 +165,7 @@ export function BranchMenu({
 				{failed && <p className="menu-empty">branches unavailable</p>}
 				{(branches ?? []).map((b) => (
 					// One row, two targets: the name switches, the trash deletes
-					// (never offered on the current branch — the server refuses it).
+					// (never offered on the current branch – the server refuses it).
 					<span key={b} className="menu-row">
 						<button
 							type="button"
@@ -214,7 +214,7 @@ export function BranchMenu({
 }
 
 /**
- * The "+" button (M4-2 item 11): a two-choice popover — New document (the
+ * The "+" button (M4-2 item 11): a two-choice popover – New document (the
  * existing path form) or New folder (same form, the create-folder op; the
  * folder appears in the tree, nothing gets selected).
  */

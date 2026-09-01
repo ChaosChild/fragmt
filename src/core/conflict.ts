@@ -1,6 +1,6 @@
 import type { CommentFile } from "./comments.js";
 
-/** Markers didn't nest the way git writes them — see parseConflicts. */
+/** Markers didn't nest the way git writes them – see parseConflicts. */
 export class ConflictParseError extends Error {}
 
 /** A file split on conflict markers: plain text runs and ours/theirs hunks. */
@@ -12,7 +12,7 @@ export type ConflictPart = { text: string } | { ours: string; theirs: string };
  * `<<<<<<<` opens a hunk, `=======` flips ours→theirs, `>>>>>>>` closes it.
  * Text and hunk sides keep their line newlines, so reassembling the parts
  * (choosing a side per hunk) reproduces a well-formed file byte-for-byte
- * minus the marker lines. Throws ConflictParseError on malformed nesting —
+ * minus the marker lines. Throws ConflictParseError on malformed nesting –
  * git output is well-formed, so a throw means the text wasn't a conflict.
  */
 export function parseConflicts(text: string): ConflictPart[] {
@@ -62,10 +62,10 @@ export function parseConflicts(text: string): ConflictPart[] {
 export interface SidecarMergeSummary {
 	/** Threads whose record came from ours (only-in-ours + present-in-both). */
 	keptFromOurs: number;
-	/** Threads only theirs had — presence wins, so they join. */
+	/** Threads only theirs had – presence wins, so they join. */
 	keptFromTheirs: number;
 	/** Threads the merge newly resolved relative to ours (ours didn't have
-	 *  them resolved — includes theirs-only threads arriving resolved). */
+	 *  them resolved – includes theirs-only threads arriving resolved). */
 	resolvedCarried: number;
 	/** Theirs' reply entries whose (author, at) pair wasn't already present. */
 	repliesMerged: number;
@@ -74,7 +74,7 @@ export interface SidecarMergeSummary {
 /**
  * Structural sidecar merge (approved rules, Q4): threads union by id
  * (presence wins), creation fields (quote/author/createdAt) from ours,
- * resolved = ours || theirs (sticky — resolving survives the merge), replies
+ * resolved = ours || theirs (sticky – resolving survives the merge), replies
  * = ours' entries + theirs' entries whose (author, at) pair is new.
  */
 export function mergeSidecars(
@@ -92,7 +92,7 @@ export function mergeSidecars(
 		summary.keptFromOurs++;
 		const t = theirs.comments[id];
 		if (!t) {
-			// only ours has it — verbatim
+			// only ours has it – verbatim
 			merged.comments[id] = o;
 			continue;
 		}

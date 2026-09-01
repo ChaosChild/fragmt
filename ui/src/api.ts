@@ -10,13 +10,13 @@ export interface DocResponse {
 	path: string;
 	frontmatter: Record<string, unknown>;
 	markdown: string;
-	/** sha256 of `markdown` — sent back as `baseHash` on save. */
+	/** sha256 of `markdown` – sent back as `baseHash` on save. */
 	hash: string;
 }
 
 export interface SaveResponse {
 	sha: string;
-	/** Hash of the body as written — use it as the next save's baseHash. */
+	/** Hash of the body as written – use it as the next save's baseHash. */
 	hash: string;
 }
 
@@ -59,7 +59,7 @@ export async function saveDoc(
 			const body = (await res.json()) as { error?: string };
 			if (body.error) message = body.error;
 		} catch {
-			// non-JSON error body — keep the generic message
+			// non-JSON error body – keep the generic message
 		}
 		throw new SaveError(res.status, message);
 	}
@@ -88,7 +88,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 			const body = (await res.json()) as { error?: string };
 			if (body.error) message = body.error;
 		} catch {
-			// non-JSON error body — keep the generic message
+			// non-JSON error body – keep the generic message
 		}
 		throw new Error(message);
 	}
@@ -111,8 +111,8 @@ export const moveDoc = (from: string, to: string) =>
 		body: JSON.stringify({ to }),
 	});
 
-/** The PATCH's other branch (M4-3 b4): writes the frontmatter title — the
- *  display name — without ever touching the file path. */
+/** The PATCH's other branch (M4-3 b4): writes the frontmatter title – the
+ *  display name – without ever touching the file path. */
 export const setTitle = (path: string, title: string) =>
 	request<{ sha: string }>(`/api/docs/${encodeURI(path)}`, {
 		method: "PATCH",
@@ -146,7 +146,7 @@ export const deleteFolder = (path: string) =>
 
 export const getBranches = () => request<BranchesResponse>("/api/branches");
 
-/** Creates `name` — the server also checks it out. */
+/** Creates `name` – the server also checks it out. */
 export const createBranch = (name: string) =>
 	request<{ current: string }>("/api/branches", {
 		method: "POST",
@@ -162,7 +162,7 @@ export const checkoutBranch = (name: string) =>
 	});
 
 /** Own fetch (mergeDraft's pattern): the 409 unmerged body carries `unmerged`,
- *  not `error` — callers branch on SaveError.status to re-confirm a force
+ *  not `error` – callers branch on SaveError.status to re-confirm a force
  *  delete. encodeURIComponent keeps slashed names (drafts/x) one segment. */
 export async function deleteBranch(
 	name: string,
@@ -178,7 +178,7 @@ export async function deleteBranch(
 			const body = (await res.json()) as { error?: string };
 			if (body.error) message = body.error;
 		} catch {
-			// non-JSON error body — keep the generic message
+			// non-JSON error body – keep the generic message
 		}
 		throw new SaveError(res.status, message);
 	}
@@ -197,7 +197,7 @@ export interface DocMeta {
 	date: string;
 	version: number;
 	snippet: string;
-	/** Frontmatter title — the display name; null = file name sans .md. */
+	/** Frontmatter title – the display name; null = file name sans .md. */
 	title: string | null;
 }
 export interface DraftEntry {
@@ -206,7 +206,7 @@ export interface DraftEntry {
 }
 export interface DeletedDoc {
 	path: string;
-	/** The delete commit — the restore pulls the parent's content. */
+	/** The delete commit – the restore pulls the parent's content. */
 	sha: string;
 	/** ISO. */
 	date: string;
@@ -218,11 +218,11 @@ export interface RepoMeta {
 	docs: Record<string, DocMeta>;
 	drafts: Record<string, DraftEntry[]>;
 	deleted: DeletedDoc[];
-	/** email → GitHub username (avatar resolution) — the config map verbatim. */
+	/** email → GitHub username (avatar resolution) – the config map verbatim. */
 	authors: Record<string, string>;
-	/** Agent display names — the config list verbatim (the rail's agent chip). */
+	/** Agent display names – the config list verbatim (the rail's agent chip). */
 	agents: string[];
-	/** Non-null while a stood merge is being resolved (M4-4 b3) — resolution
+	/** Non-null while a stood merge is being resolved (M4-4 b3) – resolution
 	 *  mode's on-switch; the full per-file detail is getMergeState. */
 	merge: { branch: string | null; remaining: number } | null;
 }
@@ -238,7 +238,7 @@ export const startDraft = (docPath: string) =>
 	});
 
 /** Own fetch (saveDoc's pattern): the 409 conflict body carries `message`,
- *  not `error` — callers branch on SaveError.status to show the banner. A
+ *  not `error` – callers branch on SaveError.status to show the banner. A
  *  conflict body throws MergeError instead (M4-4 b3): `stood` decides
  *  resolution mode vs the honest terminal-reconcile fallback. */
 export class MergeError extends SaveError {
@@ -284,7 +284,7 @@ export async function mergeDraft(): Promise<{ sha: string }> {
 					message: body.message,
 				};
 		} catch {
-			// non-JSON error body — keep the generic message
+			// non-JSON error body – keep the generic message
 		}
 		if (conflict) throw new MergeError(res.status, message, conflict);
 		throw new SaveError(res.status, message);
@@ -315,11 +315,11 @@ export type MergeState =
 			remaining: number;
 	  };
 
-/** Full detail of the standing merge — `{inMerge:false}` when none stands. */
+/** Full detail of the standing merge – `{inMerge:false}` when none stands. */
 export const getMergeState = () => request<MergeState>("/api/merge");
 
 /** Doc resolutions send the assembled text (content); sidecar resolutions one
- *  of the three structural choices — exactly one field, the PUT's shape. */
+ *  of the three structural choices – exactly one field, the PUT's shape. */
 export const resolveMergeFile = (
 	path: string,
 	resolution: { content: string } | { choice: "merged" | "ours" | "theirs" },
@@ -330,7 +330,7 @@ export const resolveMergeFile = (
 		body: JSON.stringify({ path, ...resolution }),
 	});
 
-/** Finishes the standing merge — the merge commit. */
+/** Finishes the standing merge – the merge commit. */
 export const concludeMerge = () =>
 	request<{ sha: string }>("/api/merge/conclude", { method: "POST" });
 
@@ -421,6 +421,6 @@ export interface SearchHit {
 	snippet: string;
 }
 
-/** The flat worktree scan — a trimmed <2-char query is the server's own []. */
+/** The flat worktree scan – a trimmed <2-char query is the server's own []. */
 export const searchDocs = (q: string) =>
 	request<SearchHit[]>(`/api/search?q=${encodeURIComponent(q)}`);

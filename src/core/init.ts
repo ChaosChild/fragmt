@@ -13,7 +13,7 @@ export interface InitResult {
 /**
  * Adopt a docs root: refuse to overwrite an existing config, otherwise validate
  * the root is a directory inside the repo, write `.fragmt.json`, and count the
- * adopted markdown files. Pure — no process I/O; the CLI owns that.
+ * adopted markdown files. Pure – no process I/O; the CLI owns that.
  */
 export function initRepo(repoRoot: string, docsRoot: string): InitResult {
 	if (existsSync(configPath(repoRoot))) {
@@ -34,7 +34,7 @@ export function initRepo(repoRoot: string, docsRoot: string): InitResult {
 	}
 
 	writeConfig(repoRoot, docsRoot);
-	// Count before the AGENTS.md write — the block is tool-owned, not an
+	// Count before the AGENTS.md write – the block is tool-owned, not an
 	// adopted doc (docsRoot "." would otherwise count it).
 	const count = countDocs(listTree(repoRoot, docsRoot));
 	writeAgentsBlock(repoRoot);

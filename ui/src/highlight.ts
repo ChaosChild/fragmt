@@ -1,12 +1,12 @@
 export interface HighlightPart {
 	text: string;
-	/** True inside a case-insensitive query match — renders as <mark>. */
+	/** True inside a case-insensitive query match – renders as <mark>. */
 	hit: boolean;
 }
 
 /**
  * Split `text` into plain/matched segments around every case-insensitive
- * occurrence of trimmed `q` (left-to-right, non-overlapping) — the search
+ * occurrence of trimmed `q` (left-to-right, non-overlapping) – the search
  * modal's <mark> render source (#14). Pure: testable without React.
  */
 export function highlightSegments(text: string, q: string): HighlightPart[] {

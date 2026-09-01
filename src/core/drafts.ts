@@ -42,10 +42,10 @@ export function nextDraftName(existing: string[], docPath: string): string {
 	return `drafts/${slug}-${n}`;
 }
 
-/** Merge asked for while on main (or with no main) — the server maps to 400. */
+/** Merge asked for while on main (or with no main) – the server maps to 400. */
 export class OnMainBranchError extends Error {}
 
-/** concludeMerge with unmerged paths left — the server maps this to 409. */
+/** concludeMerge with unmerged paths left – the server maps this to 409. */
 export class MergeUnresolvedError extends Error {}
 
 /** docsRoot-relative doc path → the repo-relative pathspec git wants. */
@@ -78,7 +78,7 @@ export async function startDraft(
 	// Already drafting, or no draft model at all (null main) → nothing to do.
 	if (!main || current !== main) return { current, reused: true };
 
-	// ponytail: one git log spawn per drafts/* branch — same ceiling as
+	// ponytail: one git log spawn per drafts/* branch – same ceiling as
 	// repoMeta's walk 2; batch if a repo ever carries hundreds of drafts.
 	const branches = await listBranches(repoRoot);
 	for (const branch of branches) {
@@ -105,7 +105,7 @@ export async function startDraft(
  * Merge the current draft into main (the sanctioned write). A conflict where
  * EVERY unmerged path is a docsRoot doc or a comment sidecar STANDS on main
  * for in-UI resolution (M4-4); anything else aborts the merge and switches
- * back — HEAD and the draft untouched, user not stranded. A clean merge
+ * back – HEAD and the draft untouched, user not stranded. A clean merge
  * deletes the branch and returns the merged sha.
  */
 export async function mergeToMain(
@@ -131,7 +131,7 @@ export async function mergeToMain(
 	const main = await mainBranch(repoRoot);
 	const current = await currentBranch(repoRoot);
 	if (!main || current === main)
-		throw new OnMainBranchError(`nothing to merge — on ${current}`);
+		throw new OnMainBranchError(`nothing to merge – on ${current}`);
 
 	await checkoutBranch(repoRoot, main);
 	try {
@@ -144,7 +144,7 @@ export async function mergeToMain(
 		const files = await unmergedPaths(repoRoot);
 		const prefix = docsPrefix(docsRoot);
 		if (files.every((p) => classifyPath(p, prefix) !== "other")) {
-			// All conflicts are docs/sidecars — the merge stands on main and
+			// All conflicts are docs/sidecars – the merge stands on main and
 			// resolves through mergeState/resolve*/conclude.
 			return {
 				merged: false,
@@ -179,7 +179,7 @@ async function cleanupDraftBranch(
 	branch: string,
 ): Promise<void> {
 	await deleteBranch(repoRoot, branch);
-	// ponytail: best-effort remote delete — any failure ignored (the local merge
+	// ponytail: best-effort remote delete – any failure ignored (the local merge
 	// already succeeded; push failures surface on the next sync anyway).
 	try {
 		const remote = await git(repoRoot, [
@@ -190,11 +190,11 @@ async function cleanupDraftBranch(
 		if (remote !== "")
 			await git(repoRoot, ["push", remote, "--delete", branch]);
 	} catch {
-		// not tracking a remote, or the delete failed — fine either way
+		// not tracking a remote, or the delete failed – fine either way
 	}
 }
 
-/** A merge is standing on disk (MERGE_HEAD exists) — the b3/b4 write guard. */
+/** A merge is standing on disk (MERGE_HEAD exists) – the b3/b4 write guard. */
 export function inMerge(repoRoot: string): boolean {
 	// ponytail: repoRoot is the .git parent (the worktree root every core fn
 	// assumes); no `git rev-parse --git-dir` fallback for linked worktrees.
@@ -205,7 +205,7 @@ export function inMerge(repoRoot: string): boolean {
  * The merged branch out of .git/MERGE_MSG's `Merge branch 'X'` line, or null
  * when MERGE_MSG is missing/foreign-shaped.
  */
-// ponytail: MERGE_MSG is git's message template, not an API — a hand-written
+// ponytail: MERGE_MSG is git's message template, not an API – a hand-written
 // `git merge -m` message yields null and conclude/abort just skip the
 // branch niceties; raise only if that ever bites.
 function mergeBranchFromMsg(repoRoot: string): string | null {
@@ -216,7 +216,7 @@ function mergeBranchFromMsg(repoRoot: string): string | null {
 }
 
 /** Currently-unmerged paths, repo-root-relative POSIX (one spawn per call).
- *  Exported for the b3 resolve route's membership check — the unmerged set is
+ *  Exported for the b3 resolve route's membership check – the unmerged set is
  *  the containment guard (paths come from git, never the user). */
 export async function unmergedPaths(repoRoot: string): Promise<string[]> {
 	const out = await git(repoRoot, ["diff", "--name-only", "--diff-filter=U"]);
@@ -241,7 +241,7 @@ async function sidecarStages(
 	path: string,
 ): Promise<{ ours: CommentFile; theirs: CommentFile }> {
 	// ponytail: a missing stage (delete/modify on the sidecar) reads as an
-	// empty file — the union merge then keeps whatever the other side has.
+	// empty file – the union merge then keeps whatever the other side has.
 	const stage = async (n: 2 | 3): Promise<CommentFile> => {
 		try {
 			return JSON.parse(
@@ -262,7 +262,7 @@ export type MergeFile =
 
 /**
  * The standing merge, recomputed per call (staged files drop out of the
- * unmerged set — and out of `remaining` — naturally). Paths are
+ * unmerged set – and out of `remaining` – naturally). Paths are
  * repo-root-relative POSIX, the one path space git reports and resolve* takes.
  */
 export async function mergeState(
@@ -343,7 +343,7 @@ export async function resolveMergeSidecar(
 
 /**
  * Finish a standing merge: the merge commit (`--no-edit` uses git's own
- * MERGE_MSG — the one write path that bypasses commitAs, by design: it IS
+ * MERGE_MSG – the one write path that bypasses commitAs, by design: it IS
  * the merge commit), then the usual draft-branch cleanup. Unmerged paths
  * left → MergeUnresolvedError (server: 409), nothing written.
  */
@@ -373,7 +373,7 @@ export async function abortMerge(repoRoot: string): Promise<void> {
 /**
  * Restore a deleted doc (and its comment sidecar, when one existed at the
  * delete commit) in ONE commit: `Restore <docPath>`. Content comes from
- * `<deleteSha>^:<path>` — the last live version before the delete.
+ * `<deleteSha>^:<path>` – the last live version before the delete.
  */
 export async function restoreDoc(
 	repoRoot: string,
@@ -386,7 +386,7 @@ export async function restoreDoc(
 	const user = await localUser(repoRoot); // identity before any disk write
 	const repoRel = relative(repoRoot, abs).split(sep).join("/");
 
-	// ponytail: no rename tracing — restore reads <deleteSha>^:<path> only; a
+	// ponytail: no rename tracing – restore reads <deleteSha>^:<path> only; a
 	// doc renamed before its delete restores from the old path's last content.
 	const body = canonicalBody(
 		await showRef(repoRoot, `${deleteSha}^:${repoRel}`),
@@ -401,7 +401,7 @@ export async function restoreDoc(
 		mkdirSync(dirname(sidecarAbs), { recursive: true });
 		writeFileSync(sidecarAbs, sidecar);
 	} catch {
-		// no sidecar at <deleteSha>^ — the doc restores alone
+		// no sidecar at <deleteSha>^ – the doc restores alone
 	}
 
 	mkdirSync(dirname(abs), { recursive: true });
