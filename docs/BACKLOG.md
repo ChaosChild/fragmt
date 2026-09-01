@@ -10,7 +10,8 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 
 ### Post-v1 – collaboration first, then the OKF era (order locked 2026-08-21)
 
-- Multi-user + PR wiring – **leads** – #20
+- Multi-user auth foundation – **leads** – #20 (PR wiring split to #27, 2026-09-01 round-2 Lavish review)
+- PR create/review in the UI (split from #20) – #27
 - OKF support – `init --okf`, conformant defaults + validate, frontmatter editor, trust stamping, references pane – #21
 - Agent-in-UI: harness bridge + client-side agent tools – after multi-user – #22
 - MCP – reconsider after multi-user / remote deployment – #23
@@ -18,8 +19,11 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 ### Older items, still open
 
 - /api/meta history-walk performance (2026-08-18, M4-2 planning; measured 2026-08-20) – #17
-- Draft change visibility in the content area (2026-08-20, M4-4 dogfooding) – #18
 - npm trusted publishing migration – before January 2027 (2026-08-21, M5 release round) – #19
+
+### Future (post-v2)
+
+- Multi-repo hosting – clone, switch between and manage several repos from one instance; only makes sense once the fragmt CLI is available to agents with remote repo access (2026-09-01, round-2 Lavish review) – #28
 
 ## Graduated
 
@@ -28,3 +32,4 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 - The agent as a first-class user → graduated into M4-4 as the `fragmt agent` CLI + AGENTS.md + identity (the planned MCP server was dropped in the same decision – the CLI is the agent contract).
 - Search #14 → shipped 2026-08-26 in the first backlog-driven round (`feat/search-slideout` → v0.6.0): server-side flat scan behind `GET /api/search`, Ctrl/Cmd+K palette opening through the navigation queue; spec in [milestones/search-and-link-slideout.md](milestones/search-and-link-slideout.md).
 - Link slideout #15 → same round: the comment rail became a two-mode slideout (comments + read-only preview) with the collapse chrome, promote-to-editor, and the Escape-chain slot; spec in [milestones/search-and-link-slideout.md](milestones/search-and-link-slideout.md).
+- Draft change visibility #18 → shipped 2026-09-01 in backlog round 2 (`feat/draft-gutter-multiuser` → 0.7.0 candidate): one `git diff main..HEAD -U0` spawn behind `GET /api/draft-diff`, a pure blank-line/fence-aware block mapping with a correct-or-absent guard, amber bars on the touched blocks in read and edit mode; spec in [milestones/draft-change-visibility.md](milestones/draft-change-visibility.md).

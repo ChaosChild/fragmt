@@ -61,6 +61,8 @@ surface is the CLI itself, riding the same core library as the UI.
   main starts a draft branch automatically; a global **Merge** button lands it.
 - **Merge conflicts resolve in the tool** – per-hunk ours/theirs or a free-edit
   box, structural merging for comment sidecars, one concluding commit.
+- **Draft changes are visible** – on a draft branch, an amber bar marks every
+  block the draft's commits touched, computed from `git diff` against main.
 - **Inline comments** anchored to text as marks in the markdown itself, threads
   versioned in JSON sidecars. No comment backend.
 - **Ctrl/Cmd+K search** across titles and bodies, and a side-by-side preview
