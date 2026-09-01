@@ -40,13 +40,25 @@ Two types, two mechanisms:
 - v2 hosted: add a GitHub webhook route that calls the same `sync()`. Nothing else changes.
 - Conflicts: markdown merges well; on real conflict surface "resolve on branch" in UI. Fancy merge UI deferred until it hurts.
 
-### 5. Identity/auth seams (build now, fill later)
+### 5. Identity/auth seams
 
 - Every mutation flows through one function shaped like `commitAs(user, change)`.
-  - v1: `user` from local git config; auth middleware is a no-op.
-  - v2: `user` from GitHub OAuth session (Device Flow – no hosted callback needed). Commit with author = user, committer = app (how GitHub's own web editor attributes edits).
-- Web UI talks to the server **over HTTP API only** – never assumes localhost, never touches the filesystem. Same binary serves localhost (v1) and a cloud box (v2).
-- No users table, no roles: **GitHub repo collaborator permissions are the authorization system.** Push access = edit access.
+  - Auth off (`fragmt serve`): `user` from local git config; no gate – today's
+    single-user mode, bound to 127.0.0.1.
+  - Auth on (`fragmt serve --auth --port <n>`): `user` from the GitHub OAuth
+    web-flow session (the 2026-09-01 round replaced the old device-flow
+    sketch; the callback needs a repeatable port, which `--auth` therefore
+    requires). Commit with author = signed-in user (GitHub noreply email),
+    committer = the machine's git identity – how GitHub's own web editor
+    attributes edits.
+- The gate: with `--auth`, every `/api/*` route needs a session except
+  `/api/auth/*`; sessions are in-memory (a restart signs everyone out),
+  cookies HttpOnly + SameSite=Lax, tokens never leave the server process.
+- No users table, no roles: **GitHub repo collaborator permissions are the
+  authorization system**, checked with the signed-in user's own token
+  (cached ~5 min). admin/maintain/write edit, read reads, everyone else gets
+  403; a non-github.com origin fails closed. True per-user push identity
+  arrives with PR wiring (#27).
 
 ### 6. One core library, thin heads
 

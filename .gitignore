@@ -12,6 +12,7 @@ ui/dist/
 # Environment / secrets
 .env
 .env.*
+!.env.example
 
 # OS / editor noise
 .DS_Store

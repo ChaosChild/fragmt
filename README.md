@@ -91,12 +91,16 @@ with `fragmt init --root docs`.
 
 ```
 fragmt init [--root <path>]
-fragmt serve [--port <n>]
+fragmt serve [--port <n>] [--auth]
 fragmt agent [status]
 fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--full]
 fragmt agent draft <doc> [--merge]
 fragmt --help
 ```
+
+`serve --auth` turns the editor into a small multi-user server: GitHub
+sign-in, your repo's collaborator permissions as access control, Docker
+samples included – see [HOSTING](docs/HOSTING.md).
 
 ## Agents
 
