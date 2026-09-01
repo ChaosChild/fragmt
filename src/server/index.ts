@@ -59,6 +59,8 @@ import {
 export interface ServerContext {
 	repoRoot: string;
 	docsRoot: string;
+	/** serve --auth (GitHub OAuth) mode – the next batch's gate consumes this. */
+	auth?: boolean;
 }
 
 const DOCS_PREFIX = "/api/docs/";
@@ -824,11 +826,14 @@ function isTraversalAttempt(url: string): boolean {
  * the segments
  * (without this, literal `/api/docs/../LICENSE` normalizes to a 404 instead of
  * the spec-required 400). The rest is delegated to @hono/node-server unchanged.
+ * `host` pins the interface: loopback for plain serve (default), all
+ * interfaces for --auth (the resolved contract comes from the CLI).
  */
 export function startServer(
 	app: Hono,
 	port: number,
 	onListening: (port: number) => void,
+	host = "127.0.0.1",
 ): Server {
 	const listener = getRequestListener(app.fetch);
 	const server = createServer((req, res) => {
@@ -839,7 +844,7 @@ export function startServer(
 		}
 		listener(req, res);
 	});
-	server.listen(port, () => {
+	server.listen(port, host, () => {
 		const addr = server.address();
 		onListening(typeof addr === "object" && addr ? addr.port : port);
 	});

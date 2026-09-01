@@ -106,18 +106,22 @@ export interface DocWritePrep {
  * `raw` that reattaches the CURRENT file's frontmatter + fence gap
  * byte-for-byte (never re-serialize the YAML). Throws DocPathError,
  * DocNotFoundError, GitIdentityError, or StaleDocError – all before disk.
+ * `user` (serve --auth) is the signed-in commit author, resolved upstream;
+ * when omitted the repo's git identity is read as before (one localUser
+ * spawn saved in the auth path).
  */
 export async function prepareDocWrite(
 	repoRoot: string,
 	docsRoot: string,
 	docPath: string,
 	baseHash: string,
+	user?: { name: string; email: string },
 ): Promise<DocWritePrep> {
 	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
 	if (!existsSync(abs) || !statSync(abs).isFile()) {
 		throw new DocNotFoundError(docPath);
 	}
-	const user = await localUser(repoRoot);
+	const who = user ?? (await localUser(repoRoot));
 	const parsed = matter(readFileSync(abs, "utf8"), {});
 	const current = canonicalBody(parsed.content);
 	if (docHash(current) !== baseHash) {
@@ -128,7 +132,7 @@ export async function prepareDocWrite(
 	const gap = parsed.matter ? (parsed.content.match(/^\n+/)?.[0] ?? "") : "";
 	return {
 		abs,
-		user,
+		user: who,
 		current,
 		raw: (normalized) =>
 			parsed.matter
@@ -148,6 +152,7 @@ export async function prepareDocWrite(
  *    re-serialize the YAML – the diff must not touch what wasn't edited);
  * 5. write LF, exactly one trailing newline, fence-to-body gap preserved;
  * 6. commit through the `commitAs` seam.
+ * `user` (serve --auth) overrides the commit author; omitted → localUser().
  */
 export async function writeDoc(
 	repoRoot: string,
@@ -155,18 +160,18 @@ export async function writeDoc(
 	docPath: string,
 	body: string,
 	baseHash: string,
+	user?: { name: string; email: string },
 ): Promise<{ sha: string; hash: string }> {
-	const { abs, user, raw } = await prepareDocWrite(
-		repoRoot,
-		docsRoot,
-		docPath,
-		baseHash,
-	);
+	const {
+		abs,
+		user: who,
+		raw,
+	} = await prepareDocWrite(repoRoot, docsRoot, docPath, baseHash, user);
 	const normalized = canonicalBody(body);
 	writeFileSync(abs, raw(normalized));
 	const repoRel = relative(repoRoot, abs).split(sep).join("/");
 	const sha = await commitAs(
-		user,
+		who,
 		{ files: [repoRel], message: `Update ${docPath}` },
 		repoRoot,
 	);
@@ -182,13 +187,15 @@ export async function writeDoc(
  * its bytes. The body reattaches through the writeDoc discipline (LF, one
  * trailing newline, fence gap preserved) and the write follows the same
  * order: traversal, existence, git identity – all before any disk write.
- * One commit: `Rename <docPath> to <title>`.
+ * One commit: `Rename <docPath> to <title>`. `user` (serve --auth) overrides
+ * the commit author; omitted → localUser().
  */
 export async function setTitle(
 	repoRoot: string,
 	docsRoot: string,
 	docPath: string,
 	title: string,
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const value = title.trim();
 	if (!value) throw new DocPathError("title must be a non-empty string");
@@ -196,7 +203,7 @@ export async function setTitle(
 	if (!existsSync(abs) || !statSync(abs).isFile()) {
 		throw new DocNotFoundError(docPath);
 	}
-	const user = await localUser(repoRoot);
+	const who = user ?? (await localUser(repoRoot));
 	const parsed = matter(readFileSync(abs, "utf8"), {});
 	const body = canonicalBody(parsed.content);
 	// JSON string form: a valid YAML double-quoted scalar, so colons, quotes,
@@ -212,7 +219,7 @@ export async function setTitle(
 	writeFileSync(abs, `${front}${body}`);
 	const repoRel = relative(repoRoot, abs).split(sep).join("/");
 	const sha = await commitAs(
-		user,
+		who,
 		{ files: [repoRel], message: `Rename ${docPath} to ${value}` },
 		repoRoot,
 	);

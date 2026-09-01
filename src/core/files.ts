@@ -25,7 +25,9 @@ export class PathExistsError extends Error {}
  * and the pathspec commit records it. Same result either way: one commit per
  * op, R100 renames, `git log --follow` intact. As in writeDoc, the identity is
  * read BEFORE anything touches disk so a missing identity leaves the tree
- * untouched.
+ * untouched. Every op takes a trailing `user` (serve --auth): when given it is
+ * the commit author directly (no localUser spawn); when omitted the repo's
+ * git identity is read as before.
  */
 
 /** Repo-root-relative POSIX path – the shape commitAs stages and commits. */
@@ -88,16 +90,17 @@ export async function createDoc(
 	docsRoot: string,
 	docPath: string,
 	body = "",
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
 	if (existsSync(abs)) {
 		throw new PathExistsError(`already exists: ${docPath}`);
 	}
-	const user = await localUser(repoRoot);
+	const who = user ?? (await localUser(repoRoot));
 	mkdirSync(dirname(abs), { recursive: true });
 	writeFileSync(abs, canonicalBody(body));
 	const sha = await commitAs(
-		user,
+		who,
 		{ files: [repoRel(repoRoot, abs)], message: `Create ${docPath}` },
 		repoRoot,
 	);
@@ -113,6 +116,7 @@ export async function moveDoc(
 	docsRoot: string,
 	from: string,
 	to: string,
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const fromAbs = resolveDocPath(repoRoot, docsRoot, from);
 	const toAbs = resolveDocPath(repoRoot, docsRoot, to);
@@ -122,13 +126,13 @@ export async function moveDoc(
 	if (existsSync(toAbs)) {
 		throw new PathExistsError(`already exists: ${to}`);
 	}
-	const user = await localUser(repoRoot);
+	const who = user ?? (await localUser(repoRoot));
 	mkdirSync(dirname(toAbs), { recursive: true });
 	renameSync(fromAbs, toAbs);
 	const keep = keepEmptiedFolder(repoRoot, docsRoot, dirname(fromAbs));
 	try {
 		const sha = await commitAs(
-			user,
+			who,
 			{
 				files: keep
 					? [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs), keep]
@@ -150,15 +154,16 @@ export async function deleteDoc(
 	repoRoot: string,
 	docsRoot: string,
 	docPath: string,
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
 	if (!existsSync(abs) || !statSync(abs).isFile()) {
 		throw new DocNotFoundError(docPath);
 	}
-	const user = await localUser(repoRoot);
+	const who = user ?? (await localUser(repoRoot));
 	rmSync(abs);
 	const sha = await commitAs(
-		user,
+		who,
 		{ files: [repoRel(repoRoot, abs)], message: `Delete ${docPath}` },
 		repoRoot,
 	);
@@ -175,17 +180,18 @@ export async function createFolder(
 	repoRoot: string,
 	docsRoot: string,
 	folderPath: string,
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, folderPath, "folder");
 	if (existsSync(abs)) {
 		throw new PathExistsError(`already exists: ${folderPath}`);
 	}
-	const user = await localUser(repoRoot);
+	const who = user ?? (await localUser(repoRoot));
 	mkdirSync(abs, { recursive: true });
 	const keep = join(abs, ".gitkeep");
 	writeFileSync(keep, "");
 	const sha = await commitAs(
-		user,
+		who,
 		{ files: [repoRel(repoRoot, keep)], message: `Create ${folderPath}` },
 		repoRoot,
 	);
@@ -203,6 +209,7 @@ export async function renameFolder(
 	docsRoot: string,
 	from: string,
 	to: string,
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const fromAbs = resolveDocPath(repoRoot, docsRoot, from, "folder");
 	const toAbs = resolveDocPath(repoRoot, docsRoot, to, "folder");
@@ -212,13 +219,13 @@ export async function renameFolder(
 	if (existsSync(toAbs)) {
 		throw new PathExistsError(`already exists: ${to}`);
 	}
-	const user = await localUser(repoRoot);
+	const who = user ?? (await localUser(repoRoot));
 	mkdirSync(dirname(toAbs), { recursive: true });
 	renameSync(fromAbs, toAbs);
 	const keep = keepEmptiedFolder(repoRoot, docsRoot, dirname(fromAbs));
 	try {
 		const sha = await commitAs(
-			user,
+			who,
 			{
 				files: keep
 					? [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs), keep]
@@ -245,15 +252,16 @@ export async function deleteFolder(
 	repoRoot: string,
 	docsRoot: string,
 	folderPath: string,
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, folderPath, "folder");
 	if (!existsSync(abs) || !statSync(abs).isDirectory()) {
 		throw new DocNotFoundError(folderPath);
 	}
-	const user = await localUser(repoRoot);
+	const who = user ?? (await localUser(repoRoot));
 	rmSync(abs, { recursive: true });
 	const sha = await commitAs(
-		user,
+		who,
 		{ files: [repoRel(repoRoot, abs)], message: `Delete ${folderPath}` },
 		repoRoot,
 	);

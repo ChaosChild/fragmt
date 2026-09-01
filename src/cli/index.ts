@@ -12,7 +12,7 @@ fragmt – git-native documentation environment
 
 Usage:
   fragmt init [--root <path>]
-  fragmt serve [--port <n>]
+  fragmt serve [--port <n>] [--auth]
   fragmt agent [status]
   fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--full]
   fragmt agent draft <doc> [--merge]
@@ -39,6 +39,7 @@ export async function main(argv: string[]): Promise<void> {
 			help: { type: "boolean", default: false },
 			root: { type: "string" },
 			port: { type: "string" },
+			auth: { type: "boolean", default: false },
 		},
 		allowPositionals: true,
 		strict: true,
@@ -55,7 +56,7 @@ export async function main(argv: string[]): Promise<void> {
 		return;
 	}
 	if (command === "serve") {
-		await runServe(values.port);
+		await runServe(values.port, values.auth === true);
 		return;
 	}
 
@@ -104,7 +105,54 @@ function parsePort(raw: string | undefined): number {
 	return port;
 }
 
-async function runServe(portFlag: string | undefined): Promise<void> {
+/** The resolved `serve` contract: interface to bind, port, auth mode on/off. */
+export interface ServeConfig {
+	auth: boolean;
+	host: string;
+	port: number;
+}
+
+/**
+ * `serve`'s startup contract, resolved BEFORE anything binds. Plain serve is
+ * a local tool: loopback only, port 0 stays ephemeral. --auth is the GitHub
+ * OAuth mode (next batch's routes consume this): all interfaces, an explicit
+ * repeatable port for the callback, and both app credentials in the
+ * environment. Throws a one-line operator error on any violated term; runServe
+ * surfaces it via fail() (stderr, exit 1). Exported pure so tests assert the
+ * contract without spawning listeners.
+ */
+export function resolveServeAuth(
+	options: { auth: boolean; port: number },
+	env: Record<string, string | undefined>,
+): ServeConfig {
+	if (!options.auth) {
+		return { auth: false, host: "127.0.0.1", port: options.port };
+	}
+	if (options.port === 0) {
+		throw new Error(
+			"--auth requires --port <n> – the OAuth callback needs a repeatable port",
+		);
+	}
+	const missing = ["GH_CLIENT_ID", "GH_CLIENT_SECRET"].filter((k) => !env[k]);
+	if (missing.length > 0) {
+		throw new Error(
+			`--auth requires ${missing.join(" and ")} in the environment`,
+		);
+	}
+	return { auth: true, host: "0.0.0.0", port: options.port };
+}
+
+async function runServe(
+	portFlag: string | undefined,
+	authFlag: boolean,
+): Promise<void> {
+	// The contract is arg/env-shaped, not repo-shaped – validate before the
+	// repo lookup so a bad invocation reports itself, wherever it ran.
+	const serve = resolveServeAuth(
+		{ auth: authFlag, port: parsePort(portFlag) },
+		process.env,
+	);
+
 	const repoRoot = resolveRepoRoot("serve");
 
 	let docsRoot: string;
@@ -114,10 +162,15 @@ async function runServe(portFlag: string | undefined): Promise<void> {
 		fail((e as Error).message);
 	}
 
-	const app = createApp({ repoRoot, docsRoot });
-	startServer(app, parsePort(portFlag), (p) => {
-		process.stdout.write(`http://localhost:${p}\n`);
-	});
+	const app = createApp({ repoRoot, docsRoot, auth: serve.auth });
+	startServer(
+		app,
+		serve.port,
+		(p) => {
+			process.stdout.write(`http://localhost:${p}\n`);
+		},
+		serve.host,
+	);
 }
 
 // Compare realpaths: ESM resolves import.meta.url through symlinks, while

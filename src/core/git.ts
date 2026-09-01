@@ -100,3 +100,39 @@ export async function deleteBranch(
 ): Promise<void> {
 	await git(repoRoot, ["branch", force ? "-D" : "-d", name]);
 }
+
+/** The github.com `<owner>/<repo>` pair parsed from a remote URL. */
+export interface GithubSlug {
+	owner: string;
+	repo: string;
+}
+
+/**
+ * Parse a github.com slug out of a remote URL – https
+ * (`https://github.com/<o>/<r>[.git]`), ssh (`git@github.com:<o>/<r>.git`),
+ * and `git://` forms. Anything else (GitLab, local paths, junk) → undefined.
+ */
+export function parseGithubSlug(url: string): GithubSlug | undefined {
+	const match =
+		/^(?:https:\/\/|git@|git:\/\/)github\.com[/:]([^/]+)\/(.+?)(?:\.git)?\/?$/i.exec(
+			url.trim(),
+		);
+	if (!match) return undefined;
+	return { owner: match[1], repo: match[2] };
+}
+
+/**
+ * The origin remote's github.com slug, or undefined when origin is missing or
+ * not GitHub. Feeds the collaborator permission checks (serve --auth).
+ */
+export async function githubSlug(
+	repoRoot: string,
+): Promise<GithubSlug | undefined> {
+	let url: string;
+	try {
+		url = await git(repoRoot, ["remote", "get-url", "origin"]);
+	} catch {
+		return undefined; // no origin configured (or no repo) – not ours to judge
+	}
+	return parseGithubSlug(url);
+}
