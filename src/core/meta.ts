@@ -11,7 +11,7 @@ export interface DocMeta {
 	/** First non-heading, non-empty, non-table body line, clamped to 110 chars. */
 	snippet: string;
 	/** Frontmatter `title` (the display-name model, M4-3 b4); null when the
-	 *  doc has none — the file name sans .md is the fallback. */
+	 *  doc has none – the file name sans .md is the fallback. */
 	title: string | null;
 }
 
@@ -22,7 +22,7 @@ export interface DraftEntry {
 
 export interface DeletedDoc {
 	path: string;
-	/** The delete commit — `<sha>^:<path>` holds the last live content. */
+	/** The delete commit – `<sha>^:<path>` holds the last live content. */
 	sha: string;
 	date: string;
 }
@@ -36,13 +36,13 @@ export interface RepoMeta {
 	drafts: Record<string, DraftEntry[]>;
 	/** Deletions reachable from HEAD, latest first, deduped by path. */
 	deleted: DeletedDoc[];
-	/** email → GitHub username (avatar resolution) — the config map verbatim,
+	/** email → GitHub username (avatar resolution) – the config map verbatim,
 	 *  {} when the repo has no map. */
 	authors: Record<string, string>;
-	/** Agent display names (the comment rail's agent chip) — the config list
+	/** Agent display names (the comment rail's agent chip) – the config list
 	 *  verbatim, [] when the repo has none. */
 	agents: string[];
-	/** Non-null while a merge fragmt stood is being resolved — summary only;
+	/** Non-null while a merge fragmt stood is being resolved – summary only;
 	 *  the full per-file detail is mergeState (b3's GET /api/merge). */
 	merge: { branch: string | null; remaining: number } | null;
 }
@@ -68,7 +68,7 @@ export async function mainBranch(repoRoot: string): Promise<string | null> {
  * Unit-separator record parser shared by the `%x1e`-terminated log walks:
  * a line containing the unit separator opens a commit record; every non-empty
  * line after it is one of that commit's file paths (git emits the meta line,
- * a blank line, then the paths — blank separators dropped here).
+ * a blank line, then the paths – blank separators dropped here).
  */
 function logRecords(out: string): { fields: string[]; paths: string[] }[] {
 	const records: { fields: string[]; paths: string[] }[] = [];
@@ -122,8 +122,8 @@ function docExtras(
 }
 
 /**
- * The M4-2 meta walks — docs versions, cross-branch drafts, and the recycle
- * bin — each a small spawn count over the execFile seam.
+ * The M4-2 meta walks – docs versions, cross-branch drafts, and the recycle
+ * bin – each a small spawn count over the execFile seam.
  */
 export async function repoMeta(
 	repoRoot: string,
@@ -133,12 +133,12 @@ export async function repoMeta(
 	const prefix =
 		docsRoot === "." ? "" : docsRoot.replace(/\\/g, "/").replace(/\/+$/, "");
 
-	// Walk 1 — one pass over HEAD history: per docsRoot .md path, the commit
+	// Walk 1 – one pass over HEAD history: per docsRoot .md path, the commit
 	// count (version) and the newest author/email/date. Log order is
 	// newest-first, so the first record seen for a path carries the newest
 	// author/email/date and every later one just bumps the count.
 	// ponytail: capped at 2000 commits, no --follow (a rename restarts the
-	// count) — raise the cap / add --follow if a real repo outgrows it.
+	// count) – raise the cap / add --follow if a real repo outgrows it.
 	const docs: Record<string, DocMeta> = {};
 	const history = await logCommits(repoRoot, [
 		"-n",
@@ -163,16 +163,16 @@ export async function repoMeta(
 				};
 		}
 	}
-	// One fs read per doc (snippet + frontmatter title) — the walk above is
+	// One fs read per doc (snippet + frontmatter title) – the walk above is
 	// git-only.
 	for (const docPath of Object.keys(docs)) {
 		Object.assign(docs[docPath], docExtras(repoRoot, docsRoot, docPath));
 	}
 
-	// Walk 2 — per non-main branch, which docsRoot docs differ from main:
+	// Walk 2 – per non-main branch, which docsRoot docs differ from main:
 	// A → new, M → edited, D → deleted; newest-first, so the first status
 	// seen per (branch, path) is the latest.
-	// ponytail: one git log spawn per branch (N branches = N spawns) — fine
+	// ponytail: one git log spawn per branch (N branches = N spawns) – fine
 	// at personal-tool branch counts; batch if a repo ever carries hundreds.
 	const drafts: Record<string, DraftEntry[]> = {};
 	if (main) {
@@ -205,10 +205,10 @@ export async function repoMeta(
 		}
 	}
 
-	// Walk 3 — the recycle bin: deletions reachable from HEAD, filtered to
+	// Walk 3 – the recycle bin: deletions reachable from HEAD, filtered to
 	// docsRoot .md; newest-first, deduped by path (delete → restore → delete
 	// keeps only the latest delete commit).
-	// ponytail: capped at the 200 most recent deletions — plenty for a bin UI.
+	// ponytail: capped at the 200 most recent deletions – plenty for a bin UI.
 	const deleted: DeletedDoc[] = [];
 	const gone = new Set<string>();
 	const bin = await logCommits(repoRoot, [
@@ -228,9 +228,9 @@ export async function repoMeta(
 	}
 
 	// The authors map (avatar resolution) and the agents list (the agent
-	// chip): the config verbatim. RepoMeta has only repoRoot/docsRoot — the
+	// chip): the config verbatim. RepoMeta has only repoRoot/docsRoot – the
 	// config is read here, the same loader the CLI uses for docsRoot; any
-	// config problem just means neither feature ({} / []) — never a failed
+	// config problem just means neither feature ({} / []) – never a failed
 	// meta walk over a cosmetic feature.
 	let authors: Record<string, string> = {};
 	let agents: string[] = [];
@@ -239,7 +239,7 @@ export async function repoMeta(
 		authors = config.authors ?? {};
 		agents = config.agents ?? [];
 	} catch {
-		// no config / malformed — no authors map, no agents
+		// no config / malformed – no authors map, no agents
 	}
 
 	// The merge summary (resolution mode's on-switch, b3): mergeState is one

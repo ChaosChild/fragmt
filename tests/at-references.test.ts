@@ -23,7 +23,7 @@ const docs: AtDoc[] = [
 ];
 
 function atEditor(): Editor {
-	// Callbacks omitted — the extension exists, the UI just never hears from it.
+	// Callbacks omitted – the extension exists, the UI just never hears from it.
 	return new Editor({
 		extensions: editorExtensions(undefined, { docs: () => docs }),
 		content: "",
@@ -47,7 +47,7 @@ describe("@ item filtering", () => {
 });
 
 // The display-name model (M4-3 b4): the @ menu labels, sidebar cards, and
-// breadcrumb all resolve the title this way — App threads meta's titles in
+// breadcrumb all resolve the title this way – App threads meta's titles in
 // with the file name as the fallback.
 describe("displayTitle (the @ menu label rule)", () => {
 	test("frontmatter title preferred; file name sans .md the fallback", () => {
@@ -67,12 +67,12 @@ describe("@ reference insertion", () => {
 	test("applying an item serializes to [Title](path), query deleted", () => {
 		const editor = atEditor();
 		editor.commands.setContent("see @plan here");
-		// The Suggestion range for "@plan" — the command contract slash tests use.
+		// The Suggestion range for "@plan" – the command contract slash tests use.
 		applyAtReference(editor, { from: 5, to: 10 }, docs[0]);
 		const out: string = editor.storage.markdown.getMarkdown();
 		expect(out).toContain("[Plan](docs/plan.md)");
 		expect(out).not.toContain("@plan");
-		// In place, mid-sentence — not appended at the doc's end.
+		// In place, mid-sentence – not appended at the doc's end.
 		expect(out).toContain("(docs/plan.md) here");
 		editor.destroy();
 	});
@@ -168,7 +168,7 @@ describe("resolveLinkTarget", () => {
 	});
 });
 
-// M4-3 b6: the five-way dispatch — the table in links.ts is normative.
+// M4-3 b6: the five-way dispatch – the table in links.ts is normative.
 describe("resolveLinkTarget dispatch (M4-3 b6)", () => {
 	const known = new Set(["dir/b.md", "dir/c.md", "docs/x.md"]);
 	const folders = new Set(["dir", "dir/sub", "docs"]);
@@ -231,7 +231,7 @@ describe("resolveLinkTarget dispatch (M4-3 b6)", () => {
 		expect(
 			resolveLinkTarget("assets/diagram.webp", "docs/x.md", known, folders),
 		).toEqual({ kind: "raw", path: "docs/assets/diagram.webp" });
-		// Pops within docsRoot — not an escape, still raw.
+		// Pops within docsRoot – not an escape, still raw.
 		expect(
 			resolveLinkTarget("../img.png", "docs/x.md", known, folders),
 		).toEqual({ kind: "raw", path: "img.png" });
@@ -242,7 +242,7 @@ describe("resolveLinkTarget dispatch (M4-3 b6)", () => {
 			kind: "dead",
 			href: "typo.md",
 		});
-		// Case-insensitive .md detection — dead, never raw.
+		// Case-insensitive .md detection – dead, never raw.
 		expect(resolveLinkTarget("typo.MD", "a.md", known, folders)).toEqual({
 			kind: "dead",
 			href: "typo.MD",
@@ -253,14 +253,14 @@ describe("resolveLinkTarget dispatch (M4-3 b6)", () => {
 	});
 
 	test("an href normalizing to the docsRoot stays default; './' in a folder is that folder", () => {
-		// A root doc's "." / "./" is the docsRoot itself — no destination.
+		// A root doc's "." / "./" is the docsRoot itself – no destination.
 		expect(resolveLinkTarget(".", "a.md", known, folders)).toEqual({
 			kind: "default",
 		});
 		expect(resolveLinkTarget("./", "a.md", known, folders)).toEqual({
 			kind: "default",
 		});
-		// Inside dir/, "./" resolves to dir — a folder link like any other.
+		// Inside dir/, "./" resolves to dir – a folder link like any other.
 		expect(resolveLinkTarget("./", "dir/a.md", known, folders)).toEqual({
 			kind: "folder",
 			path: "dir",

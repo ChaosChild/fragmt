@@ -23,6 +23,7 @@ import {
 	deleteThread,
 	deleteThreadWithDoc,
 	docHash,
+	draftDiffLines,
 	GitError,
 	GitIdentityError,
 	gitAllowList,
@@ -54,29 +55,55 @@ import {
 	writeComments,
 	writeDoc,
 } from "../core/index.js";
+import {
+	type AppEnv,
+	type AuthConfig,
+	commitAuthor,
+	registerAuth,
+	sessionDisabled,
+} from "./auth.js";
 
 export interface ServerContext {
 	repoRoot: string;
 	docsRoot: string;
+	/** serve --auth: the resolved GitHub OAuth app credentials (gate + OAuth routes in auth.ts). Absent → plain serve, no gate. */
+	auth?: AuthConfig;
+	/** Injectable GitHub fetch (tests stub the OAuth + collaborator calls). */
+	githubFetch?: typeof fetch;
 }
 
 const DOCS_PREFIX = "/api/docs/";
 const FOLDERS_PREFIX = "/api/folders/";
 const RAW_PREFIX = "/api/raw/";
+const DRAFT_DIFF_PREFIX = "/api/draft-diff/";
 
 /** Package-root `ui/dist`. Same depth from `src/server/` (tsx) and `dist/server/` (built). */
 const UI_DIST = fileURLToPath(new URL("../../ui/dist", import.meta.url));
 
 /** Build the Hono app. Thin: parse request → call core → serialize. No fs/git here. */
-export function createApp(ctx: ServerContext): Hono {
-	const app = new Hono();
+export function createApp(ctx: ServerContext): Hono<AppEnv> {
+	const app = new Hono<AppEnv>();
 
-	// M4-4 b3: the write guard — a standing merge owns every write. Registered
+	// #20 batch 2: auth on → the gate + OAuth routes register FIRST, before the
+	// merge write-guard below, so a request is authorized before it can touch
+	// anything. Auth off → nothing registers except the static boot answer, and
+	// every other middleware/route behaves byte-for-byte as before.
+	if (ctx.auth) {
+		registerAuth(app, {
+			repoRoot: ctx.repoRoot,
+			auth: ctx.auth,
+			githubFetch: ctx.githubFetch,
+		});
+	} else {
+		app.get("/api/auth/session", (c) => sessionDisabled(c));
+	}
+
+	// M4-4 b3: the write guard – a standing merge owns every write. Registered
 	// before all write routes (incl. the comment fall-through below), so a
 	// stray save/draft/checkout/comment mid-merge 409s instead of racing the
 	// resolution. This is load-bearing: commitAs unconditionally `git add`s,
 	// so an ordinary write would stage a half-resolution into an unrelated
-	// commit. /api/merge* is exempt — those routes manage the merge itself.
+	// commit. /api/merge* is exempt – those routes manage the merge itself.
 	app.use("*", async (c, next) => {
 		if (
 			c.req.method !== "GET" &&
@@ -85,13 +112,13 @@ export function createApp(ctx: ServerContext): Hono {
 			inMerge(ctx.repoRoot)
 		)
 			return c.json(
-				{ error: "a merge is in progress — finish or abort it first" },
+				{ error: "a merge is in progress – finish or abort it first" },
 				409,
 			);
 		return next();
 	});
 
-	// M4-3 b7: the .gitignore filter — one ls-files spawn per refresh builds
+	// M4-3 b7: the .gitignore filter – one ls-files spawn per refresh builds
 	// the allow-list of everything git considers part of the repo. Every
 	// tree-derived surface (sidebar, @ menu, move picker, link sets) reads
 	// this route, so all inherit the filter here. git unavailable → null →
@@ -104,8 +131,8 @@ export function createApp(ctx: ServerContext): Hono {
 	// --- M4: comment sidecar -------------------------------------------------
 	// Hono's `*` spans slashes only at the END of a pattern, so a nested
 	// docPath (`notes/n.md/comments`) is invisible to `/api/docs/*/comments`.
-	// Instead this middleware — registered BEFORE the /api/docs/* routes, so
-	// comments tails win and everything else falls through via next() — splits
+	// Instead this middleware – registered BEFORE the /api/docs/* routes, so
+	// comments tails win and everything else falls through via next() – splits
 	// the trailing-wildcard tail itself: `<docPath>/comments[/<id>]`, the
 	// suffix stripped from the END (a docPath may itself contain "/comments").
 	// The id is opaque: never path-resolved, just a non-empty slash-free string.
@@ -123,7 +150,7 @@ export function createApp(ctx: ServerContext): Hono {
 					const body = await jsonBody(c);
 					if (body === null)
 						return c.json({ error: "invalid request body" }, 400);
-					// The id later appears as a path segment — empty or slash-bearing
+					// The id later appears as a path segment – empty or slash-bearing
 					// ids could never be addressed by PATCH/DELETE.
 					if (
 						typeof body.id !== "string" ||
@@ -137,7 +164,7 @@ export function createApp(ctx: ServerContext): Hono {
 					if (typeof body.quote !== "string" || typeof body.body !== "string")
 						return c.json({ error: "quote and body are required" }, 400);
 					// docBody present → the combined op: doc + sidecar in ONE commit
-					// (docBaseHash is its writeDoc contract — required with it).
+					// (docBaseHash is its writeDoc contract – required with it).
 					if (body.docBody !== undefined) {
 						if (
 							typeof body.docBody !== "string" ||
@@ -158,6 +185,7 @@ export function createApp(ctx: ServerContext): Hono {
 								docBody: body.docBody,
 								baseHash: body.docBaseHash,
 							},
+							commitAuthor(c),
 						);
 						return c.json({ sha });
 					}
@@ -167,6 +195,7 @@ export function createApp(ctx: ServerContext): Hono {
 						body.id,
 						body.quote,
 						body.body,
+						commitAuthor(c),
 					);
 					return c.json({ sha });
 				}
@@ -193,10 +222,16 @@ export function createApp(ctx: ServerContext): Hono {
 								docPath,
 								id,
 								baseHash,
+								commitAuthor(c),
 							);
 							return c.json({ sha });
 						}
-						const { sha } = await deleteThread(ctx.repoRoot, docPath, id);
+						const { sha } = await deleteThread(
+							ctx.repoRoot,
+							docPath,
+							id,
+							commitAuthor(c),
+						);
 						return c.json({ sha });
 					}
 					if (c.req.method === "PATCH") {
@@ -215,7 +250,7 @@ export function createApp(ctx: ServerContext): Hono {
 								400,
 							);
 						if (picked[0] === "resolved") {
-							// M4-2: both directions — resolve and reopen.
+							// M4-2: both directions – resolve and reopen.
 							if (typeof body.resolved !== "boolean")
 								return c.json({ error: "resolved must be a boolean" }, 400);
 							const { sha } = await setResolved(
@@ -223,6 +258,7 @@ export function createApp(ctx: ServerContext): Hono {
 								docPath,
 								id,
 								body.resolved,
+								commitAuthor(c),
 							);
 							return c.json({ sha });
 						}
@@ -230,16 +266,27 @@ export function createApp(ctx: ServerContext): Hono {
 						if (typeof text !== "string")
 							return c.json({ error: `${picked[0]} must be a string` }, 400);
 						if (picked[0] === "reply") {
-							const { sha } = await addReply(ctx.repoRoot, docPath, id, text);
+							const { sha } = await addReply(
+								ctx.repoRoot,
+								docPath,
+								id,
+								text,
+								commitAuthor(c),
+							);
 							return c.json({ sha });
 						}
 						// `body` edits the opening comment (replies[0]) through the
-						// exported read-modify-write seam — the core has no edit helper.
+						// exported read-modify-write seam – the core has no edit helper.
 						const file = await readComments(ctx.repoRoot, docPath);
 						const thread = file.comments[id];
 						if (!thread) throw new ThreadNotFoundError(id);
 						thread.replies[0].body = text;
-						const { sha } = await writeComments(ctx.repoRoot, docPath, file);
+						const { sha } = await writeComments(
+							ctx.repoRoot,
+							docPath,
+							file,
+							commitAuthor(c),
+						);
 						return c.json({ sha });
 					}
 				}
@@ -300,6 +347,7 @@ export function createApp(ctx: ServerContext): Hono {
 				docPath,
 				payload.markdown,
 				payload.baseHash,
+				commitAuthor(c),
 			);
 			return c.json({ sha, hash });
 		} catch (e) {
@@ -307,7 +355,7 @@ export function createApp(ctx: ServerContext): Hono {
 			if (e instanceof DocNotFoundError)
 				return c.json({ error: "doc not found" }, 404);
 			if (e instanceof StaleDocError)
-				return c.json({ error: "doc changed since load — reload" }, 409);
+				return c.json({ error: "doc changed since load – reload" }, 409);
 			if (e instanceof GitIdentityError)
 				return c.json({ error: "git identity not configured" }, 409);
 			throw e;
@@ -329,6 +377,7 @@ export function createApp(ctx: ServerContext): Hono {
 				ctx.docsRoot,
 				body.path,
 				typeof body.body === "string" ? body.body : "",
+				commitAuthor(c),
 			);
 			return c.json({ sha });
 		} catch (e) {
@@ -336,7 +385,7 @@ export function createApp(ctx: ServerContext): Hono {
 		}
 	});
 
-	// M4-3 b4: the doc PATCH is a two-way dispatch — {to} moves the file
+	// M4-3 b4: the doc PATCH is a two-way dispatch – {to} moves the file
 	// (M3), {title} writes the frontmatter title (rename, path unchanged).
 	// Exactly one action per call.
 	app.patch("/api/docs/*", async (c) => {
@@ -357,6 +406,7 @@ export function createApp(ctx: ServerContext): Hono {
 					ctx.docsRoot,
 					from,
 					body.title,
+					commitAuthor(c),
 				);
 				return c.json({ sha });
 			} catch (e) {
@@ -366,7 +416,13 @@ export function createApp(ctx: ServerContext): Hono {
 		if (typeof body.to !== "string")
 			return c.json({ error: "to is required" }, 400);
 		try {
-			const { sha } = await moveDoc(ctx.repoRoot, ctx.docsRoot, from, body.to);
+			const { sha } = await moveDoc(
+				ctx.repoRoot,
+				ctx.docsRoot,
+				from,
+				body.to,
+				commitAuthor(c),
+			);
 			return c.json({ sha });
 		} catch (e) {
 			return respondFileError(c, e);
@@ -378,7 +434,12 @@ export function createApp(ctx: ServerContext): Hono {
 		if (docPath === undefined)
 			return c.json({ error: "invalid doc path" }, 400);
 		try {
-			const { sha } = await deleteDoc(ctx.repoRoot, ctx.docsRoot, docPath);
+			const { sha } = await deleteDoc(
+				ctx.repoRoot,
+				ctx.docsRoot,
+				docPath,
+				commitAuthor(c),
+			);
 			return c.json({ sha });
 		} catch (e) {
 			return respondFileError(c, e);
@@ -391,7 +452,12 @@ export function createApp(ctx: ServerContext): Hono {
 		if (typeof body.path !== "string")
 			return c.json({ error: "path is required" }, 400);
 		try {
-			const { sha } = await createFolder(ctx.repoRoot, ctx.docsRoot, body.path);
+			const { sha } = await createFolder(
+				ctx.repoRoot,
+				ctx.docsRoot,
+				body.path,
+				commitAuthor(c),
+			);
 			return c.json({ sha });
 		} catch (e) {
 			return respondFileError(c, e);
@@ -411,6 +477,7 @@ export function createApp(ctx: ServerContext): Hono {
 				ctx.docsRoot,
 				from,
 				body.to,
+				commitAuthor(c),
 			);
 			return c.json({ sha });
 		} catch (e) {
@@ -427,6 +494,7 @@ export function createApp(ctx: ServerContext): Hono {
 				ctx.repoRoot,
 				ctx.docsRoot,
 				folderPath,
+				commitAuthor(c),
 			);
 			return c.json({ sha });
 		} catch (e) {
@@ -436,7 +504,7 @@ export function createApp(ctx: ServerContext): Hono {
 
 	// --- M4-3 b6: raw files (non-md link targets) ----------------------------
 
-	/** Extension → content type for /api/raw. html/svg serve as text/plain —
+	/** Extension → content type for /api/raw. html/svg serve as text/plain –
 	 *  repo content never executes in the app origin; anything unmapped is
 	 *  application/octet-stream with Content-Disposition (a download). */
 	const RAW_MIME: Record<string, string> = {
@@ -455,7 +523,7 @@ export function createApp(ctx: ServerContext): Hono {
 		htm: "text/plain; charset=utf-8",
 	};
 
-	// The resolveDocPath containment guard (kind "raw" — no .md constraint),
+	// The resolveDocPath containment guard (kind "raw" – no .md constraint),
 	// files-only: a directory or a missing path is a 404 like the doc routes.
 	// startServer's raw-URL `..` guard covers this prefix too (below).
 	app.get("/api/raw/*", (c) => {
@@ -530,7 +598,7 @@ export function createApp(ctx: ServerContext): Hono {
 		}
 	});
 
-	// `:name` is single-segment by design — slashed names (drafts/x) arrive
+	// `:name` is single-segment by design – slashed names (drafts/x) arrive
 	// percent-encoded (%2F) and stay one segment for the router; Hono decodes
 	// the param value for us.
 	app.delete("/api/branches/:name", async (c) => {
@@ -586,10 +654,34 @@ export function createApp(ctx: ServerContext): Hono {
 		}
 	});
 
+	// #18: the draft gutter's payload – body-relative changed lines for one
+	// doc on the current draft branch ([] on main / mid-merge / no diff).
+	// Existence is a 404 like the doc routes; resolveDocPath is the traversal
+	// guard (the raw-URL `..` prefilter below covers /api/docs|folders|raw
+	// only, so this route leans on it directly).
+	app.get(`${DRAFT_DIFF_PREFIX}*`, async (c) => {
+		const docPath = tailPath(c, DRAFT_DIFF_PREFIX);
+		if (docPath === undefined || docPath === "")
+			return c.json({ error: "invalid doc path" }, 400);
+		let abs: string;
+		try {
+			abs = resolveDocPath(ctx.repoRoot, ctx.docsRoot, docPath);
+		} catch (e) {
+			if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
+			throw e;
+		}
+		if (!existsSync(abs) || !statSync(abs).isFile())
+			return c.json({ error: "doc not found" }, 404);
+		return c.json({
+			doc: docPath,
+			lines: await draftDiffLines(ctx.repoRoot, ctx.docsRoot, docPath),
+		});
+	});
+
 	app.post("/api/merge", async (c) => {
 		try {
 			const result = await mergeToMain(ctx.repoRoot, ctx.docsRoot);
-			// The conflict is a returned value, not a throw — map it to 409 with
+			// The conflict is a returned value, not a throw – map it to 409 with
 			// the b2 shape verbatim: stood:true {branch, files} (the UI enters
 			// resolution mode) or stood:false {files, message} (the honest
 			// terminal-reconcile fallback).
@@ -597,7 +689,7 @@ export function createApp(ctx: ServerContext): Hono {
 			return c.json(result);
 		} catch (e) {
 			if (e instanceof OnMainBranchError)
-				return c.json({ error: "nothing to merge — already on main" }, 400);
+				return c.json({ error: "nothing to merge – already on main" }, 400);
 			return respondGitError(c, e);
 		}
 	});
@@ -605,7 +697,7 @@ export function createApp(ctx: ServerContext): Hono {
 	// --- M4-4 b3: the standing merge's resolution surface --------------------
 
 	// Full detail (hunks for docs, summaries for sidecars); the object itself
-	// when nothing stands — {inMerge:false}, not an error (meta's summary is
+	// when nothing stands – {inMerge:false}, not an error (meta's summary is
 	// the on-switch, this is the payload).
 	app.get("/api/merge", async (c) =>
 		c.json(await mergeState(ctx.repoRoot, ctx.docsRoot)),
@@ -633,7 +725,7 @@ export function createApp(ctx: ServerContext): Hono {
 		if (!inMerge(ctx.repoRoot))
 			return c.json({ error: "no merge is in progress" }, 409);
 		// Containment: paths are repo-root-relative POSIX straight from git, and
-		// membership in the LIVE unmerged set is the check — a stale UI file
+		// membership in the LIVE unmerged set is the check – a stale UI file
 		// list (resolved elsewhere) can never reach the disk.
 		if (!(await unmergedPaths(ctx.repoRoot)).includes(body.path))
 			return c.json({ error: "path is not part of the standing merge" }, 409);
@@ -682,7 +774,13 @@ export function createApp(ctx: ServerContext): Hono {
 			return c.json({ error: "path and sha are required" }, 400);
 		try {
 			return c.json(
-				await restoreDoc(ctx.repoRoot, ctx.docsRoot, body.path, body.sha),
+				await restoreDoc(
+					ctx.repoRoot,
+					ctx.docsRoot,
+					body.path,
+					body.sha,
+					commitAuthor(c),
+				),
 			);
 		} catch (e) {
 			return respondFileError(c, e);
@@ -708,7 +806,7 @@ export function createApp(ctx: ServerContext): Hono {
 	// Anything else under /api is a 404.
 	app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
 
-	// Built UI (production). Resolved against this module, not process.cwd() —
+	// Built UI (production). Resolved against this module, not process.cwd() –
 	// `fragmt serve` runs inside the user's docs repo, not the install dir.
 	// Dev uses the Vite server with an /api proxy instead.
 	app.use("/*", serveStatic({ root: UI_DIST }));
@@ -717,7 +815,7 @@ export function createApp(ctx: ServerContext): Hono {
 }
 
 /** Decode the wildcard tail of a route path; undefined on malformed encoding. */
-function tailPath(c: Context, prefix: string): string | undefined {
+function tailPath(c: Context<AppEnv>, prefix: string): string | undefined {
 	try {
 		return decodeURIComponent(c.req.path.slice(prefix.length));
 	} catch {
@@ -726,7 +824,9 @@ function tailPath(c: Context, prefix: string): string | undefined {
 }
 
 /** Parse a JSON object body; null when absent, malformed, or not an object. */
-async function jsonBody(c: Context): Promise<Record<string, unknown> | null> {
+async function jsonBody(
+	c: Context<AppEnv>,
+): Promise<Record<string, unknown> | null> {
 	try {
 		const parsed: unknown = await c.req.json();
 		return typeof parsed === "object" && parsed !== null
@@ -742,7 +842,7 @@ async function jsonBody(c: Context): Promise<Record<string, unknown> | null> {
  * (DocPathError 400, DocNotFound/ThreadNotFound 404, exists/identity/stale
  * 409). Unmapped errors propagate to Hono's default 500.
  */
-function respondFileError(c: Context, e: unknown): Response {
+function respondFileError(c: Context<AppEnv>, e: unknown): Response {
 	if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
 	if (e instanceof DocNotFoundError)
 		return c.json({ error: "doc not found" }, 404);
@@ -752,12 +852,12 @@ function respondFileError(c: Context, e: unknown): Response {
 	if (e instanceof GitIdentityError)
 		return c.json({ error: "git identity not configured" }, 409);
 	if (e instanceof StaleDocError)
-		return c.json({ error: "doc changed since load — reload" }, 409);
+		return c.json({ error: "doc changed since load – reload" }, 409);
 	throw e;
 }
 
 /** GitError → 500 { error }; git stays the authority on exotic branch names. */
-function respondGitError(c: Context, e: unknown): Response {
+function respondGitError(c: Context<AppEnv>, e: unknown): Response {
 	if (e instanceof GitError) return c.json({ error: e.message }, 500);
 	throw e;
 }
@@ -768,14 +868,14 @@ function badBranchName(name: string): boolean {
 		name === "" ||
 		name.startsWith("-") ||
 		name.includes("..") ||
-		// biome-ignore lint/suspicious/noControlCharactersInRegex: the point — control chars can never be branch names
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: the point – control chars can never be branch names
 		/[\s\u0000-\u001f\u007f]/.test(name)
 	);
 }
 
 /**
  * Traversal check on the raw request line, decoded once so `..%2f` and `%2e%2e`
- * are caught alongside a literal `..`. Malformed encoding is itself a reject —
+ * are caught alongside a literal `..`. Malformed encoding is itself a reject –
  * we cannot tell what it would mean downstream.
  */
 function isTraversalAttempt(url: string): boolean {
@@ -798,11 +898,14 @@ function isTraversalAttempt(url: string): boolean {
  * the segments
  * (without this, literal `/api/docs/../LICENSE` normalizes to a 404 instead of
  * the spec-required 400). The rest is delegated to @hono/node-server unchanged.
+ * `host` pins the interface: loopback for plain serve (default), all
+ * interfaces for --auth (the resolved contract comes from the CLI).
  */
 export function startServer(
-	app: Hono,
+	app: Hono<AppEnv>,
 	port: number,
 	onListening: (port: number) => void,
+	host = "127.0.0.1",
 ): Server {
 	const listener = getRequestListener(app.fetch);
 	const server = createServer((req, res) => {
@@ -813,7 +916,7 @@ export function startServer(
 		}
 		listener(req, res);
 	});
-	server.listen(port, () => {
+	server.listen(port, host, () => {
 		const addr = server.address();
 		onListening(typeof addr === "object" && addr ? addr.port : port);
 	});

@@ -23,11 +23,11 @@ import { clampSidebarWidth } from "./sidebar-geometry";
  * the tree recursion and the bin instead of six loose props. `currentDrag`
  * (dnd.ts) is the readable payload; this carries the source/target styling
  * state and routes completed drops to App's existing ops. Pointer-only by
- * design — the header's file-action icons are the keyboard path (a11y note,
+ * design – the header's file-action icons are the keyboard path (a11y note,
  * accepted in the spec).
  */
 interface SidebarDnd {
-	/** The in-flight item — null when idle (dims the source row). */
+	/** The in-flight item – null when idle (dims the source row). */
 	drag: DragItem | null;
 	/** Highlight key of the hovered target: "folder:<path>" | "root" | "bin". */
 	dropKey: string | null;
@@ -35,22 +35,22 @@ interface SidebarDnd {
 	endDrag: () => void;
 	/** Set the highlight key (dragover) / clear it (drop, dragend). */
 	hover: (key: string | null) => void;
-	/** dragleave for `key`'s element — cleared only when the pointer truly left. */
+	/** dragleave for `key`'s element – cleared only when the pointer truly left. */
 	leave: (e: ReactDragEvent<HTMLElement>, key: string) => void;
 	/** The dragover/drop guard for tree targets (M4-4 b1): structural
-	 *  validity plus collision — an occupied destination never highlights
+	 *  validity plus collision – an occupied destination never highlights
 	 *  and never preventDefaults, so the drop can't land on it. */
 	canDrop: (drag: DragItem | null, target: DropTarget) => boolean;
 	/** A valid drop on a folder row, or on the list background (folder ""). */
 	dropInto: (item: DragItem, folder: string) => void;
-	/** A drop on the bin — App confirms and deletes. */
+	/** A drop on the bin – App confirms and deletes. */
 	dropBin: (item: DragItem) => void;
 }
 
 /**
  * The sidebar's right-edge drag handle (M4-3 b3): pointer capture carries the
  * drag, App owns the value and persists it on pointerup. Pure decoration for
- * a11y — hidden ≤768px, where the drawer override owns the width.
+ * a11y – hidden ≤768px, where the drawer override owns the width.
  */
 export function SidebarResizeHandle({
 	onWidth,
@@ -90,7 +90,7 @@ function countDocs(node: TreeNode): number {
 	return n;
 }
 
-/** "today 09:42" for today, else "Aug 14" — the card/bin/doc-head date word. */
+/** "today 09:42" for today, else "Aug 14" – the card/bin/doc-head date word. */
 export function shortDate(iso: string): string {
 	const d = new Date(iso);
 	if (Number.isNaN(d.getTime())) return "";
@@ -103,7 +103,7 @@ export function shortDate(iso: string): string {
  * The card's draft chip word (M4-2 item 2, cross-branch): on a draft, the
  * CURRENT branch's entry; on main (or no draft model), any entry. "new" for
  * additions, "draft" for edits. A deleted-status entry keeps the generic
- * "draft" word — the doc is only absent on that branch, never here on main.
+ * "draft" word – the doc is only absent on that branch, never here on main.
  */
 function chipWord(meta: RepoMeta, path: string): string | null {
 	const entries = meta.drafts[path];
@@ -116,7 +116,7 @@ function chipWord(meta: RepoMeta, path: string): string | null {
 	return entry.status === "new" ? "new" : "draft";
 }
 
-/** One inbox card — ghost docs (draft-only, not in this branch's tree) reuse it. */
+/** One inbox card – ghost docs (draft-only, not in this branch's tree) reuse it. */
 function DocCard({
 	node,
 	active,
@@ -133,14 +133,14 @@ function DocCard({
 	ghostBranch?: string;
 	onSelect: (path: string) => void;
 	onOpenGhost: (path: string, branch: string) => void;
-	/** Drag source wiring (M4-3 b5) — ghosts don't drag: their path doesn't
+	/** Drag source wiring (M4-3 b5) – ghosts don't drag: their path doesn't
 	 *  exist on this branch, so a move would miss server-side. */
 	dnd: SidebarDnd;
 }) {
 	const dm: DocMeta | undefined = meta?.docs[node.path];
 	const chip = meta ? chipWord(meta, node.path) : null;
 	const dragging = dnd.drag?.type === "doc" && dnd.drag.path === node.path;
-	// M4-3 b4: indicators sit inline right after the name — nothing is
+	// M4-3 b4: indicators sit inline right after the name – nothing is
 	// right-aligned on the row, so overflow can never hide them.
 	return (
 		<button
@@ -180,7 +180,7 @@ function DocCard({
 
 /**
  * The recycle bin (item 9, amended M4-3 b3): a collapsed "Deleted (N)"
- * disclosure pinned at the sidebar bottom — always mounted, even at 0, since
+ * disclosure pinned at the sidebar bottom – always mounted, even at 0, since
  * the bin doubles as the drag-delete target (M4-3 b5: the whole block is a
  * drop target; it accepts everything, no validity guard). Expanding an empty
  * bin shows nothing to restore. Every Restore button sits on the same right
@@ -193,12 +193,12 @@ function RecycleBin({
 }: {
 	deleted: DeletedDoc[];
 	onRestore: (items: DeletedDoc[]) => void;
-	/** Drop-target wiring — dragover highlights with danger styling. */
+	/** Drop-target wiring – dragover highlights with danger styling. */
 	dnd: SidebarDnd;
 }) {
 	const [open, setOpen] = useState(false);
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: pointer-only drop target by design (M4-3 b5) — the header's file-action icons are the keyboard path.
+		// biome-ignore lint/a11y/noStaticElementInteractions: pointer-only drop target by design (M4-3 b5) – the header's file-action icons are the keyboard path.
 		<div
 			className={`recycle-bin${dnd.dropKey === "bin" ? " drop-target" : ""}`}
 			onDragOver={(e) => {
@@ -317,7 +317,7 @@ function renderNodes({
 							}}
 							onDragEnd={dnd.endDrag}
 							onDragOver={(e) => {
-								// The row is its own target — a hover here must never
+								// The row is its own target – a hover here must never
 								// fall through to the list background (root) behind it,
 								// valid or not.
 								e.stopPropagation();
@@ -400,7 +400,7 @@ function ghostMap(meta: RepoMeta | null, tree: TreeNode | null) {
 	return map;
 }
 
-/** Insert ghost docs into a throwaway tree copy — folders materialize to hold them. */
+/** Insert ghost docs into a throwaway tree copy – folders materialize to hold them. */
 function withGhosts(tree: TreeNode, ghosts: Map<string, string>): TreeNode {
 	const root = structuredClone(tree);
 	if (!root.children) root.children = [];
@@ -438,7 +438,7 @@ export function Sidebar({
 	onSelect: (path: string) => void;
 	meta: RepoMeta | null;
 	/** A folder-link click's expand request (M4-3 b6): the path's ancestors
-	 *  and the folder itself leave the collapsed set — App bumps `n` so a
+	 *  and the folder itself leave the collapsed set – App bumps `n` so a
 	 *  repeat click on the same folder re-arms the effect. */
 	expandFolder: { path: string; n: number } | null;
 	/** Ghost-card click: checkout the branch, then open the doc (App). */
@@ -446,9 +446,9 @@ export function Sidebar({
 	/** Sequential restores, then App refetches tree + meta. */
 	onRestore: (items: DeletedDoc[]) => void;
 	/** A valid drop landed (M4-3 b5): move `item` into `folder` ("" = the list
-	 *  background = docsRoot root) — App guards and runs the existing ops. */
+	 *  background = docsRoot root) – App guards and runs the existing ops. */
 	onDropItem: (item: DragItem, folder: string) => void;
-	/** A drop on the bin — App confirms and deletes (doc or folder). */
+	/** A drop on the bin – App confirms and deletes (doc or folder). */
 	onDropBin: (item: DragItem, name: string) => void;
 }) {
 	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -465,7 +465,7 @@ export function Sidebar({
 	useEffect(() => {
 		if (!expandFolder) return;
 		setCollapsed((prev) => {
-			if (prev.size === 0) return prev; // nothing collapsed — already open
+			if (prev.size === 0) return prev; // nothing collapsed – already open
 			const next = new Set(prev);
 			const segs = expandFolder.path.split("/");
 			for (let i = 1; i <= segs.length; i++)
@@ -476,7 +476,7 @@ export function Sidebar({
 
 	// Drag & drop state (M4-3 b5): `drag` dims the source row, `dropKey`
 	// highlights the hovered target. The payload itself lives in currentDrag
-	// (dnd.ts) — readable during dragover, cleared by the source's dragend.
+	// (dnd.ts) – readable during dragover, cleared by the source's dragend.
 	const [drag, setDrag] = useState<DragItem | null>(null);
 	const [dropKey, setDropKey] = useState<string | null>(null);
 	// The confirm's display name for a bin drop: the title model for docs,
@@ -500,7 +500,7 @@ export function Sidebar({
 		hover: setDropKey,
 		leave: (e, key) => {
 			// dragleave also fires when the pointer crosses into a child
-			// element — keep the highlight then; clear only this row's key.
+			// element – keep the highlight then; clear only this row's key.
 			const into = e.relatedTarget;
 			if (into instanceof Node && e.currentTarget.contains(into)) return;
 			setDropKey((k) => (k === key ? null : k));
@@ -508,7 +508,7 @@ export function Sidebar({
 		dropInto: (item, folder) => onDropItem(item, folder),
 		dropBin: (item) => onDropBin(item, labelFor(item)),
 		// Collision-aware (M4-4 b1): checked against the real tree, not the
-		// ghost-merged one — draft-only docs sit on other branches, so they
+		// ghost-merged one – draft-only docs sit on other branches, so they
 		// can't collide with anything on disk here.
 		canDrop: (drag, target) => tree !== null && dropAllowed(drag, target, tree),
 	};
@@ -524,7 +524,7 @@ export function Sidebar({
 		<>
 			{/* The list's own background/padding is the "/" (docsRoot root)
 			    target (M4-3 b5): folder rows stop their dragovers so row drops
-			    never double-fire as root drops; doc rows bubble — a drop on a
+			    never double-fire as root drops; doc rows bubble – a drop on a
 			    card that isn't a folder target lands at root. */}
 			<ul
 				className={`doc-list${dropKey === "root" ? " drop-root" : ""}`}

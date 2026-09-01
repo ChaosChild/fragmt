@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-/** Typed git failure — carries the exit code and both streams for diagnosis. */
+/** Typed git failure – carries the exit code and both streams for diagnosis. */
 export class GitError extends Error {
 	constructor(
 		message: string,
@@ -71,7 +71,7 @@ export async function checkoutBranch(
 	await git(repoRoot, ["checkout", name]);
 }
 
-/** `git log` with caller-owned format/filters — raw trimmed stdout. */
+/** `git log` with caller-owned format/filters – raw trimmed stdout. */
 export async function logCommits(
 	repoRoot: string,
 	args: string[],
@@ -79,7 +79,7 @@ export async function logCommits(
 	return git(repoRoot, ["log", ...args]);
 }
 
-/** `git show <ref>` — file content by ref. */
+/** `git show <ref>` – file content by ref. */
 export async function showRef(repoRoot: string, ref: string): Promise<string> {
 	return git(repoRoot, ["show", ref]);
 }
@@ -99,4 +99,40 @@ export async function deleteBranch(
 	force = false,
 ): Promise<void> {
 	await git(repoRoot, ["branch", force ? "-D" : "-d", name]);
+}
+
+/** The github.com `<owner>/<repo>` pair parsed from a remote URL. */
+export interface GithubSlug {
+	owner: string;
+	repo: string;
+}
+
+/**
+ * Parse a github.com slug out of a remote URL – https
+ * (`https://github.com/<o>/<r>[.git]`), ssh (`git@github.com:<o>/<r>.git`),
+ * and `git://` forms. Anything else (GitLab, local paths, junk) → undefined.
+ */
+export function parseGithubSlug(url: string): GithubSlug | undefined {
+	const match =
+		/^(?:https:\/\/|git@|git:\/\/)github\.com[/:]([^/]+)\/(.+?)(?:\.git)?\/?$/i.exec(
+			url.trim(),
+		);
+	if (!match) return undefined;
+	return { owner: match[1], repo: match[2] };
+}
+
+/**
+ * The origin remote's github.com slug, or undefined when origin is missing or
+ * not GitHub. Feeds the collaborator permission checks (serve --auth).
+ */
+export async function githubSlug(
+	repoRoot: string,
+): Promise<GithubSlug | undefined> {
+	let url: string;
+	try {
+		url = await git(repoRoot, ["remote", "get-url", "origin"]);
+	} catch {
+		return undefined; // no origin configured (or no repo) – not ours to judge
+	}
+	return parseGithubSlug(url);
 }

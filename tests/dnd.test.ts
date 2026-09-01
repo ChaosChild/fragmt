@@ -1,10 +1,10 @@
-// M4-3 b5 drag & drop: the pure guards — drop validity (folder self/subtree
+// M4-3 b5 drag & drop: the pure guards – drop validity (folder self/subtree
 // refusals, bin-accepts-all) and the moved-path computation. M4-4 b1 adds
 // the collision-aware layer: targetOccupied (the server's existsSync 409
 // mirrored client-side), dropAllowed (the dragover decision Sidebar wires),
 // and moveDestinations (the picker's pre-filtered list). The M4-4 dogfood
 // round amends M4-3's same-parent rule: a drop back on the item's own folder
-// is ALLOWED (highlighted, accepted) and no-ops silently — the blocked
+// is ALLOWED (highlighted, accepted) and no-ops silently – the blocked
 // cursor stranded the dragger with no peaceful exit. The HTML5 wiring in
 // Sidebar.tsx is pointer-only by design (the header icons are the keyboard
 // path); these are its decision functions, so the event layer stays thin.
@@ -25,7 +25,7 @@ const folder = (path: string) => ({ kind: "folder" as const, path });
 const root = { kind: "root" as const, path: "" };
 const bin = { kind: "bin" as const, path: "" };
 
-// TreeNode builders — names mirror the server's tree (ent.name, ".md" kept).
+// TreeNode builders – names mirror the server's tree (ent.name, ".md" kept).
 const doc = (path: string): TreeNode => ({
 	name: basename(path),
 	path,
@@ -55,7 +55,7 @@ describe("dropTargetValid", () => {
 	});
 
 	test("doc onto the folder it already sits in is the peaceful no-op", () => {
-		// M4-4 dogfood round: allowed (highlighted, droppable) — the drop
+		// M4-4 dogfood round: allowed (highlighted, droppable) – the drop
 		// handler no-ops it silently via isNoOpDrop.
 		expect(
 			dropTargetValid({ type: "doc", path: "notes/a.md" }, folder("notes")),
@@ -63,10 +63,10 @@ describe("dropTargetValid", () => {
 	});
 
 	test('root follows the same rule (folder "")', () => {
-		// Already at root — an accepted no-op.
+		// Already at root – an accepted no-op.
 		expect(dropTargetValid({ type: "doc", path: "a.md" }, root)).toBe(true);
 		expect(dropTargetValid({ type: "folder", path: "a" }, root)).toBe(true);
-		// Nested — a real move to top level.
+		// Nested – a real move to top level.
 		expect(dropTargetValid({ type: "doc", path: "notes/a.md" }, root)).toBe(
 			true,
 		);
@@ -139,13 +139,13 @@ describe("targetOccupied", () => {
 		expect(targetOccupied(tree, "", "a.md")).toBe(true);
 	});
 
-	test("a folder name already taken — type-agnostic, like existsSync", () => {
+	test("a folder name already taken – type-agnostic, like existsSync", () => {
 		// The dragged name matches a DIRECTORY child: the server 409s too.
 		expect(targetOccupied(tree, "notes", "sub")).toBe(true);
 		expect(targetOccupied(tree, "", "notes")).toBe(true);
 	});
 
-	test("a free name — in a folder, at root, in an empty folder", () => {
+	test("a free name – in a folder, at root, in an empty folder", () => {
 		expect(targetOccupied(tree, "notes", "c.md")).toBe(false);
 		expect(targetOccupied(tree, "", "zzz.md")).toBe(false);
 		expect(targetOccupied(tree, "archive", "a.md")).toBe(false);
@@ -165,7 +165,7 @@ describe("dropAllowed", () => {
 	]);
 
 	test("an occupied destination refuses a structurally valid drop", () => {
-		// notes already holds a doc named a.md — no highlight, no landing.
+		// notes already holds a doc named a.md – no highlight, no landing.
 		expect(
 			dropAllowed({ type: "doc", path: "a.md" }, folder("notes"), tree),
 		).toBe(false);
@@ -181,13 +181,13 @@ describe("dropAllowed", () => {
 	});
 
 	test("root follows the same occupancy rule", () => {
-		// Root already holds a.md — moving notes/a.md up would collide.
+		// Root already holds a.md – moving notes/a.md up would collide.
 		expect(dropAllowed({ type: "doc", path: "notes/a.md" }, root, tree)).toBe(
 			false,
 		);
 	});
 
-	test("home is always allowed — the occupant is the dragged item itself", () => {
+	test("home is always allowed – the occupant is the dragged item itself", () => {
 		// notes holds notes/a.md, but that IS the dragged doc: the drop
 		// lands as a silent no-op, not a collision.
 		expect(
@@ -206,7 +206,7 @@ describe("dropAllowed", () => {
 		).toBe(false);
 	});
 
-	test("the bin accepts everything — deletes never collide", () => {
+	test("the bin accepts everything – deletes never collide", () => {
 		expect(dropAllowed({ type: "doc", path: "a.md" }, bin, tree)).toBe(true);
 	});
 
@@ -244,7 +244,7 @@ describe("moveDestinations", () => {
 
 	test("excludes the current parent and occupied folders", () => {
 		// Moving notes/a.md: "notes" is the parent (and self-occupied);
-		// nothing else holds an a.md — every other folder is offered.
+		// nothing else holds an a.md – every other folder is offered.
 		expect(moveDestinations(tree, "notes/a.md")).toEqual({
 			folders: ["notes/sub", "archive", "docs"],
 			rootValid: false, // root already holds a.md

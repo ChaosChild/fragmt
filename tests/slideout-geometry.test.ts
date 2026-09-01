@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
 // #15 slideout geometry: the drag split's clamp and its localStorage
-// round-trip are the batch's only pure logic — the % edition of
+// round-trip are the batch's only pure logic – the % edition of
 // tests/sidebar.test.ts. The pointer divider itself lives in Slideout.tsx.
 import { afterEach, describe, expect, test } from "vitest";
 import {
@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe("clampSlideoutShare", () => {
-	test("clamps below/above the range — main keeps 40–60%", () => {
+	test("clamps below/above the range – main keeps 40–60%", () => {
 		expect(clampSlideoutShare(-1)).toBe(SLIDEOUT_SHARE_MIN);
 		expect(clampSlideoutShare(0)).toBe(SLIDEOUT_SHARE_MIN);
 		expect(clampSlideoutShare(0.39)).toBe(SLIDEOUT_SHARE_MIN);

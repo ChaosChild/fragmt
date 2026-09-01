@@ -15,7 +15,7 @@ import type { CommentFile, CommentThread } from "../src/core/index.js";
 import { createApp, startServer } from "../src/server/index.js";
 
 // M4 server surface: the comment sidecar routes. Same harness as
-// server-m3.test.ts — a real git repo with an identity behind the app.
+// server-m3.test.ts – a real git repo with an identity behind the app.
 
 let root: string;
 let server: Server;
@@ -59,7 +59,7 @@ async function threads(docPath: string): Promise<CommentFile["comments"]> {
 	return ((await res.json()) as CommentFile).comments;
 }
 
-/** The doc's canonical markdown + hash, via GET — the client's baseHash source. */
+/** The doc's canonical markdown + hash, via GET – the client's baseHash source. */
 async function docState(
 	docPath: string,
 ): Promise<{ markdown: string; hash: string }> {

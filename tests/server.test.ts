@@ -28,7 +28,7 @@ afterEach(() => {
 });
 
 /**
- * Raw HTTP request — `fetch` collapses `..` in the path before it leaves the
+ * Raw HTTP request – `fetch` collapses `..` in the path before it leaves the
  * client, so it can never reach (or test) the traversal guard in startServer.
  */
 function rawGet(path: string): Promise<{ status: number; body: string }> {
@@ -83,7 +83,7 @@ test("an unknown /api route is 404", async () => {
 	expect(res.status).toBe(404);
 });
 
-// Trust boundary. These four must stay 400 — a 404 here means the raw-URL guard
+// Trust boundary. These four must stay 400 – a 404 here means the raw-URL guard
 // was lost to a refactor and the framework silently normalized the path instead.
 test.each([
 	["parent escape", "/api/docs/../secret.txt"],

@@ -1,5 +1,5 @@
 // Dogfood round (#15): the preview's span-title formatter (comment-summary.ts)
-// — the thread's first comment as one tooltip line, tolerant of the pieces the
+// – the thread's first comment as one tooltip line, tolerant of the pieces the
 // sidecar may not carry.
 import { describe, expect, test } from "vitest";
 import type { CommentThread } from "../ui/src/api.js";
@@ -20,13 +20,13 @@ function thread(over: Partial<CommentThread> = {}): CommentThread {
 describe("commentSpanTitle", () => {
 	test("the full line: author, status, quoted first body", () => {
 		expect(commentSpanTitle(thread())).toBe(
-			'andrei · open — "Pin this wording?"',
+			'andrei · open – "Pin this wording?"',
 		);
 	});
 
 	test("resolved wording flips the status segment", () => {
 		expect(commentSpanTitle(thread({ resolved: true }))).toBe(
-			'andrei · resolved — "Pin this wording?"',
+			'andrei · resolved – "Pin this wording?"',
 		);
 	});
 
@@ -35,10 +35,10 @@ describe("commentSpanTitle", () => {
 		const out = commentSpanTitle(
 			thread({ replies: [{ author: "a", body, at: "..." }] }),
 		);
-		expect(out.startsWith('andrei · open — "word ')).toBe(true);
+		expect(out.startsWith('andrei · open – "word ')).toBe(true);
 		expect(out.endsWith('…"')).toBe(true);
 		expect(out.length).toBeLessThanOrEqual(
-			"andrei · open — ".length + 1 + 80 + 2,
+			"andrei · open – ".length + 1 + 80 + 2,
 		);
 	});
 
@@ -54,6 +54,6 @@ describe("commentSpanTitle", () => {
 					replies: [{ author: "", body: "hi", at: "..." }],
 				}),
 			),
-		).toBe('open — "hi"');
+		).toBe('open – "hi"');
 	});
 });

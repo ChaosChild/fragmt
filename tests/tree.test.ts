@@ -69,7 +69,7 @@ test("a repo with no markdown yields an empty root", () => {
 	expect(countDocs(tree)).toBe(0);
 });
 
-// M4-3 b6: createFolder commits a .gitkeep — a brand-new folder must appear in
+// M4-3 b6: createFolder commits a .gitkeep – a brand-new folder must appear in
 // the tree (the sidebar renders its count badge as 0); without the marker a
 // docless dir still prunes per the M1 rule.
 test("a .gitkeep folder stays visible with 0 docs; a bare empty dir prunes", () => {
@@ -104,7 +104,7 @@ test("a .gitkeep folder disappears once neither docs nor the marker remain", () 
 });
 
 // --- M4-3 b7: the .gitignore filter (allow-list) ----------------------------
-// Real repos behind the walk — ls-files semantics are the thing under test,
+// Real repos behind the walk – ls-files semantics are the thing under test,
 // so no simulation: tracked-vs-ignored is asserted against actual git.
 
 /** Real-repo fixture (server-m43's discipline): identity, CRLF off, a seed
@@ -136,7 +136,7 @@ test("gitAllowList: tracked and untracked-not-ignored in; ignored out (tracked w
 	gitRepoFixture();
 	const allow = await gitAllowList(root, "docs");
 	expect(allow).toBeInstanceOf(Set);
-	// Tracked — including the force-added file inside an ignored dir: the
+	// Tracked – including the force-added file inside an ignored dir: the
 	// index wins over any ignore rule, and the .gitkeep folder marker.
 	expect(allow?.has("kept.md")).toBe(true);
 	expect(allow?.has("scratch/forced.md")).toBe(true);
@@ -184,7 +184,7 @@ test("listTree without an allow-list keeps today's on-disk behavior exactly", ()
 });
 
 test("gitAllowList returns null outside a git repo (the fallback signal)", async () => {
-	fixture(); // a plain tmp dir — never a repo
+	fixture(); // a plain tmp dir – never a repo
 	expect(await gitAllowList(root, "docs")).toBeNull();
 });
 

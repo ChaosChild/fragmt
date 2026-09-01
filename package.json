@@ -1,7 +1,7 @@
 {
 	"name": "fragmt",
 	"version": "0.6.0",
-	"description": "Git-native documentation environment — Notion-style editing over plain markdown in your own repo",
+	"description": "Git-native documentation environment – Notion-style editing over plain markdown in your own repo",
 	"license": "MIT",
 	"author": "Andrei Migatchev",
 	"homepage": "https://github.com/ChaosChild/fragmt#readme",

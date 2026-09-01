@@ -1,10 +1,10 @@
-// "./api.js" (not "./api"): this file is typechecked by BOTH configs — the
+// "./api.js" (not "./api"): this file is typechecked by BOTH configs – the
 // root nodenext program reaches it via tests/comment-summary.test.ts.
 import type { CommentThread } from "./api.js";
 
-/** Dogfood round (#15, 2026-08-26): the PREVIEW's comment-span tooltip — the
- *  thread's first comment as one line, e.g. `andrei · open — "Pin this
- *  wording?"` — so a reader can decide whether to open the doc in the main
+/** Dogfood round (#15, 2026-08-26): the PREVIEW's comment-span tooltip – the
+ *  thread's first comment as one line, e.g. `andrei · open – "Pin this
+ *  wording?"` – so a reader can decide whether to open the doc in the main
  *  pane before clicking anything. The main doc's spans keep the mark's
  *  "View comment"; the preview has no jump to promise.
  *
@@ -20,11 +20,11 @@ function truncateBody(raw: string): string {
 	return `${body.slice(0, BODY_MAX).trimEnd()}…`;
 }
 
-/** The span-title line: `<author> · <open|resolved>[ — "<body>"]`. */
+/** The span-title line: `<author> · <open|resolved>[ – "<body>"]`. */
 export function commentSpanTitle(thread: CommentThread): string {
 	const meta = [thread.author, thread.resolved ? "resolved" : "open"]
 		.filter(Boolean)
 		.join(" · ");
 	const body = truncateBody(thread.replies[0]?.body ?? "");
-	return body ? `${meta} — "${body}"` : meta;
+	return body ? `${meta} – "${body}"` : meta;
 }

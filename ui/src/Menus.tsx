@@ -6,11 +6,13 @@ import {
 	type Ref,
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useRef,
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { getBranches } from "./api";
+import { popoverPosition } from "./popover-position";
 
 /** Every file operation the sidebar menus / doc head can request (App performs it). */
 export type FileOp =
@@ -26,7 +28,7 @@ export type BranchAction =
 	| { kind: "create"; name: string }
 	| { kind: "delete"; name: string };
 
-/** Docs must end in .md (core rule) — keep free-form input forgiving. */
+/** Docs must end in .md (core rule) – keep free-form input forgiving. */
 function toDocPath(input: string): string {
 	const t = input.trim().replace(/^\/+/, "");
 	return t.toLowerCase().endsWith(".md") ? t : `${t}.md`;
@@ -55,7 +57,7 @@ export function useMenu() {
 		};
 		const onKey = (e: KeyboardEvent) => {
 			// Consumed, and marked so (#15 b5): an open popover always wins
-			// the Escape chain — the window fallback (and any future
+			// the Escape chain – the window fallback (and any future
 			// ordering) can see this Escape never reaches the slideout leg.
 			if (e.key === "Escape") {
 				e.preventDefault();
@@ -82,9 +84,11 @@ export function useMenu() {
 }
 
 /**
- * Fixed glass popover portalled to document.body — the sidebar's
+ * Fixed glass popover portalled to document.body – the sidebar's
  * backdrop-filter is a containing block for fixed descendants and would
- * otherwise clip/misplace it.
+ * otherwise clip/misplace it. Positioned from the anchor's rect plus the
+ * popover's own measured size (useLayoutEffect, before paint; re-measures on
+ * any re-render while open, which is idempotent while the anchor stands still).
  */
 export function MenuPopover({
 	anchor,
@@ -95,20 +99,89 @@ export function MenuPopover({
 	popRef: Ref<HTMLDivElement>;
 	children: ReactNode;
 }) {
+	const inner = useRef<HTMLDivElement | null>(null);
+	useLayoutEffect(() => {
+		const el = inner.current;
+		if (!el || !anchor) return;
+		const p = popoverPosition(
+			anchor.getBoundingClientRect(),
+			{ width: el.offsetWidth, height: el.offsetHeight },
+			{ width: window.innerWidth, height: window.innerHeight },
+		);
+		el.style.top = `${p.top}px`;
+		el.style.left = `${p.left}px`;
+	});
 	if (!anchor) return null;
 	const r = anchor.getBoundingClientRect();
 	return createPortal(
 		<div
 			className="menu-popover"
-			ref={popRef}
-			style={{
-				top: Math.min(r.bottom + 6, window.innerHeight - 230),
-				left: Math.max(8, Math.min(r.left, window.innerWidth - 280)),
+			ref={(n) => {
+				inner.current = n;
+				if (typeof popRef === "function") popRef(n);
+				else if (popRef) popRef.current = n;
 			}}
+			style={{ top: r.bottom + 6, left: r.left }}
 		>
 			{children}
 		</div>,
 		document.body,
+	);
+}
+
+/**
+ * The signed-in user chip (#20, auth batch): avatar + login, opens the
+ * one-item sign-out menu. Lives at the end of the doc head (owner round –
+ * moved out of the sidebar head's brand row). canWrite=false adds the warn
+ * read-only pill so a read collaborator reads the coming 403s before
+ * hitting one.
+ */
+export function UserChip({
+	login,
+	canWrite,
+	onSignOut,
+}: {
+	login: string;
+	canWrite: boolean;
+	onSignOut: () => void;
+}) {
+	const menu = useMenu();
+	return (
+		<span className="menu-wrap user-chip-wrap">
+			{!canWrite && <span className="readonly-pill">read-only</span>}
+			<button
+				type="button"
+				className="user-chip"
+				title={`${login} – sign out`}
+				aria-label={`Signed in as ${login}. Sign out`}
+				aria-expanded={menu.open}
+				onClick={menu.toggle}
+			>
+				<img
+					className="chip-avatar"
+					src={`https://avatars.githubusercontent.com/${encodeURIComponent(login)}?s=64`}
+					alt=""
+					width={18}
+					height={18}
+					onError={(e) => {
+						e.currentTarget.style.visibility = "hidden";
+					}}
+				/>
+				<span className="chip-login">{login}</span>
+			</button>
+			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
+				<button
+					type="button"
+					className="menu-item"
+					onClick={() => {
+						menu.close();
+						onSignOut();
+					}}
+				>
+					Sign out
+				</button>
+			</MenuPopover>
+		</span>
 	);
 }
 
@@ -165,7 +238,7 @@ export function BranchMenu({
 				{failed && <p className="menu-empty">branches unavailable</p>}
 				{(branches ?? []).map((b) => (
 					// One row, two targets: the name switches, the trash deletes
-					// (never offered on the current branch — the server refuses it).
+					// (never offered on the current branch – the server refuses it).
 					<span key={b} className="menu-row">
 						<button
 							type="button"
@@ -214,7 +287,7 @@ export function BranchMenu({
 }
 
 /**
- * The "+" button (M4-2 item 11): a two-choice popover — New document (the
+ * The "+" button (M4-2 item 11): a two-choice popover – New document (the
  * existing path form) or New folder (same form, the create-folder op; the
  * folder appears in the tree, nothing gets selected).
  */

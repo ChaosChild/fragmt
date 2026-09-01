@@ -1,6 +1,6 @@
 name: Release
 
-# M5: a tag is the entire release ritual. The gate can't be skipped —
+# M5: a tag is the entire release ritual. The gate can't be skipped –
 # the same triple CI runs, then build, publish (provenance), GitHub Release.
 on:
   push:

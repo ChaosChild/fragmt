@@ -17,7 +17,7 @@ import { createApp, startServer } from "../src/server/index.js";
 
 // M4-4 b3 server surface: the write-guard middleware, GET/PUT/POST
 // /api/merge* resolution routes, and the stood:false fallback. Same harness
-// as server-m42/m43 — a real git repo with an identity behind the app, but
+// as server-m42/m43 – a real git repo with an identity behind the app, but
 // docsRoot "docs" so a root README is an unresolvable "other" conflict.
 
 let root: string;
@@ -137,7 +137,7 @@ function conflicted(): void {
 	run(["checkout", "-q", "drafts/c"]);
 }
 
-const GUARD = { error: "a merge is in progress — finish or abort it first" };
+const GUARD = { error: "a merge is in progress – finish or abort it first" };
 
 test("stood merge: 409 shape, write guard, GET detail, resolve both kinds, conclude", async () => {
 	conflicted();
@@ -157,7 +157,7 @@ test("stood merge: 409 shape, write guard, GET detail, resolve both kinds, concl
 		files: [".docs/comments/a.md.json", "docs/a.md"],
 	});
 
-	// The write guard — GETs pass, every non-merge write 409s. Load-bearing:
+	// The write guard – GETs pass, every non-merge write 409s. Load-bearing:
 	// commitAs git-adds unconditionally, so a stray save would stage a
 	// half-resolution into an unrelated commit.
 	const doc = (await (await api("GET", "/api/docs/a.md")).json()) as {
@@ -215,7 +215,7 @@ test("stood merge: 409 shape, write guard, GET detail, resolve both kinds, concl
 	const meta = (await (await api("GET", "/api/meta")).json()) as RepoMeta;
 	expect(meta.merge).toEqual({ branch: "drafts/c", remaining: 2 });
 
-	// Resolve the doc — the assembled text lands verbatim; remaining drops.
+	// Resolve the doc – the assembled text lands verbatim; remaining drops.
 	const docPut = await api("PUT", "/api/merge/resolve", {
 		path: "docs/a.md",
 		content: "# resolved\n",
@@ -352,7 +352,7 @@ test("sidecar ours/theirs choices; abort returns to the draft; no-merge 409s", a
 
 test("non-resolvable conflict: 409 stood:false + message, merge aborted, draft intact", async () => {
 	conflicted();
-	// Diverge the seeded README (outside docsRoot) on both branches — one
+	// Diverge the seeded README (outside docsRoot) on both branches – one
 	// "other" file is enough for the abort fallback.
 	write("README.md", "# draft readme\n");
 	commit("draft readme");

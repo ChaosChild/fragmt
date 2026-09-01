@@ -1,5 +1,5 @@
-// M4-4 b5: the AGENTS.md managed block in isolation — create, append to an
-// unmarked file, replace between the markers (nothing outside ever moves) —
+// M4-4 b5: the AGENTS.md managed block in isolation – create, append to an
+// unmarked file, replace between the markers (nothing outside ever moves) –
 // plus the rail agent-chip predicate. initRepo's write/refresh and the
 // config/meta plumbing live in config.test.ts / meta.test.ts.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -50,7 +50,7 @@ test("writeAgentsBlock replaces exactly between the markers", () => {
 	expect(read()).toBe(`${before}${block()}\n${after}`);
 });
 
-test("a lone end marker counts as unmarked — append, not replace", () => {
+test("a lone end marker counts as unmarked – append, not replace", () => {
 	const mine = "# Mine\n";
 	writeFileSync(join(root, "AGENTS.md"), `${mine}${AGENTS_END}\n`);
 	writeAgentsBlock(root);

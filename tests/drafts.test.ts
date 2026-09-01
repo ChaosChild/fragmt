@@ -19,7 +19,7 @@ import {
 } from "../src/core/drafts.js";
 import { PathExistsError } from "../src/core/files.js";
 
-// nextDraftName is pure — slug rules and collision suffixes, no git involved.
+// nextDraftName is pure – slug rules and collision suffixes, no git involved.
 
 test("slug: basename minus .md, lowercase, non-[a-z0-9] → '-', trimmed", () => {
 	expect(nextDraftName([], "docs/M4-2-drafting.md")).toBe(
@@ -42,7 +42,7 @@ test("collisions append -2, -3, …; free base name taken as-is", () => {
 });
 
 // startDraft / mergeToMain / restoreDoc against real tmp repos (meta.test.ts
-// pattern) — every git call outside the code under test is raw execFileSync.
+// pattern) – every git call outside the code under test is raw execFileSync.
 
 const dirs: string[] = [];
 

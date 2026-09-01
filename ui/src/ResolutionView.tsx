@@ -12,17 +12,17 @@ import { assembleContent, sidecarSummaryLine } from "./resolve";
 
 /**
  * Resolution mode (M4-4 b3): the main-pane takeover while a stood merge is
- * resolved. Owns the merge-state fetch and re-fetches after every stage —
+ * resolved. Owns the merge-state fetch and re-fetches after every stage –
  * staged files drop out of the live unmerged set, so `remaining` stays the
  * server's word. Doc files resolve hunk-by-hunk (ours/theirs pick + an edit
  * textarea prefilled with the chosen side, assembled preview, Stage);
  * sidecars take one structural choice off the b2 summary. Finish concludes
- * (the merge commit), Abort confirms then undoes — both hand back to App
+ * (the merge commit), Abort confirms then undoes – both hand back to App
  * for the full refresh. Writes elsewhere are the server guard's problem.
  */
 export function ResolutionView({ onDone }: { onDone: () => void }) {
 	const [state, setState] = useState<MergeState | null>(null);
-	// Paths staged in this session — they leave the unmerged set, but the
+	// Paths staged in this session – they leave the unmerged set, but the
 	// card list keeps them as done rows so the merge visibly shrinks.
 	const [staged, setStaged] = useState<string[]>([]);
 	const [error, setError] = useState<string | null>(null);
@@ -31,7 +31,7 @@ export function ResolutionView({ onDone }: { onDone: () => void }) {
 	const refresh = () => {
 		getMergeState()
 			.then((s) => {
-				// A merge concluded elsewhere (terminal) reads as done — exit.
+				// A merge concluded elsewhere (terminal) reads as done – exit.
 				if (!s.inMerge) {
 					onDone();
 					return;
@@ -42,7 +42,7 @@ export function ResolutionView({ onDone }: { onDone: () => void }) {
 				setError(e instanceof Error ? e.message : String(e)),
 			);
 	};
-	// biome-ignore lint/correctness/useExhaustiveDependencies: mount-only — every later refresh is explicit (after a stage/conclude/abort)
+	// biome-ignore lint/correctness/useExhaustiveDependencies: mount-only – every later refresh is explicit (after a stage/conclude/abort)
 	useEffect(() => {
 		refresh();
 	}, []);
@@ -82,7 +82,7 @@ export function ResolutionView({ onDone }: { onDone: () => void }) {
 	const abort = () => {
 		if (
 			!window.confirm(
-				"Abort this merge? Nothing merges — you stay on the draft branch.",
+				"Abort this merge? Nothing merges – you stay on the draft branch.",
 			)
 		)
 			return;
@@ -190,7 +190,7 @@ interface HunkState {
 
 /** A conflicted doc: a hunk card per ours/theirs part (pick a side, or edit
  *  the chosen side's text in a textarea), the live assembled preview, and
- *  Stage — which PUTs exactly the previewed text. Ours is main (HEAD),
+ *  Stage – which PUTs exactly the previewed text. Ours is main (HEAD),
  *  theirs is the draft being merged in. */
 function DocCard({
 	file,
@@ -247,11 +247,11 @@ function DocCard({
 			</header>
 			{hunks.length === 0 && (
 				<p className="label-meta">
-					no conflicting hunks — stage writes the file as-is
+					no conflicting hunks – stage writes the file as-is
 				</p>
 			)}
 			{hunks.map((_, i) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: a hunk has no id — the index IS its identity, and the slots below stay index-aligned for the card's lifetime (hunks never reorder)
+				// biome-ignore lint/suspicious/noArrayIndexKey: a hunk has no id – the index IS its identity, and the slots below stay index-aligned for the card's lifetime (hunks never reorder)
 				<div key={i} className="hunk">
 					<div className="hunk-actions">
 						<button
@@ -305,7 +305,7 @@ function DocCard({
 }
 
 /** A conflicted sidecar: the b2 summary line + three one-click structural
- *  choices — no per-reply editor (the merged union is the whole point). */
+ *  choices – no per-reply editor (the merged union is the whole point). */
 function SidecarCard({
 	file,
 	disabled,
@@ -353,7 +353,7 @@ function SidecarCard({
 	);
 }
 
-/** The kind a stood merge can't carry (unreachable through mergeToMain — the
+/** The kind a stood merge can't carry (unreachable through mergeToMain – the
  *  classification refuses to stand on "other" files); said plainly if it
  *  ever shows up anyway. */
 function OtherCard({ file }: { file: { path: string; kind: "other" } }) {
@@ -363,7 +363,7 @@ function OtherCard({ file }: { file: { path: string; kind: "other" } }) {
 				<span className="resolve-path">{file.path}</span>
 			</header>
 			<p className="label-meta">
-				this file can't be resolved in the UI — finish the merge in your
+				this file can't be resolved in the UI – finish the merge in your
 				terminal
 			</p>
 		</section>

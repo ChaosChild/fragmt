@@ -111,7 +111,7 @@ test("snippet: ~110-char window around the first match, ellipsized when clamped"
 	);
 	// Start: no leading ellipsis, clamped at 110 chars.
 	expect(byPath["s.md"]).toBe(`# s needle ${"a".repeat(99)}…`);
-	// Middle: clamped on both sides — 39 chars of lead-in, the match, context.
+	// Middle: clamped on both sides – 39 chars of lead-in, the match, context.
 	expect(byPath["m.md"]).toBe(`…${"b".repeat(39)} needle ${"c".repeat(63)}…`);
 	// End: leading ellipsis only, runs to the last char.
 	expect(byPath["e.md"]).toBe(`…${"d".repeat(39)} needle`);

@@ -1,5 +1,5 @@
 /**
- * Resolution mode's pure logic (M4-4 b3) — the dnd.ts pattern: no DOM, no
+ * Resolution mode's pure logic (M4-4 b3) – the dnd.ts pattern: no DOM, no
  * fetch, testable straight from the node suite. The hunk cards' live
  * preview and the Stage button both render through assembleContent, so what
  * you preview is exactly what stages; the sidecar card's summary line is
@@ -10,7 +10,7 @@ import type { ConflictPart, SidecarMergeSummary } from "./api.js";
 /**
  * The assembled resolution: plain parts pass through verbatim, each
  * conflicting hunk contributes its picked/edited text. A missing pick reads
- * as empty — deleting a hunk is a valid resolution.
+ * as empty – deleting a hunk is a valid resolution.
  */
 export function assembleContent(
 	parts: ConflictPart[],

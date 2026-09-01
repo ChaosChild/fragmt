@@ -20,7 +20,7 @@ import {
 } from "../src/core/index.js";
 
 // M4-4 b4: the pure AXI formatters directly, then runAgent end-to-end on temp
-// repos (drafts.test.ts harness — raw git outside the code under test).
+// repos (drafts.test.ts harness – raw git outside the code under test).
 
 // --- pure formatters -------------------------------------------------------
 
@@ -45,7 +45,7 @@ test("truncateBody: 120 or fewer chars pass through; longer gets the note", () =
 	expect(truncateBody("x".repeat(120))).toBe("x".repeat(120));
 	const long = "y".repeat(130);
 	expect(truncateBody(long)).toBe(
-		`${"y".repeat(120)} (truncated, 130 chars total — use --full)`,
+		`${"y".repeat(120)} (truncated, 130 chars total – use --full)`,
 	);
 });
 
@@ -87,7 +87,7 @@ test("statusLines: summary, protected mark, rows, empty state, mid-merge", () =>
 	expect(
 		statusLines(meta({ merge: { branch: "drafts/a", remaining: 2 } }))[0],
 	).toBe(
-		"branch: main (protected) · drafts: 0 · merge: in progress — 2 unresolved",
+		"branch: main (protected) · drafts: 0 · merge: in progress – 2 unresolved",
 	);
 	expect(statusLines(meta({ main: null }))[0]).toBe(
 		"branch: main · drafts: 0 · merge: clean",
@@ -111,11 +111,11 @@ test("threadsLines: header aggregate inline, comma rows, definitive empty state"
 			thread({ id: "t2", author: "ZCode", resolved: true, replies: [] }),
 		]),
 	).toEqual([
-		"threads[2]{id,author,resolved,replies}: — 2 of 2 total, 1 open",
+		"threads[2]{id,author,resolved,replies}: – 2 of 2 total, 1 open",
 		"t1,Andrei,false,1",
 		"t2,ZCode,true,0",
 	]);
-	expect(threadsLines([])).toEqual(["threads[0]: none — 0 of 0 total, 0 open"]);
+	expect(threadsLines([])).toEqual(["threads[0]: none – 0 of 0 total, 0 open"]);
 });
 
 test("detailLines: quote + replies truncated; --full untruncates", () => {
@@ -131,7 +131,7 @@ test("detailLines: quote + replies truncated; --full untruncates", () => {
 		"quote: the marked text",
 		"replies[2]{author,body}:",
 		"Andrei,open",
-		`ZCode,${"z".repeat(120)} (truncated, 130 chars total — use --full)`,
+		`ZCode,${"z".repeat(120)} (truncated, 130 chars total – use --full)`,
 	]);
 	expect(detailLines("t1", t, true)[4]).toBe(`ZCode,${long}`);
 });
@@ -172,7 +172,7 @@ function commit(root: string, message: string): string {
 }
 
 /** Repo with docs/a.md committed and .fragmt.json pointing at docs/.
- *  The config is committed too — untracked, a later `add -A` on a draft
+ *  The config is committed too – untracked, a later `add -A` on a draft
  *  branch would carry it away from main and loadConfig would fail there. */
 function seeded(): string {
 	const root = repo();
@@ -239,7 +239,7 @@ test("comment: listing rows + aggregate; empty sidecar state", async () => {
 	const r = await agent(root, ["comment", "a.md"]);
 	expect(r.code).toBe(0);
 	expect(r.out.slice(0, 3)).toEqual([
-		"threads[1]{id,author,resolved,replies}: — 1 of 1 total, 1 open",
+		"threads[1]{id,author,resolved,replies}: – 1 of 1 total, 1 open",
 		"t1,Agent Test,false,1",
 		"help[2]:",
 	]);
@@ -247,7 +247,7 @@ test("comment: listing rows + aggregate; empty sidecar state", async () => {
 
 	const none = await agent(root, ["comment", "missing.md"]);
 	expect(none.code).toBe(0);
-	expect(none.out[0]).toBe("threads[0]: none — 0 of 0 total, 0 open");
+	expect(none.out[0]).toBe("threads[0]: none – 0 of 0 total, 0 open");
 });
 
 test("comment --thread: detail truncates at 120; --full untruncates", async () => {
@@ -261,7 +261,7 @@ test("comment --thread: detail truncates at 120; --full untruncates", async () =
 		"thread[t1]{author,resolved}: Agent Test,false",
 		"quote: the marked text",
 		"replies[1]{author,body}:",
-		`Agent Test,${"z".repeat(120)} (truncated, 130 chars total — use --full)`,
+		`Agent Test,${"z".repeat(120)} (truncated, 130 chars total – use --full)`,
 		"help[2]:",
 		'  fragmt agent comment a.md --thread t1 --body "…"',
 		"  fragmt agent comment a.md --thread t1 --resolve",
@@ -495,16 +495,16 @@ test("stood conflict: exit 1 with resolve-in-UI error; status shows the merge", 
 	const r = await agent(root, ["draft", "a.md", "--merge"]);
 	expect(r.code).toBe(1);
 	expect(r.out[0]).toBe(
-		"error: merge conflict — 2 files; resolve in the fragmt UI",
+		"error: merge conflict – 2 files; resolve in the fragmt UI",
 	);
 
 	const status = await agent(root, ["status"]);
 	expect(status.code).toBe(0);
 	expect(status.out[0]).toBe(
-		"branch: main (protected) · drafts: 1 · merge: in progress — 2 unresolved",
+		"branch: main (protected) · drafts: 1 · merge: in progress – 2 unresolved",
 	);
 	expect(status.out.at(-2)).toBe(
-		"  fragmt serve — finish or abort the standing merge in the UI",
+		"  fragmt serve – finish or abort the standing merge in the UI",
 	);
 });
 
@@ -522,7 +522,7 @@ test("mid-merge: comment and draft mutations are refused with the guard text", a
 	]);
 	expect(reply.code).toBe(1);
 	expect(reply.out[0]).toBe(
-		"error: a merge is in progress — finish or abort it first",
+		"error: a merge is in progress – finish or abort it first",
 	);
 
 	const resolve = await agent(root, [
@@ -534,13 +534,13 @@ test("mid-merge: comment and draft mutations are refused with the guard text", a
 	]);
 	expect(resolve.code).toBe(1);
 	expect(resolve.out[0]).toBe(
-		"error: a merge is in progress — finish or abort it first",
+		"error: a merge is in progress – finish or abort it first",
 	);
 
 	const draft = await agent(root, ["draft", "a.md"]);
 	expect(draft.code).toBe(1);
 	expect(draft.out[0]).toBe(
-		"error: a merge is in progress — finish or abort it first",
+		"error: a merge is in progress – finish or abort it first",
 	);
 });
 
@@ -559,7 +559,7 @@ test("unresolvable conflict: aborted fallback lists the files", async () => {
 	const r = await agent(root, ["draft", "a.md", "--merge"]);
 	expect(r.code).toBe(1);
 	expect(r.out[0]).toBe(
-		"error: merge conflict — aborted, unresolvable files: README.md",
+		"error: merge conflict – aborted, unresolvable files: README.md",
 	);
 	// Aborted: back on the draft, nothing standing.
 	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("drafts/r");

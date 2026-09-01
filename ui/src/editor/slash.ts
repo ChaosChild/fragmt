@@ -5,7 +5,7 @@ import Suggestion, { type SuggestionProps } from "@tiptap/suggestion";
 /**
  * The slash menu (M2-2): typing "/" starts an item query, filtering the list
  * below. Items run Tiptap commands against a chain that has already deleted
- * the "/query" range — the slash text is command syntax, never content.
+ * the "/query" range – the slash text is command syntax, never content.
  * The `image` item is intercepted by the UI (`popover: true`) which opens the
  * URL/alt form instead of running a command.
  */
@@ -170,7 +170,7 @@ function toMenuState(props: SuggestionProps<SlashItem>): SlashMenuState {
 		query: props.query,
 		items: props.items,
 		range: props.range,
-		// props.command wraps the item with editor/range itself — pass the bare item.
+		// props.command wraps the item with editor/range itself – pass the bare item.
 		execute: (item) => props.command(item),
 		dismiss: () => props.editor.chain().focus().deleteRange(props.range).run(),
 	};

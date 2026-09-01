@@ -21,13 +21,13 @@ import {
 // with exit 1, unknown flag/verb exit 2, `help[n]:` hints after every output,
 // no interactive prompts, `--full` untruncates. Bare `fragmt agent` = status.
 
-/** Reply/quote clamp for thread detail — `--full` skips it. */
+/** Reply/quote clamp for thread detail – `--full` skips it. */
 const BODY_LIMIT = 120;
 
 /** A body (reply or quote) as one TOON-safe line, with the untruncation note. */
 export function truncateBody(body: string, limit = BODY_LIMIT): string {
 	if (body.length <= limit) return body;
-	return `${body.slice(0, limit)} (truncated, ${body.length} chars total — use --full)`;
+	return `${body.slice(0, limit)} (truncated, ${body.length} chars total – use --full)`;
 }
 
 /** Display-name slug for the machine address (nextDraftName's slug rules). */
@@ -40,7 +40,7 @@ function authorSlug(name: string): string {
 
 /**
  * `--author` git-style: `Name <address>` → both verbatim; a bare name gets
- * the deterministic machine address `<slug>@users.noreply.fragmt` — the
+ * the deterministic machine address `<slug>@users.noreply.fragmt` – the
  * convention git itself uses, never a real address. Plain commit-metadata
  * plumbing: the value replaces localUser() for the mutation, so the commit
  * AND the sidecar's author field carry the agent's display name.
@@ -61,7 +61,7 @@ export function statusLines(meta: RepoMeta): string[] {
 	const mark =
 		meta.main !== null && meta.current === meta.main ? " (protected)" : "";
 	const merge = meta.merge
-		? `merge: in progress — ${meta.merge.remaining} unresolved`
+		? `merge: in progress – ${meta.merge.remaining} unresolved`
 		: "merge: clean";
 	if (rows.length === 0)
 		return [
@@ -78,8 +78,8 @@ export function statusLines(meta: RepoMeta): string[] {
 /** The comment listing: header with the inline aggregate + one row per thread. */
 export function threadsLines(threads: CommentThread[]): string[] {
 	const open = threads.filter((t) => !t.resolved).length;
-	const aggregate = `— ${threads.length} of ${threads.length} total, ${open} open`;
-	// ponytail: no row cap — sidecar threads stay small; add a --limit only if
+	const aggregate = `– ${threads.length} of ${threads.length} total, ${open} open`;
+	// ponytail: no row cap – sidecar threads stay small; add a --limit only if
 	// a doc ever grows an unbounded thread count.
 	if (threads.length === 0) return [`threads[0]: none ${aggregate}`];
 	return [
@@ -112,7 +112,7 @@ export function detailLines(
 /** A typed core error → one human line (no stack traces). */
 function humanError(e: unknown): string {
 	if (e instanceof GitIdentityError)
-		return 'git identity not configured — pass --author "Name <email>" or set git user.name/user.email';
+		return 'git identity not configured – pass --author "Name <email>" or set git user.name/user.email';
 	const message = e instanceof Error ? e.message : String(e);
 	return (
 		message
@@ -132,15 +132,15 @@ function helpBlock(out: (s: string) => void, hints: string[]): void {
 function statusHints(meta: RepoMeta): string[] {
 	if (meta.merge)
 		return [
-			"fragmt serve — finish or abort the standing merge in the UI",
-			"fragmt agent status — re-check merge state",
+			"fragmt serve – finish or abort the standing merge in the UI",
+			"fragmt agent status – re-check merge state",
 		];
 	const doc = Object.keys(meta.docs)[0];
 	const draft = Object.entries(meta.drafts).flatMap(([d, es]) =>
 		es.map((e) => ({ doc: d, branch: e.branch })),
 	)[0];
 	if (doc === undefined)
-		return ["fragmt serve — create the first doc in the UI"];
+		return ["fragmt serve – create the first doc in the UI"];
 	if (draft) {
 		return [
 			`fragmt agent comment ${doc}`,
@@ -186,7 +186,7 @@ function parseVerb(
 }
 
 /** The mutation guard, same text as the b3 server write-guard. */
-const IN_MERGE = "error: a merge is in progress — finish or abort it first";
+const IN_MERGE = "error: a merge is in progress – finish or abort it first";
 
 async function runStatus(
 	repoRoot: string,
@@ -223,8 +223,8 @@ async function runComment(
 		for (const line of threadsLines(threads)) out(line);
 		if (threads.length === 0) {
 			helpBlock(out, [
-				"fragmt serve — new threads start from a text selection in the UI",
-				`fragmt agent comment ${doc} --thread <id> --body "…" — reply once one exists`,
+				"fragmt serve – new threads start from a text selection in the UI",
+				`fragmt agent comment ${doc} --thread <id> --body "…" – reply once one exists`,
 			]);
 		} else {
 			const target = (threads.find((t) => !t.resolved) ?? threads[0]).id;
@@ -237,7 +237,7 @@ async function runComment(
 	}
 
 	const id = values.thread;
-	// The guard reads the repo, not the sidecar — mid-merge the on-disk
+	// The guard reads the repo, not the sidecar – mid-merge the on-disk
 	// sidecar carries conflict markers and must not be parsed first.
 	const mutating = values.body !== undefined || values.resolve === true;
 	if (mutating && inMerge(repoRoot)) {
@@ -301,7 +301,7 @@ async function runDraft(
 	if (values.merge !== true) {
 		const { current, reused } = await startDraft(repoRoot, doc, docsRoot);
 		out(`ok: on draft ${current} (${reused ? "reused existing" : "created"})`);
-		helpBlock(out, [`fragmt agent draft ${doc} --merge — merge back to main`]);
+		helpBlock(out, [`fragmt agent draft ${doc} --merge – merge back to main`]);
 		return 0;
 	}
 	const branch = await currentBranch(repoRoot);
@@ -313,12 +313,12 @@ async function runDraft(
 	}
 	if (result.stood) {
 		out(
-			`error: merge conflict — ${result.files.length} files; resolve in the fragmt UI`,
+			`error: merge conflict – ${result.files.length} files; resolve in the fragmt UI`,
 		);
 		return 1;
 	}
 	out(
-		`error: merge conflict — aborted, unresolvable files: ${result.files.join(", ")}`,
+		`error: merge conflict – aborted, unresolvable files: ${result.files.join(", ")}`,
 	);
 	return 1;
 }

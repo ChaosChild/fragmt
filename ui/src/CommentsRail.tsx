@@ -4,7 +4,7 @@ import type { CommentThread } from "./api";
 import { isAgent } from "./display";
 import { type AtDoc, filterAtDocs } from "./editor/at";
 
-/** "2h ago" for recent, a locale date once older — the rail's quiet meta. */
+/** "2h ago" for recent, a locale date once older – the rail's quiet meta. */
 function timeAgo(iso: string): string {
 	const ms = Date.now() - new Date(iso).getTime();
 	if (Number.isNaN(ms)) return "";
@@ -32,7 +32,7 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * A comment body with known doc paths as in-app links (M4-2): split on the
  * known path list, longest first so overlapping paths can't half-match, with
  * a word-boundary-ish guard so "a.md" doesn't fire inside "beta.md".
- * ponytail: regex rebuilt per render — the rail holds a handful of bodies.
+ * ponytail: regex rebuilt per render – the rail holds a handful of bodies.
  */
 function DocRefText({
 	text,
@@ -86,9 +86,9 @@ function ThreadCard({
 	thread: CommentThread;
 	/** No live data-c span in the rendered doc (M4 orphan rule). */
 	orphan: boolean;
-	/** Config agent display names (meta) — the agent chip (M4-4 b5). */
+	/** Config agent display names (meta) – the agent chip (M4-4 b5). */
 	agents: string[];
-	/** The tree's docs — @ mentions and body linkification (M4-2). */
+	/** The tree's docs – @ mentions and body linkification (M4-2). */
 	docs: AtDoc[];
 	onOpenDoc: (path: string) => void;
 	onJump: (id: string) => void;
@@ -103,7 +103,7 @@ function ThreadCard({
 	// Reply collapsing: long stacks show the opening + latest reply only;
 	// the middle hides behind the expander until asked for.
 	const [expanded, setExpanded] = useState(false);
-	// @ mentions (M4-2), hand-rolled — a textarea is not Tiptap: the word
+	// @ mentions (M4-2), hand-rolled – a textarea is not Tiptap: the word
 	// before the caret (`@…`), a filtered list above the box, and the three
 	// keys that navigate it. `start` is the @'s index; Escape suppresses
 	// reopening until a different @ word starts.
@@ -114,7 +114,7 @@ function ThreadCard({
 	} | null>(null);
 	const atDismissed = useRef<number | null>(null);
 	const replyBoxRef = useRef<HTMLTextAreaElement>(null);
-	// Opening the form hands focus to it — focus management after the user's
+	// Opening the form hands focus to it – focus management after the user's
 	// own Reply click, done programmatically (no autoFocus attribute).
 	useEffect(() => {
 		if (replying) replyBoxRef.current?.focus();
@@ -153,7 +153,7 @@ function ThreadCard({
 		const body = text.trim();
 		if (!body || sending) return;
 		setSending(true);
-		// Success closes the form; a failure keeps the text — never lose the write.
+		// Success closes the form; a failure keeps the text – never lose the write.
 		if (await onReply(thread.id, body)) {
 			setReplying(false);
 			setText("");
@@ -161,7 +161,7 @@ function ThreadCard({
 		setSending(false);
 	}
 
-	// Replies beyond the opening comment — one shows as-is, none show
+	// Replies beyond the opening comment – one shows as-is, none show
 	// nothing, 2+ collapse to the latest plus the expander above.
 	const rest = thread.replies.slice(1);
 
@@ -361,7 +361,7 @@ function ThreadCard({
 }
 
 /**
- * The comments thread list (M4-5, refactored #15): the rail's body — the
+ * The comments thread list (M4-5, refactored #15): the rail's body – the
  * pane (Slideout.tsx) supplies the permanent column and, in its preview
  * state, the head row; the sync LED and theme toggle live in the doc head
  * and the sidebar/topbar now. App still owns the sidecar state and the
@@ -385,22 +385,22 @@ export function CommentsRail({
 	threads: CommentThread[];
 	/** Ids whose data-c span is present in the rendered doc (App's reconcile). */
 	liveIds: Set<string>;
-	/** Config agent display names (meta) — the agent chip (M4-4 b5). */
+	/** Config agent display names (meta) – the agent chip (M4-4 b5). */
 	agents: string[];
-	/** Fold the ≤1180px sheet — a jump-to-doc target reads best full-width
+	/** Fold the ≤1180px sheet – a jump-to-doc target reads best full-width
 	 *  there; the desktop pane is permanent, nothing to close. */
 	onClose: () => void;
 	/** Doc→rail jump trigger; `n` re-arms repeated clicks on the same span. */
 	focus: { id: string; n: number } | null;
 	onReply: (id: string, body: string) => Promise<boolean>;
 	onResolve: (id: string) => void;
-	/** A resolved thread's Reopen action (M4-2) — back to the open list. */
+	/** A resolved thread's Reopen action (M4-2) – back to the open list. */
 	onReopen: (id: string) => void;
 	onDelete: (id: string) => void;
 	error: string | null;
-	/** The tree's docs — @ mentions and body linkification (M4-2). */
+	/** The tree's docs – @ mentions and body linkification (M4-2). */
 	docs: AtDoc[];
-	/** A linkified doc path was clicked — open that doc (App). */
+	/** A linkified doc path was clicked – open that doc (App). */
 	onOpenDoc: (path: string) => void;
 }) {
 	const [showResolved, setShowResolved] = useState(false);
@@ -412,7 +412,7 @@ export function CommentsRail({
 	const resolvedCount = threads.filter((t) => t.resolved).length;
 
 	// A highlighted span was clicked in the doc: reveal it (a resolved target
-	// forces the toggle on — the showResolved dep re-runs this once the card
+	// forces the toggle on – the showResolved dep re-runs this once the card
 	// exists), scroll it into view, flash it.
 	useEffect(() => {
 		if (!focus) return;
@@ -433,7 +433,7 @@ export function CommentsRail({
 
 	// The reverse direction: the quote button scrolls the doc's span into view
 	// and flashes it (app.html's jump). onClose folds the pane away so the
-	// target reads full-width — the mobile sheet especially.
+	// target reads full-width – the mobile sheet especially.
 	function jumpToDoc(id: string) {
 		const target = document.querySelector(`.main [data-c="${CSS.escape(id)}"]`);
 		if (!target) return;

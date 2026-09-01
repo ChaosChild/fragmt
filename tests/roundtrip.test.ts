@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 //
 // The permanent round-trip gate (M2 spec). It builds a headless editor from the
-// APP's extension array — ui/src/editor/extensions.ts, never a re-declared
-// one — so any change to the editor config is judged by these assertions.
+// APP's extension array – ui/src/editor/extensions.ts, never a re-declared
+// one – so any change to the editor config is judged by these assertions.
 // Corpus copied from spikes/roundtrip/corpus.md (the spike stays runnable).
 import { execFileSync } from "node:child_process";
 import {
@@ -30,7 +30,7 @@ const corpusRaw = readFileSync(
 	join(__dirname, "fixtures", "corpus.md"),
 	"utf8",
 );
-// Frontmatter is stripped before parse and reattached after — the editor only
+// Frontmatter is stripped before parse and reattached after – the editor only
 // ever sees the body (ARCHITECTURE §7 caveat 1).
 const fmMatch = corpusRaw.match(/^---\n[\s\S]*?\n---\n/);
 const corpusBody = fmMatch ? corpusRaw.slice(fmMatch[0].length) : corpusRaw;
@@ -89,7 +89,7 @@ test("fenced code blocks keep their language tags", () => {
 	const out = roundTrip();
 	expect(out).toContain("```js");
 	expect(out).toContain("```python");
-	// biome-ignore lint/suspicious/noTemplateCurlyInString: literal JS template-string text from the corpus code fence — the curly is content, not interpolation
+	// biome-ignore lint/suspicious/noTemplateCurlyInString: literal JS template-string text from the corpus code fence – the curly is content, not interpolation
 	expect(out).toContain("return `hello ${name}`;");
 });
 
@@ -98,7 +98,7 @@ test("table content and structure survive; alignment markers are lost (documente
 	expect(out).toContain("| Left");
 	expect(out).toContain("a1");
 	expect(out).toContain("c2");
-	// Accepted loss (spike + PLAN "Cut from v1"): GFM column alignment —
+	// Accepted loss (spike + PLAN "Cut from v1"): GFM column alignment –
 	// `:---`/`:----:`/`----:` collapse to plain `---`. Assert the separator
 	// line carries no colons so the documented behavior is pinned.
 	const sep = out.split("\n").find((l) => /^\|[\s|-]+\|$/.test(l));

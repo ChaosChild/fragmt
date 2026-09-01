@@ -9,7 +9,7 @@ import type { TreeNode } from "../src/core/index.js";
 import { createApp, startServer } from "../src/server/index.js";
 
 // M3 server surface: doc/folder lifecycle, branches, sync. Same harness as
-// server-write.test.ts — a real git repo with an identity behind the app.
+// server-write.test.ts – a real git repo with an identity behind the app.
 
 let root: string;
 let server: Server;
@@ -49,7 +49,7 @@ async function tree(): Promise<TreeNode> {
 	return (await (await api("GET", "/api/tree")).json()) as TreeNode;
 }
 
-/** Raw HTTP status — `fetch` collapses `..` before it reaches the server guard. */
+/** Raw HTTP status – `fetch` collapses `..` before it reaches the server guard. */
 function rawStatus(method: string, path: string): Promise<number> {
 	return new Promise((resolve, reject) => {
 		const socket = connect(port, "127.0.0.1", () => {

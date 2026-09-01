@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
 // M4-3 b3 sidebar geometry: the resize width clamp and its localStorage
-// round-trip are the batch's only pure logic — the rest is CSS (visual
+// round-trip are the batch's only pure logic – the rest is CSS (visual
 // acceptance) plus the pointer handle in Sidebar.tsx.
 import { afterEach, describe, expect, test } from "vitest";
 import {

@@ -9,7 +9,7 @@ import { type SearchHit, searchDocs } from "./api";
 import { highlightSegments } from "./highlight";
 
 /** One line with the query's matches as <mark> (title or snippet). Each
- *  segment's key is its end offset in the text — its position-identity. */
+ *  segment's key is its end offset in the text – its position-identity. */
 function Highlighted({ text, q }: { text: string; q: string }) {
 	let end = 0;
 	return (
@@ -27,12 +27,12 @@ function Highlighted({ text, q }: { text: string; q: string }) {
 }
 
 /**
- * The Ctrl+K search dialog (#14): a Spotlight-style centered modal —
+ * The Ctrl+K search dialog (#14): a Spotlight-style centered modal –
  * debounced as-you-type against /api/search, a keyboard listbox (↑/↓/↵/esc),
  * and opens that go through App's guarded callback (the navigation queue):
  * the modal just calls `onOpen(path)` and closes; a dirty buffer is App's
  * save-or-discard banner, never a silent drop. The ⇧ variant (#15 b4)
- * passes {slideout:true} — the result opens in the slideout preview, a
+ * passes {slideout:true} – the result opens in the slideout preview, a
  * read that skips the queue by design.
  */
 export function SearchModal({
@@ -51,13 +51,13 @@ export function SearchModal({
 	const inputRef = useRef<HTMLInputElement>(null);
 	const listRef = useRef<HTMLDivElement>(null);
 	// Focus give-back (#14): the element that owned the keyboard before the
-	// dialog opened (usually the editor) — captured at open, refocused on close.
+	// dialog opened (usually the editor) – captured at open, refocused on close.
 	const restoreRef = useRef<HTMLElement | null>(null);
-	// Monotonic fetch sequence — a response lands only if it is still the
+	// Monotonic fetch sequence – a response lands only if it is still the
 	// newest; a newer keystroke's request supersedes anything in flight.
 	const seqRef = useRef(0);
 
-	// Open resets the dialog and takes focus (the modal owns the keyboard —
+	// Open resets the dialog and takes focus (the modal owns the keyboard –
 	// the editor underneath never sees a key); close hands focus back.
 	useEffect(() => {
 		if (!open) return;
@@ -101,7 +101,7 @@ export function SearchModal({
 	}, [q, open]);
 
 	// Keyboard selection follows inside the scrollable list (SlashMenu's
-	// block:"nearest" — the minimum scroll, so the overlay never drags
+	// block:"nearest" – the minimum scroll, so the overlay never drags
 	// anything along). Runs after render: the row's DOM exists by then, and
 	// again when a fresh list lands (the kept scrollTop must go home).
 	useEffect(() => {
@@ -140,7 +140,7 @@ export function SearchModal({
 
 	if (!open) return null;
 	return (
-		// biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is click-to-close by design — Esc in the input is the keyboard leg.
+		// biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is click-to-close by design – Esc in the input is the keyboard leg.
 		// biome-ignore lint/a11y/useKeyWithClickEvents: same dialog contract: the mouse leg closes on backdrop click, the keyboard leg is the input's Esc.
 		<div
 			className="search-overlay"
@@ -175,7 +175,7 @@ export function SearchModal({
 				</div>
 				{hits && hits.length > 0 && (
 					// The listbox is a role-carrying div (SlashMenu's menu shape)
-					// with tabIndex -1: not a tab stop — the input above owns the
+					// with tabIndex -1: not a tab stop – the input above owns the
 					// keyboard and points at rows via aria-activedescendant, the
 					// WAI-ARIA combobox pattern.
 					<div
@@ -187,7 +187,7 @@ export function SearchModal({
 						ref={listRef}
 					>
 						{hits.map((h, i) => (
-							// biome-ignore lint/a11y/useKeyWithClickEvents: the row's keyboard lives in the input (↑/↓/↵ via aria-activedescendant) — the option itself is the mouse leg.
+							// biome-ignore lint/a11y/useKeyWithClickEvents: the row's keyboard lives in the input (↑/↓/↵ via aria-activedescendant) – the option itself is the mouse leg.
 							<div
 								key={h.path}
 								id={`search-hit-${i}`}

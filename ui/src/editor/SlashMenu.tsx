@@ -2,7 +2,7 @@ import type { Editor } from "@tiptap/core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
- * The minimal item shape the menu renders — slash items and @ reference
+ * The minimal item shape the menu renders – slash items and @ reference
  * items (at.ts) both satisfy it, so one component serves both menus.
  */
 export type MenuItem = { id: string; label: string; hint?: string };
@@ -25,7 +25,7 @@ export type MenuState<T extends MenuItem> = {
  * for ↑/↓/Enter/Escape.
  *
  * Positioning clamps against the MEASURED menu height (flips above the caret
- * when there is no room below) and follows scroll/resize — a position:fixed
+ * when there is no room below) and follows scroll/resize – a position:fixed
  * menu otherwise strands bottom items off-screen while the page scrolls.
  */
 export function SlashMenuView<T extends MenuItem>({
@@ -80,7 +80,7 @@ export function SlashMenuView<T extends MenuItem>({
 			window.removeEventListener("resize", place);
 		};
 		// `state` (not just range.from): every keystroke moves the caret and
-		// can change the filtered list's height — both need re-placement.
+		// can change the filtered list's height – both need re-placement.
 	}, [editor, state]);
 
 	useEffect(() => {
@@ -111,7 +111,7 @@ export function SlashMenuView<T extends MenuItem>({
 	// Keyboard selection follows inside the capped, scrollable menu (the
 	// container's max-height made it an overflow box). `block: "nearest"`
 	// scrolls the minimum, so the fixed, viewport-fitted menu never drags
-	// `.main` along. Runs after render — the item's DOM only reflects the
+	// `.main` along. Runs after render – the item's DOM only reflects the
 	// handler's state update once it lands.
 	useEffect(() => {
 		menuRef.current

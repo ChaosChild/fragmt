@@ -2,14 +2,14 @@ import { GitError, git } from "./git.js";
 
 export type SyncResult = { conflict: boolean; message?: string };
 
-/** Local-only repo (no remotes) — sync is a no-op success. */
+/** Local-only repo (no remotes) – sync is a no-op success. */
 async function hasRemote(repoRoot: string): Promise<boolean> {
 	return (await git(repoRoot, ["remote"])) !== "";
 }
 
 /**
  * `git pull --rebase`. A repo with no remote, or a branch with no upstream
- * tracking, is a no-op success — many dogfood repos are local-only. On a
+ * tracking, is a no-op success – many dogfood repos are local-only. On a
  * rebase conflict the rebase is aborted (HEAD and working tree back to the
  * pre-pull state) and `{conflict: true}` is returned; any other failure
  * rethrows as GitError. Never force-pushes, never leaves a rebase in progress.
@@ -34,7 +34,7 @@ export async function pullRebase(repoRoot: string): Promise<SyncResult> {
 	}
 }
 
-/** `git push` — never force. No remote or no upstream tracking: no-op. */
+/** `git push` – never force. No remote or no upstream tracking: no-op. */
 export async function push(repoRoot: string): Promise<void> {
 	if (!(await hasRemote(repoRoot))) return;
 	try {

@@ -82,7 +82,7 @@ const seedThread: CommentThread = {
 
 /**
  * A repo where main and drafts/c both edited docs/a.md's single line AND
- * appended a different reply to the same sidecar thread — two unmerged
+ * appended a different reply to the same sidecar thread – two unmerged
  * paths, both resolvable in-tool. Returns main's pre-merge head.
  */
 function conflicted(): { root: string; mainHead: string } {
@@ -187,7 +187,7 @@ test("stand-conflicted merge: stays on main, mergeState details, resolution stag
 	const meta = await repoMeta(root, "docs");
 	expect(meta.merge).toEqual({ branch: "drafts/c", remaining: 2 });
 
-	// Resolve the doc by assembling parts (theirs) — verbatim, including the
+	// Resolve the doc by assembling parts (theirs) – verbatim, including the
 	// missing trailing newline (no canonicalization happens here).
 	const assembled = doc.parts
 		.map((p) => ("text" in p ? p.text : p.theirs))

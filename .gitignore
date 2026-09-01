@@ -12,6 +12,7 @@ ui/dist/
 # Environment / secrets
 .env
 .env.*
+!.env.example
 
 # OS / editor noise
 .DS_Store
@@ -21,6 +22,7 @@ Thumbs.db
 
 # Local AI agents' workspaces
 .lavish/
+.cavet/
 .od-skills/
 .claude/settings.local.json
 

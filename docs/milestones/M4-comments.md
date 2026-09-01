@@ -1,13 +1,13 @@
-# M4 — Comments
+# M4 – Comments
 
 **Goal:** inline self-notes anchored to text, versioned alongside the docs in the same repo.
 **Proves:** the ProseMirror mark + sidecar design from ARCHITECTURE §2 works end-to-end.
 
-Prerequisite: M2 complete. The `CommentMark` is already plumbed through the editor and proven to survive round-trips (the M2 corpus test) — it is invisible plumbing until M4 wires a UI + sidecar to it.
+Prerequisite: M2 complete. The `CommentMark` is already plumbed through the editor and proven to survive round-trips (the M2 corpus test) – it is invisible plumbing until M4 wires a UI + sidecar to it.
 
 ## New dependencies (only these)
 
-- `lucide-react` — the icon standard (review decision 4): per-icon ESM imports, ~250 B each tree-shaken; replaces every hand-inlined SVG. Everything else is built-in (`crypto.randomUUID`; the editor + git layer come from M2).
+- `lucide-react` – the icon standard (review decision 4): per-icon ESM imports, ~250 B each tree-shaken; replaces every hand-inlined SVG. Everything else is built-in (`crypto.randomUUID`; the editor + git layer come from M2).
 
 ## Core additions (src/core/)
 
@@ -37,9 +37,9 @@ resolveThread(repoRoot, docPath, id): Promise<{ sha }>
 deleteThread(repoRoot, docPath, id): Promise<{ sha }>
 ```
 
-**Anchoring contract:** creating a comment applies the `CommentMark` to the selection with a fresh `crypto.randomUUID` (editor side), saves the doc through the M2 `writeDoc` seam, AND writes the sidecar entry through `writeComments`. Two files change → originally two sequential commits via `commitAs` (doc, then sidecar); **amended 2026-08-18 (M4-2): comment creation is ONE commit covering doc + sidecar** (`addThreadWithDoc`, message `Comment on <docPath>`) — validation-before-write (identity resolved, stale-hash check on the base hash) happens before any disk byte, preserving the 409 safety the doc-first ordering gave. Deletion likewise strips the span from the doc immediately, in the same commit as the sidecar update (`deleteThreadWithDoc`, message `Remove comment on <docPath>`) — no "next save" window. Both attributed to the local identity.
+**Anchoring contract:** creating a comment applies the `CommentMark` to the selection with a fresh `crypto.randomUUID` (editor side), saves the doc through the M2 `writeDoc` seam, AND writes the sidecar entry through `writeComments`. Two files change → originally two sequential commits via `commitAs` (doc, then sidecar); **amended 2026-08-18 (M4-2): comment creation is ONE commit covering doc + sidecar** (`addThreadWithDoc`, message `Comment on <docPath>`) – validation-before-write (identity resolved, stale-hash check on the base hash) happens before any disk byte, preserving the 409 safety the doc-first ordering gave. Deletion likewise strips the span from the doc immediately, in the same commit as the sidecar update (`deleteThreadWithDoc`, message `Remove comment on <docPath>`) – no "next save" window. Both attributed to the local identity.
 
-**Orphan rule:** the UI reconciles mark ids present in the rendered markdown against sidecar ids. A sidecar thread whose id has no live span renders as an **orphan** (`docs/app.html` `.comment-thread.orphan`): the quote snapshot + thread body + "original text no longer in document" + a Delete action. Edits outside the editor that delete a span are the known, accepted degradation (ARCHITECTURE §2) — the snapshot exists precisely so orphans still make sense.
+**Orphan rule:** the UI reconciles mark ids present in the rendered markdown against sidecar ids. A sidecar thread whose id has no live span renders as an **orphan** (`docs/app.html` `.comment-thread.orphan`): the quote snapshot + thread body + "original text no longer in document" + a Delete action. Edits outside the editor that delete a span are the known, accepted degradation (ARCHITECTURE §2) – the snapshot exists precisely so orphans still make sense.
 
 ## Server additions
 
@@ -54,26 +54,26 @@ The docPath segment is guarded like `readDoc`; the `<id>` segment is opaque (no 
 
 ## UI additions
 
-- **Selection → comment (review decision 1):** the M2-2 selection bubble gains a **Comment** action — one surface, zero new chrome. In read mode the bubble shows *only* Comment (formatting is an edit-mode concern); in edit mode it is a fourth group beside turn-into.
-- **Read mode is a non-editable editor (review decision 3):** the doc body stops rendering through react-markdown and becomes the same Tiptap editor with `editable: false` — one rendering path. A read-mode selection therefore maps to exact ProseMirror positions, and the comment command runs identically in both modes; no string matching anywhere, ever. M2's pixel-parity work means no reflow; react-markdown + remark-gfm leave the doc body (the corpus gate + typography parity de-risk the swap). Commenting from read mode applies the mark, saves the doc, writes the sidecar, and re-renders — the mode never changes.
-- **Comments rail** (`docs/app.html` right margin): threads with quote snapshot on top, author/time, body, actions (Reply / Resolve / Delete). Resolved hidden by default with a toggle. The rail carries the sync LED + theme toggle (per `app.html`, review decision 2 — the sidebar-head rethink stays a backlog design pass).
+- **Selection → comment (review decision 1):** the M2-2 selection bubble gains a **Comment** action – one surface, zero new chrome. In read mode the bubble shows *only* Comment (formatting is an edit-mode concern); in edit mode it is a fourth group beside turn-into.
+- **Read mode is a non-editable editor (review decision 3):** the doc body stops rendering through react-markdown and becomes the same Tiptap editor with `editable: false` – one rendering path. A read-mode selection therefore maps to exact ProseMirror positions, and the comment command runs identically in both modes; no string matching anywhere, ever. M2's pixel-parity work means no reflow; react-markdown + remark-gfm leave the doc body (the corpus gate + typography parity de-risk the swap). Commenting from read mode applies the mark, saves the doc, writes the sidecar, and re-renders – the mode never changes.
+- **Comments rail** (`docs/app.html` right margin): threads with quote snapshot on top, author/time, body, actions (Reply / Resolve / Delete). Resolved hidden by default with a toggle. The rail carries the sync LED + theme toggle (per `app.html`, review decision 2 – the sidebar-head rethink stays a backlog design pass).
 - **Anchored highlights in read mode:** `span[data-c]` rendered with the `.comment-highlight` tint; click scrolls to its thread + flashes.
 - **Orphan threads** render with the orphan style + note + Delete.
-- **Icons:** all UI icons come from `lucide-react` — the hand-inlined SVGs (pencil, link, kebab, plus) are replaced during this milestone.
+- **Icons:** all UI icons come from `lucide-react` – the hand-inlined SVGs (pencil, link, kebab, plus) are replaced during this milestone.
 
 ## Dogfood fixes (first pass, 2026-08-18)
 
-1. Quote snapshots get readable line spacing (1.5) — multi-line quotes were cramped.
+1. Quote snapshots get readable line spacing (1.5) – multi-line quotes were cramped.
 2. Resolved threads render AFTER all open ones; expanding resolved can never push open threads below the fold.
 3. Reply stacks collapse: the card shows the opening comment plus the latest reply only; earlier replies sit behind a "Show N earlier replies" expander (per-card state).
-4. The sync status splits into one word — Unsaved / Saved / Syncing / Synced / Error — so the rail head never wraps. Amber LED covers the not-yet-synced shades (the word distinguishes), green = synced, red = error. A save lands on "Saved", never straight to "Synced" (sync runs on its own triggers).
+4. The sync status splits into one word – Unsaved / Saved / Syncing / Synced / Error – so the rail head never wraps. Amber LED covers the not-yet-synced shades (the word distinguishes), green = synced, red = error. A save lands on "Saved", never straight to "Synced" (sync runs on its own triggers).
 5. Cursor honesty: the thread card is default-cursor; only the quote button is a pointer (its hover/focus treatment kept, scoped to the button).
 
 ## Tests
 
 - `comments.test.ts` (tmp repo): addThread writes the sidecar in one commit; resolve/reply/delete mutate correctly; reading a missing sidecar returns `{comments:{}}`; traversal rejection on the sidecar path.
-- Orphan logic: unit-test the pure reconcile function — a sidecar thread whose id is absent from the doc body is flagged orphan.
-- The M2 corpus round-trip still passes — adding/removing comment spans must not regress serialization.
+- Orphan logic: unit-test the pure reconcile function – a sidecar thread whose id is absent from the doc body is flagged orphan.
+- The M2 corpus round-trip still passes – adding/removing comment spans must not regress serialization.
 
 ## Acceptance
 
@@ -81,11 +81,11 @@ The docPath segment is guarded like `readDoc`; the `<id>` segment is opaque (no 
 2. Resolve a thread → rail updates (under the resolved toggle); the span stays in the doc (resolve ≠ delete).
 3. Delete a thread → span removed on next save + sidecar entry gone (one logical action).
 4. Edit the marked text out of the doc externally → the thread shows as an orphan with its quote snapshot + Delete.
-5. `git log` shows comment changes as ordinary commits attributed to the local identity; `git diff` is markdown + a JSON sidecar — reviewable on GitHub.
+5. `git log` shows comment changes as ordinary commits attributed to the local identity; `git diff` is markdown + a JSON sidecar – reviewable on GitHub.
 
 ## Guardrails for implementers
 
 - Comment mutation always goes through `commitAs`; thread content lives ONLY in the sidecar (never in the doc).
 - Never re-serialize the doc's YAML frontmatter (M2 rule) when adding/removing a mark.
-- The mark id is the single link between span and thread — never store offsets (they drift; mark-anchoring exists to avoid exactly that).
-- Do not build: PR-review comments (v2 — those are GitHub's, used as-is), real-time collaboration, special "AI content" styling for agent edits.
+- The mark id is the single link between span and thread – never store offsets (they drift; mark-anchoring exists to avoid exactly that).
+- Do not build: PR-review comments (v2 – those are GitHub's, used as-is), real-time collaboration, special "AI content" styling for agent edits.
