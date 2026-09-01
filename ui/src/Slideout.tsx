@@ -1,5 +1,7 @@
 import { SquareArrowOutUpRight, X } from "lucide-react";
 import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
+import { useAuth } from "./AuthGate";
+import { UserChip } from "./Menus";
 import { clampSlideoutShare } from "./slideout-geometry";
 
 /**
@@ -89,6 +91,9 @@ export function Slideout({
 	onShare: (share: number, commit: boolean) => void;
 	children: ReactNode;
 }) {
+	// The signed-in session for the comments bar head's user chip (null =
+	// auth off – the head keeps its exact pre-auth shape).
+	const auth = useAuth();
 	return (
 		<>
 			{preview && <SlideoutDivider onShare={onShare} />}
@@ -119,6 +124,18 @@ export function Slideout({
 						<span className={`led ${led}`} aria-hidden="true" />
 						{ledLabel}
 					</span>
+					{/* The signed-in user's chip (#20, owner round): the comments
+					    bar head's trailing slot, after the sync cue – the owner's
+					    "Comments · N    Synced    login details" shape. Kept in the
+					    preview state too: the split hides the sidebar, so this is
+					    the one always-visible sign-in cue. */}
+					{auth && (
+						<UserChip
+							login={auth.login}
+							canWrite={auth.canWrite}
+							onSignOut={auth.signOut}
+						/>
+					)}
 					{/* Open in main pane (#15): the previewed doc becomes the
 					    main one – through the navigation queue. The icon reads
 					    as move-to-main, not edit. */}
