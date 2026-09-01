@@ -2591,3 +2591,111 @@ button.comment-quote:hover {
 .search-foot .sep {
 	color: var(--border);
 }
+
+/* ── #20: auth – the sign-in gate, the sidebar user chip ── */
+/* The gate's boot splash: the brand word alone, centered, while the session
+   probe is in flight. */
+.auth-splash {
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.auth-splash .brand {
+	font-size: 34px;
+}
+/* The full-page sign-in card (enabled, signed out): the search overlay's dim
+   backdrop, the search modal's glass language, the product's brand serif. */
+.auth-gate {
+	position: fixed;
+	inset: 0;
+	z-index: 80;
+	background: rgba(15, 20, 27, 0.55);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: var(--space-4);
+}
+.auth-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: var(--space-4);
+	padding: var(--space-8) var(--space-12);
+	border-radius: var(--radius-lg);
+	background: var(--glass-bg-strong);
+	border: 1px solid var(--glass-border);
+	box-shadow: var(--glass-shadow);
+	backdrop-filter: blur(22px) saturate(1.5);
+	-webkit-backdrop-filter: blur(22px) saturate(1.5);
+	text-align: center;
+}
+@supports not (backdrop-filter: blur(1px)) {
+	.auth-card {
+		background: var(--surface);
+	}
+}
+.auth-card .brand {
+	font-size: 34px;
+}
+.auth-note {
+	margin: 0;
+	font-size: 13.5px;
+	color: var(--muted);
+	max-width: 300px;
+}
+/* The sidebar-head user chip: mono login + avatar, the branch-dd border
+   idiom. Sits in the brand row; absent entirely when auth is off. */
+.user-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--muted);
+	background: transparent;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 3px 9px 3px 4px;
+	cursor: pointer;
+	flex-shrink: 0;
+	max-width: 180px;
+	transition:
+		color var(--motion-fast) var(--ease-standard),
+		border-color var(--motion-fast) var(--ease-standard);
+}
+.user-chip:hover {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+.user-chip:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.chip-avatar {
+	width: 18px;
+	height: 18px;
+	border-radius: 4px;
+	flex-shrink: 0;
+	display: block;
+}
+.chip-login {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+/* The read collaborator's warning pill (the draft-pill warn family): names
+   the 403s before the first one is hit. */
+.readonly-pill {
+	font-family: var(--font-mono);
+	font-size: 9.5px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--warn);
+	background: var(--warn-soft);
+	border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+	border-radius: var(--radius);
+	padding: 3px 7px;
+	flex-shrink: 0;
+}

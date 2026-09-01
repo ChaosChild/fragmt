@@ -61,6 +61,7 @@ export async function saveDoc(
 		} catch {
 			// non-JSON error body – keep the generic message
 		}
+		if (res.status === 401) authExpired();
 		throw new SaveError(res.status, message);
 	}
 	return (await res.json()) as SaveResponse;
@@ -89,6 +90,10 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 			if (body.error) message = body.error;
 		} catch {
 			// non-JSON error body – keep the generic message
+		}
+		if (res.status === 401) {
+			authExpired();
+			throw new AuthError(message);
 		}
 		throw new Error(message);
 	}
@@ -180,6 +185,7 @@ export async function deleteBranch(
 		} catch {
 			// non-JSON error body – keep the generic message
 		}
+		if (res.status === 401) authExpired();
 		throw new SaveError(res.status, message);
 	}
 	return (await res.json()) as { ok: boolean };
@@ -296,6 +302,7 @@ export async function mergeDraft(): Promise<{ sha: string }> {
 		} catch {
 			// non-JSON error body – keep the generic message
 		}
+		if (res.status === 401) authExpired();
 		if (conflict) throw new MergeError(res.status, message, conflict);
 		throw new SaveError(res.status, message);
 	}
@@ -434,3 +441,51 @@ export interface SearchHit {
 /** The flat worktree scan – a trimmed <2-char query is the server's own []. */
 export const searchDocs = (q: string) =>
 	request<SearchHit[]>(`/api/search?q=${encodeURIComponent(q)}`);
+
+// --- #20: auth -------------------------------------------------------------
+
+/** Mirror of GET /api/auth/session – public, works whether auth is on or off. */
+export interface AuthSession {
+	enabled: boolean;
+	user: { login: string } | null;
+	canWrite: boolean;
+}
+
+export async function getAuthSession(): Promise<AuthSession> {
+	const res = await fetch("/api/auth/session");
+	if (!res.ok) throw new Error(`session check failed (${res.status})`);
+	return (await res.json()) as AuthSession;
+}
+
+/** POST /api/auth/logout – 204, no body to read. */
+export async function logout(): Promise<void> {
+	await fetch("/api/auth/logout", { method: "POST" });
+}
+
+/** A 401 from an api call – the session is gone (expired server-side) and
+ *  only re-sign-in helps. AuthGate listens via setOnAuthError and flips back
+ *  to the sign-in card; call sites keep their existing error handling. */
+export class AuthError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "AuthError";
+	}
+}
+
+// The expiry seam: the fetch helpers ping this on a 401; the gate registers
+// itself on mount. One listener slot – there is exactly one gate.
+let onAuthError: (() => void) | null = null;
+export function setOnAuthError(fn: (() => void) | null) {
+	onAuthError = fn;
+}
+function authExpired() {
+	onAuthError?.();
+}
+
+/** The gate's render decision, pure for tests: auth off (local mode, zero
+ *  chrome), signed out (the sign-in card), or the app. canWrite never
+ *  changes the view – it only drives the read-only pill inside the app. */
+export function authView(session: AuthSession): "off" | "signin" | "app" {
+	if (!session.enabled) return "off";
+	return session.user ? "app" : "signin";
+}

@@ -113,6 +113,61 @@ export function MenuPopover({
 }
 
 /**
+ * The signed-in user chip (#20, auth batch): avatar + login in the sidebar
+ * head's brand row, opens the one-item sign-out menu. canWrite=false adds
+ * the warn read-only pill so a read collaborator reads the coming 403s
+ * before hitting one.
+ */
+export function UserChip({
+	login,
+	canWrite,
+	onSignOut,
+}: {
+	login: string;
+	canWrite: boolean;
+	onSignOut: () => void;
+}) {
+	const menu = useMenu();
+	return (
+		<span className="menu-wrap user-chip-wrap">
+			{!canWrite && <span className="readonly-pill">read-only</span>}
+			<button
+				type="button"
+				className="user-chip"
+				title={`${login} – sign out`}
+				aria-label={`Signed in as ${login}. Sign out`}
+				aria-expanded={menu.open}
+				onClick={menu.toggle}
+			>
+				<img
+					className="chip-avatar"
+					src={`https://avatars.githubusercontent.com/${encodeURIComponent(login)}?s=64`}
+					alt=""
+					width={18}
+					height={18}
+					onError={(e) => {
+						e.currentTarget.style.visibility = "hidden";
+					}}
+				/>
+				<span className="chip-login">{login}</span>
+			</button>
+			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
+				<button
+					type="button"
+					className="menu-item"
+					onClick={() => {
+						menu.close();
+						onSignOut();
+					}}
+				>
+					Sign out
+				</button>
+			</MenuPopover>
+		</span>
+	);
+}
+
+/**
  * The sidebar-head branch control: reads as metadata ("on main"), opens a
  * small menu to switch, create, or delete a branch. Performing the action
  * (and the unsaved-changes guard on switches) is App's business.
