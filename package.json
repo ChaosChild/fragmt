@@ -1,6 +1,6 @@
 {
 	"name": "fragmt",
-	"version": "0.6.0",
+	"version": "0.7.0",
 	"description": "Git-native documentation environment – Notion-style editing over plain markdown in your own repo",
 	"license": "MIT",
 	"author": "Andrei Migatchev",
