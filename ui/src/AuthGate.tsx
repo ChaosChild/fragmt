@@ -14,8 +14,8 @@ import {
 	setOnAuthError,
 } from "./api";
 
-/** What the signed-in chrome (App's user chip) needs. null context = auth
- *  off – the local mode keeps its exact today UI. */
+/** What the signed-in chrome (the doc head's user chip) needs. null context
+ *  = auth off – the local mode keeps its exact today UI. */
 export interface AuthInfo {
 	login: string;
 	canWrite: boolean;
@@ -23,7 +23,7 @@ export interface AuthInfo {
 }
 const AuthContext = createContext<AuthInfo | null>(null);
 
-/** The session seam for descendants – App's sidebar-head chip reads this. */
+/** The session seam for descendants – the doc head's user chip reads this. */
 export function useAuth(): AuthInfo | null {
 	return useContext(AuthContext);
 }

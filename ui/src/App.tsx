@@ -7,7 +7,6 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useAuth } from "./AuthGate";
 import {
 	type CommentFile,
 	type CommentThread,
@@ -56,7 +55,6 @@ import {
 	BranchMenu,
 	type FileOp,
 	NewDocButton,
-	UserChip,
 } from "./Menus";
 import { ResolutionView } from "./ResolutionView";
 import { SearchModal } from "./SearchModal";
@@ -1074,16 +1072,7 @@ export function App() {
 	// The head controls render in two places (#15): the sidebar head, and
 	// the topbar that replaces it while the sidebar is collapsed – same
 	// elements, second location, no logic duplication.
-	// The signed-in user chip (#20): null in local mode – nothing renders
-	// and the head keeps its exact pre-auth shape.
-	const auth = useAuth();
-	const userChip = auth ? (
-		<UserChip
-			login={auth.login}
-			canWrite={auth.canWrite}
-			onSignOut={auth.signOut}
-		/>
-	) : null;
+	// (The signed-in user chip lives in DocView's doc head now – owner round.)
 	const searchBtn = (
 		// Search (#14): ⌕ left of ＋ (owner order) – the modal is the
 		// keyboard-first path (Ctrl+K works anywhere).
@@ -1181,7 +1170,6 @@ export function App() {
 						<div className="side-head">
 							<div className="side-head-row">
 								<span className="brand">fragmt</span>
-								{userChip}
 								<div className="side-head-spacer" />
 								{searchBtn}
 								{newDocBtn}

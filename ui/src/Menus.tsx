@@ -113,10 +113,11 @@ export function MenuPopover({
 }
 
 /**
- * The signed-in user chip (#20, auth batch): avatar + login in the sidebar
- * head's brand row, opens the one-item sign-out menu. canWrite=false adds
- * the warn read-only pill so a read collaborator reads the coming 403s
- * before hitting one.
+ * The signed-in user chip (#20, auth batch): avatar + login, opens the
+ * one-item sign-out menu. Lives at the end of the doc head (owner round –
+ * moved out of the sidebar head's brand row). canWrite=false adds the warn
+ * read-only pill so a read collaborator reads the coming 403s before
+ * hitting one.
  */
 export function UserChip({
 	login,

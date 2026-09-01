@@ -1,5 +1,6 @@
 import { Check, FolderInput, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "./AuthGate";
 import {
 	addComment,
 	type DocMeta,
@@ -9,10 +10,10 @@ import {
 	saveDoc,
 	setTitle,
 } from "./api";
-import { displayTitle } from "./display";
+import { avatarUser, displayTitle } from "./display";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 import type { AtDoc } from "./editor/at";
-import { MenuPopover, useMenu } from "./Menus";
+import { MenuPopover, UserChip, useMenu } from "./Menus";
 import { shortDate } from "./Sidebar";
 
 /**
@@ -32,9 +33,7 @@ function Avatar({
 	authors: Record<string, string>;
 }) {
 	const [broken, setBroken] = useState(false);
-	const user =
-		authors[email] ||
-		/^(\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(email)?.[2];
+	const user = avatarUser(email, authors);
 	if (user && !broken) {
 		return (
 			<img
@@ -241,6 +240,8 @@ export function DocView({
 	const renameRef = useRef<HTMLInputElement>(null);
 	const editorRef = useRef<EditorPaneHandle>(null);
 	const paneRef = useRef<HTMLDivElement>(null);
+	// The signed-in session for the head's user chip (null = auth off).
+	const auth = useAuth();
 
 	// The confirm banners render at the top of the pane – bring them into view
 	// when one appears, otherwise a mid-document Esc raises it unseen.
@@ -635,6 +636,17 @@ export function DocView({
 	if (branch) lineSegs.push(branch);
 	if (!editing && docMeta) lineSegs.push(`saved ${shortDate(docMeta.date)}`);
 
+	// The signed-in user's chip (#20, owner round: moved out of the sidebar
+	// head): the doc head's trailing slot, beside the draft pill. Null when
+	// auth is off – nothing renders and the head keeps its exact pre-auth DOM.
+	const userChip = auth ? (
+		<UserChip
+			login={auth.login}
+			canWrite={auth.canWrite}
+			onSignOut={auth.signOut}
+		/>
+	) : null;
+
 	// One rendering path (M4 review decision 3): the editor is mounted in
 	// BOTH modes – read is `editable: false` on the same instance, Edit/Save/
 	// Cancel are mode flips with no remount (only a discard bumps the key to
@@ -700,6 +712,7 @@ export function DocView({
 						</button>
 					)}
 					{onDraft && <span className="draft-pill on-draft">on draft</span>}
+					{userChip}
 					<div className="doc-actions">
 						{editing ? (
 							<>

@@ -2645,8 +2645,8 @@ button.comment-quote:hover {
 	color: var(--muted);
 	max-width: 300px;
 }
-/* The sidebar-head user chip: mono login + avatar, the branch-dd border
-   idiom. Sits in the brand row; absent entirely when auth is off. */
+/* The signed-in user chip: mono login + avatar, the branch-dd border idiom.
+   Sits at the end of the doc head; absent entirely when auth is off. */
 .user-chip {
 	display: inline-flex;
 	align-items: center;

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
+import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { findRepoRoot, initRepo, loadConfig } from "../core/index.js";
@@ -142,6 +143,30 @@ export function resolveServeAuth(
 	return { auth: true, host: "0.0.0.0", port: options.port };
 }
 
+/**
+ * The serve startup banner, one array entry per printed line: localhost
+ * first, always. --auth binds all interfaces, so after the localhost line it
+ * lists every non-internal IPv4 address (a LAN IP is a real way in) plus the
+ * one callback hint – browsing via a LAN IP starts OAuth whose redirect_uri
+ * uses that origin, so each address needs a matching OAuth app callback URL.
+ * Plain serve is loopback-bound and stays localhost-only. Exported pure so
+ * tests assert the exact lines; runServe's callback just prints them.
+ */
+export function listenLines(
+	port: number,
+	auth: boolean,
+	nets: { address: string; family: string; internal: boolean }[],
+): string[] {
+	const lines = [`http://localhost:${port}`];
+	if (!auth) return lines;
+	for (const net of nets) {
+		if (net.family !== "IPv4" || net.internal) continue;
+		lines.push(`http://${net.address}:${port}`);
+	}
+	lines.push("each address needs a matching OAuth app callback URL");
+	return lines;
+}
+
 async function runServe(
 	portFlag: string | undefined,
 	authFlag: boolean,
@@ -179,7 +204,15 @@ async function runServe(
 		app,
 		serve.port,
 		(p) => {
-			process.stdout.write(`http://localhost:${p}\n`);
+			// The banner is listenLines's (auth mode lists the LAN addresses the
+			// all-interfaces bind actually serves).
+			process.stdout.write(
+				`${listenLines(
+					p,
+					serve.auth,
+				Object.values(networkInterfaces()).flatMap((n) => n ?? []),
+				).join("\n")}\n`,
+			);
 		},
 		serve.host,
 	);

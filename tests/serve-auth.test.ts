@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { resolveServeAuth } from "../src/cli/index.js";
+import { listenLines, resolveServeAuth } from "../src/cli/index.js";
 
 // #20 batch 1: `serve`'s startup contract, resolved before anything binds.
 // Plain serve is loopback-only and unchanged (port 0 stays ephemeral);
@@ -48,4 +48,36 @@ test("--auth with a port and both credentials binds all interfaces", () => {
 		host: "0.0.0.0",
 		port: 4400,
 	});
+});
+
+// The startup banner (owner round: --auth binds every interface but only
+// printed localhost – misleading). A stand-in for os.networkInterfaces()
+// output, shaped like the real entries.
+const NETS = [
+	{ address: "127.0.0.1", family: "IPv4", internal: true },
+	{ address: "::1", family: "IPv6", internal: true },
+	{ address: "192.168.1.23", family: "IPv4", internal: false },
+	{ address: "fe80::1d9", family: "IPv6", internal: false },
+	{ address: "10.0.0.7", family: "IPv4", internal: false },
+];
+
+test("listenLines: auth off is the single localhost line (output unchanged)", () => {
+	expect(listenLines(4400, false, NETS)).toEqual(["http://localhost:4400"]);
+});
+
+test("listenLines: auth on lists localhost first, then the LAN IPv4s, then one hint", () => {
+	expect(listenLines(4400, true, NETS)).toEqual([
+		"http://localhost:4400",
+		"http://192.168.1.23:4400",
+		"http://10.0.0.7:4400",
+		"each address needs a matching OAuth app callback URL",
+	]);
+});
+
+test("listenLines: internal and IPv6 addresses never list", () => {
+	const loopbackOnly = NETS.filter((n) => n.internal || n.family === "IPv6");
+	expect(listenLines(4400, true, loopbackOnly)).toEqual([
+		"http://localhost:4400",
+		"each address needs a matching OAuth app callback URL",
+	]);
 });
