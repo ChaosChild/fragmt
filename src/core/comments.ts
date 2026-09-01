@@ -109,18 +109,21 @@ export async function writeComments(
 	return { sha };
 }
 
-/** Create a thread (the opening body becomes replies[0]) in one commit. */
+/** Create a thread (the opening body becomes replies[0]) in one commit.
+ *  `who` (serve --auth) overrides the local git identity for the commit and
+ *  the author fields; omitted → localUser(). */
 export async function addThread(
 	repoRoot: string,
 	docPath: string,
 	id: string,
 	quote: string,
 	body: string,
+	who?: { name: string; email: string },
 ): Promise<{ sha: string }> {
-	const user = await localUser(repoRoot);
+	const user = who ?? (await localUser(repoRoot));
 	const file = await readComments(repoRoot, docPath);
 	file.comments[id] = newThread(user, id, quote, body);
-	return writeComments(repoRoot, docPath, file);
+	return writeComments(repoRoot, docPath, file, user);
 }
 
 /** Append a reply to a thread in one commit. Missing thread → 404. */
@@ -158,16 +161,18 @@ export async function setResolved(
 	return writeComments(repoRoot, docPath, file, who);
 }
 
-/** Remove a sidecar entry in one commit. Missing thread → 404. */
+/** Remove a sidecar entry in one commit. Missing thread → 404.
+ *  `who` (serve --auth) overrides the commit author; omitted → localUser(). */
 export async function deleteThread(
 	repoRoot: string,
 	docPath: string,
 	id: string,
+	who?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const file = await readComments(repoRoot, docPath);
 	if (!file.comments[id]) throw new ThreadNotFoundError(id);
 	delete file.comments[id];
-	return writeComments(repoRoot, docPath, file);
+	return writeComments(repoRoot, docPath, file, who);
 }
 
 /**
@@ -211,12 +216,14 @@ export async function addThreadWithDoc(
 		/** Hash of the doc body as loaded (the writeDoc contract). */
 		baseHash: string;
 	},
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const prep = await prepareDocWrite(
 		repoRoot,
 		docsRoot,
 		docPath,
 		thread.baseHash,
+		user,
 	);
 	const file = await readComments(repoRoot, docPath);
 	file.comments[thread.id] = newThread(
@@ -250,8 +257,15 @@ export async function deleteThreadWithDoc(
 	docPath: string,
 	id: string,
 	baseHash: string,
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
-	const prep = await prepareDocWrite(repoRoot, docsRoot, docPath, baseHash);
+	const prep = await prepareDocWrite(
+		repoRoot,
+		docsRoot,
+		docPath,
+		baseHash,
+		user,
+	);
 	const file = await readComments(repoRoot, docPath);
 	if (!file.comments[id]) throw new ThreadNotFoundError(id);
 	delete file.comments[id];

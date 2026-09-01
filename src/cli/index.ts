@@ -162,7 +162,19 @@ async function runServe(
 		fail((e as Error).message);
 	}
 
-	const app = createApp({ repoRoot, docsRoot, auth: serve.auth });
+	const clientId = process.env.GH_CLIENT_ID;
+	const clientSecret = process.env.GH_CLIENT_SECRET;
+
+	const app = createApp({
+		repoRoot,
+		docsRoot,
+		// --auth: the gate + OAuth routes consume the resolved credentials
+		// (resolveServeAuth has already verified both are present).
+		auth:
+			serve.auth && clientId !== undefined && clientSecret !== undefined
+				? { clientId, clientSecret }
+				: undefined,
+	});
 	startServer(
 		app,
 		serve.port,

@@ -55,12 +55,21 @@ import {
 	writeComments,
 	writeDoc,
 } from "../core/index.js";
+import {
+	type AppEnv,
+	type AuthConfig,
+	commitAuthor,
+	registerAuth,
+	sessionDisabled,
+} from "./auth.js";
 
 export interface ServerContext {
 	repoRoot: string;
 	docsRoot: string;
-	/** serve --auth (GitHub OAuth) mode – the next batch's gate consumes this. */
-	auth?: boolean;
+	/** serve --auth: the resolved GitHub OAuth app credentials (gate + OAuth routes in auth.ts). Absent → plain serve, no gate. */
+	auth?: AuthConfig;
+	/** Injectable GitHub fetch (tests stub the OAuth + collaborator calls). */
+	githubFetch?: typeof fetch;
 }
 
 const DOCS_PREFIX = "/api/docs/";
@@ -72,8 +81,22 @@ const DRAFT_DIFF_PREFIX = "/api/draft-diff/";
 const UI_DIST = fileURLToPath(new URL("../../ui/dist", import.meta.url));
 
 /** Build the Hono app. Thin: parse request → call core → serialize. No fs/git here. */
-export function createApp(ctx: ServerContext): Hono {
-	const app = new Hono();
+export function createApp(ctx: ServerContext): Hono<AppEnv> {
+	const app = new Hono<AppEnv>();
+
+	// #20 batch 2: auth on → the gate + OAuth routes register FIRST, before the
+	// merge write-guard below, so a request is authorized before it can touch
+	// anything. Auth off → nothing registers except the static boot answer, and
+	// every other middleware/route behaves byte-for-byte as before.
+	if (ctx.auth) {
+		registerAuth(app, {
+			repoRoot: ctx.repoRoot,
+			auth: ctx.auth,
+			githubFetch: ctx.githubFetch,
+		});
+	} else {
+		app.get("/api/auth/session", (c) => sessionDisabled(c));
+	}
 
 	// M4-4 b3: the write guard – a standing merge owns every write. Registered
 	// before all write routes (incl. the comment fall-through below), so a
@@ -162,6 +185,7 @@ export function createApp(ctx: ServerContext): Hono {
 								docBody: body.docBody,
 								baseHash: body.docBaseHash,
 							},
+							commitAuthor(c),
 						);
 						return c.json({ sha });
 					}
@@ -171,6 +195,7 @@ export function createApp(ctx: ServerContext): Hono {
 						body.id,
 						body.quote,
 						body.body,
+						commitAuthor(c),
 					);
 					return c.json({ sha });
 				}
@@ -197,10 +222,16 @@ export function createApp(ctx: ServerContext): Hono {
 								docPath,
 								id,
 								baseHash,
+								commitAuthor(c),
 							);
 							return c.json({ sha });
 						}
-						const { sha } = await deleteThread(ctx.repoRoot, docPath, id);
+						const { sha } = await deleteThread(
+							ctx.repoRoot,
+							docPath,
+							id,
+							commitAuthor(c),
+						);
 						return c.json({ sha });
 					}
 					if (c.req.method === "PATCH") {
@@ -227,6 +258,7 @@ export function createApp(ctx: ServerContext): Hono {
 								docPath,
 								id,
 								body.resolved,
+								commitAuthor(c),
 							);
 							return c.json({ sha });
 						}
@@ -234,7 +266,13 @@ export function createApp(ctx: ServerContext): Hono {
 						if (typeof text !== "string")
 							return c.json({ error: `${picked[0]} must be a string` }, 400);
 						if (picked[0] === "reply") {
-							const { sha } = await addReply(ctx.repoRoot, docPath, id, text);
+							const { sha } = await addReply(
+								ctx.repoRoot,
+								docPath,
+								id,
+								text,
+								commitAuthor(c),
+							);
 							return c.json({ sha });
 						}
 						// `body` edits the opening comment (replies[0]) through the
@@ -243,7 +281,12 @@ export function createApp(ctx: ServerContext): Hono {
 						const thread = file.comments[id];
 						if (!thread) throw new ThreadNotFoundError(id);
 						thread.replies[0].body = text;
-						const { sha } = await writeComments(ctx.repoRoot, docPath, file);
+						const { sha } = await writeComments(
+							ctx.repoRoot,
+							docPath,
+							file,
+							commitAuthor(c),
+						);
 						return c.json({ sha });
 					}
 				}
@@ -304,6 +347,7 @@ export function createApp(ctx: ServerContext): Hono {
 				docPath,
 				payload.markdown,
 				payload.baseHash,
+				commitAuthor(c),
 			);
 			return c.json({ sha, hash });
 		} catch (e) {
@@ -333,6 +377,7 @@ export function createApp(ctx: ServerContext): Hono {
 				ctx.docsRoot,
 				body.path,
 				typeof body.body === "string" ? body.body : "",
+				commitAuthor(c),
 			);
 			return c.json({ sha });
 		} catch (e) {
@@ -361,6 +406,7 @@ export function createApp(ctx: ServerContext): Hono {
 					ctx.docsRoot,
 					from,
 					body.title,
+					commitAuthor(c),
 				);
 				return c.json({ sha });
 			} catch (e) {
@@ -370,7 +416,13 @@ export function createApp(ctx: ServerContext): Hono {
 		if (typeof body.to !== "string")
 			return c.json({ error: "to is required" }, 400);
 		try {
-			const { sha } = await moveDoc(ctx.repoRoot, ctx.docsRoot, from, body.to);
+			const { sha } = await moveDoc(
+				ctx.repoRoot,
+				ctx.docsRoot,
+				from,
+				body.to,
+				commitAuthor(c),
+			);
 			return c.json({ sha });
 		} catch (e) {
 			return respondFileError(c, e);
@@ -382,7 +434,12 @@ export function createApp(ctx: ServerContext): Hono {
 		if (docPath === undefined)
 			return c.json({ error: "invalid doc path" }, 400);
 		try {
-			const { sha } = await deleteDoc(ctx.repoRoot, ctx.docsRoot, docPath);
+			const { sha } = await deleteDoc(
+				ctx.repoRoot,
+				ctx.docsRoot,
+				docPath,
+				commitAuthor(c),
+			);
 			return c.json({ sha });
 		} catch (e) {
 			return respondFileError(c, e);
@@ -395,7 +452,12 @@ export function createApp(ctx: ServerContext): Hono {
 		if (typeof body.path !== "string")
 			return c.json({ error: "path is required" }, 400);
 		try {
-			const { sha } = await createFolder(ctx.repoRoot, ctx.docsRoot, body.path);
+			const { sha } = await createFolder(
+				ctx.repoRoot,
+				ctx.docsRoot,
+				body.path,
+				commitAuthor(c),
+			);
 			return c.json({ sha });
 		} catch (e) {
 			return respondFileError(c, e);
@@ -415,6 +477,7 @@ export function createApp(ctx: ServerContext): Hono {
 				ctx.docsRoot,
 				from,
 				body.to,
+				commitAuthor(c),
 			);
 			return c.json({ sha });
 		} catch (e) {
@@ -431,6 +494,7 @@ export function createApp(ctx: ServerContext): Hono {
 				ctx.repoRoot,
 				ctx.docsRoot,
 				folderPath,
+				commitAuthor(c),
 			);
 			return c.json({ sha });
 		} catch (e) {
@@ -710,7 +774,13 @@ export function createApp(ctx: ServerContext): Hono {
 			return c.json({ error: "path and sha are required" }, 400);
 		try {
 			return c.json(
-				await restoreDoc(ctx.repoRoot, ctx.docsRoot, body.path, body.sha),
+				await restoreDoc(
+					ctx.repoRoot,
+					ctx.docsRoot,
+					body.path,
+					body.sha,
+					commitAuthor(c),
+				),
 			);
 		} catch (e) {
 			return respondFileError(c, e);
@@ -745,7 +815,7 @@ export function createApp(ctx: ServerContext): Hono {
 }
 
 /** Decode the wildcard tail of a route path; undefined on malformed encoding. */
-function tailPath(c: Context, prefix: string): string | undefined {
+function tailPath(c: Context<AppEnv>, prefix: string): string | undefined {
 	try {
 		return decodeURIComponent(c.req.path.slice(prefix.length));
 	} catch {
@@ -754,7 +824,9 @@ function tailPath(c: Context, prefix: string): string | undefined {
 }
 
 /** Parse a JSON object body; null when absent, malformed, or not an object. */
-async function jsonBody(c: Context): Promise<Record<string, unknown> | null> {
+async function jsonBody(
+	c: Context<AppEnv>,
+): Promise<Record<string, unknown> | null> {
 	try {
 		const parsed: unknown = await c.req.json();
 		return typeof parsed === "object" && parsed !== null
@@ -770,7 +842,7 @@ async function jsonBody(c: Context): Promise<Record<string, unknown> | null> {
  * (DocPathError 400, DocNotFound/ThreadNotFound 404, exists/identity/stale
  * 409). Unmapped errors propagate to Hono's default 500.
  */
-function respondFileError(c: Context, e: unknown): Response {
+function respondFileError(c: Context<AppEnv>, e: unknown): Response {
 	if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
 	if (e instanceof DocNotFoundError)
 		return c.json({ error: "doc not found" }, 404);
@@ -785,7 +857,7 @@ function respondFileError(c: Context, e: unknown): Response {
 }
 
 /** GitError → 500 { error }; git stays the authority on exotic branch names. */
-function respondGitError(c: Context, e: unknown): Response {
+function respondGitError(c: Context<AppEnv>, e: unknown): Response {
 	if (e instanceof GitError) return c.json({ error: e.message }, 500);
 	throw e;
 }
@@ -830,7 +902,7 @@ function isTraversalAttempt(url: string): boolean {
  * interfaces for --auth (the resolved contract comes from the CLI).
  */
 export function startServer(
-	app: Hono,
+	app: Hono<AppEnv>,
 	port: number,
 	onListening: (port: number) => void,
 	host = "127.0.0.1",

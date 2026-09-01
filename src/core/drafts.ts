@@ -452,10 +452,11 @@ export async function restoreDoc(
 	docsRoot: string,
 	docPath: string,
 	deleteSha: string,
+	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
 	if (existsSync(abs)) throw new PathExistsError(`already exists: ${docPath}`);
-	const user = await localUser(repoRoot); // identity before any disk write
+	const who = user ?? (await localUser(repoRoot)); // identity before any disk write
 	const repoRel = relative(repoRoot, abs).split(sep).join("/");
 
 	// ponytail: no rename tracing – restore reads <deleteSha>^:<path> only; a
@@ -479,7 +480,7 @@ export async function restoreDoc(
 	mkdirSync(dirname(abs), { recursive: true });
 	writeFileSync(abs, body);
 	const sha = await commitAs(
-		user,
+		who,
 		{ files, message: `Restore ${docPath}` },
 		repoRoot,
 	);
