@@ -6,11 +6,13 @@ import {
 	type Ref,
 	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useRef,
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { getBranches } from "./api";
+import { popoverPosition } from "./popover-position";
 
 /** Every file operation the sidebar menus / doc head can request (App performs it). */
 export type FileOp =
@@ -84,7 +86,9 @@ export function useMenu() {
 /**
  * Fixed glass popover portalled to document.body – the sidebar's
  * backdrop-filter is a containing block for fixed descendants and would
- * otherwise clip/misplace it.
+ * otherwise clip/misplace it. Positioned from the anchor's rect plus the
+ * popover's own measured size (useLayoutEffect, before paint; re-measures on
+ * any re-render while open, which is idempotent while the anchor stands still).
  */
 export function MenuPopover({
 	anchor,
@@ -95,16 +99,29 @@ export function MenuPopover({
 	popRef: Ref<HTMLDivElement>;
 	children: ReactNode;
 }) {
+	const inner = useRef<HTMLDivElement | null>(null);
+	useLayoutEffect(() => {
+		const el = inner.current;
+		if (!el || !anchor) return;
+		const p = popoverPosition(
+			anchor.getBoundingClientRect(),
+			{ width: el.offsetWidth, height: el.offsetHeight },
+			{ width: window.innerWidth, height: window.innerHeight },
+		);
+		el.style.top = `${p.top}px`;
+		el.style.left = `${p.left}px`;
+	});
 	if (!anchor) return null;
 	const r = anchor.getBoundingClientRect();
 	return createPortal(
 		<div
 			className="menu-popover"
-			ref={popRef}
-			style={{
-				top: Math.min(r.bottom + 6, window.innerHeight - 230),
-				left: Math.max(8, Math.min(r.left, window.innerWidth - 280)),
+			ref={(n) => {
+				inner.current = n;
+				if (typeof popRef === "function") popRef(n);
+				else if (popRef) popRef.current = n;
 			}}
+			style={{ top: r.bottom + 6, left: r.left }}
 		>
 			{children}
 		</div>,
