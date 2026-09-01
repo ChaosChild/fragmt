@@ -210,7 +210,7 @@ async function runServe(
 				`${listenLines(
 					p,
 					serve.auth,
-				Object.values(networkInterfaces()).flatMap((n) => n ?? []),
+					Object.values(networkInterfaces()).flatMap((n) => n ?? []),
 				).join("\n")}\n`,
 			);
 		},
