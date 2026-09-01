@@ -4,6 +4,7 @@ import {
 	addComment,
 	type DocMeta,
 	type DocResponse,
+	getDraftDiff,
 	SaveError,
 	saveDoc,
 	setTitle,
@@ -215,6 +216,28 @@ export function DocView({
 	useEffect(() => {
 		setLinkNotFound(null);
 	}, [selected]);
+	// The draft gutter (#18): the main pane marks the blocks the draft's
+	// commits touched. Refires on doc/branch changes, skips off-draft, and a
+	// failed fetch is just no marking – a decoration never becomes an error.
+	const [changedLines, setChangedLines] = useState<
+		{ start: number; end: number }[]
+	>([]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `branch` never enters the effect body – it is the refetch trigger (a checkout must refresh the gutter).
+	useEffect(() => {
+		setChangedLines([]);
+		if (!onDraft || !selected) return;
+		let live = true;
+		getDraftDiff(selected)
+			.then((r) => {
+				if (live) setChangedLines(r.lines);
+			})
+			.catch(() => {
+				if (live) setChangedLines([]);
+			});
+		return () => {
+			live = false;
+		};
+	}, [selected, branch, onDraft]);
 	const renameRef = useRef<HTMLInputElement>(null);
 	const editorRef = useRef<EditorPaneHandle>(null);
 	const paneRef = useRef<HTMLDivElement>(null);
@@ -784,6 +807,7 @@ export function DocView({
 					onLinkNotFound={setLinkNotFound}
 					anchor={pendingAnchor}
 					onAnchorConsumed={onAnchorConsumed}
+					changedLines={changedLines}
 				/>
 			) : null}
 		</div>

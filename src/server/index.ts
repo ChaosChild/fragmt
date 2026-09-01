@@ -23,6 +23,7 @@ import {
 	deleteThread,
 	deleteThreadWithDoc,
 	docHash,
+	draftDiffLines,
 	GitError,
 	GitIdentityError,
 	gitAllowList,
@@ -63,6 +64,7 @@ export interface ServerContext {
 const DOCS_PREFIX = "/api/docs/";
 const FOLDERS_PREFIX = "/api/folders/";
 const RAW_PREFIX = "/api/raw/";
+const DRAFT_DIFF_PREFIX = "/api/draft-diff/";
 
 /** Package-root `ui/dist`. Same depth from `src/server/` (tsx) and `dist/server/` (built). */
 const UI_DIST = fileURLToPath(new URL("../../ui/dist", import.meta.url));
@@ -584,6 +586,30 @@ export function createApp(ctx: ServerContext): Hono {
 		} catch (e) {
 			return respondGitError(c, e);
 		}
+	});
+
+	// #18: the draft gutter's payload – body-relative changed lines for one
+	// doc on the current draft branch ([] on main / mid-merge / no diff).
+	// Existence is a 404 like the doc routes; resolveDocPath is the traversal
+	// guard (the raw-URL `..` prefilter below covers /api/docs|folders|raw
+	// only, so this route leans on it directly).
+	app.get(`${DRAFT_DIFF_PREFIX}*`, async (c) => {
+		const docPath = tailPath(c, DRAFT_DIFF_PREFIX);
+		if (docPath === undefined || docPath === "")
+			return c.json({ error: "invalid doc path" }, 400);
+		let abs: string;
+		try {
+			abs = resolveDocPath(ctx.repoRoot, ctx.docsRoot, docPath);
+		} catch (e) {
+			if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
+			throw e;
+		}
+		if (!existsSync(abs) || !statSync(abs).isFile())
+			return c.json({ error: "doc not found" }, 404);
+		return c.json({
+			doc: docPath,
+			lines: await draftDiffLines(ctx.repoRoot, ctx.docsRoot, docPath),
+		});
 	});
 
 	app.post("/api/merge", async (c) => {

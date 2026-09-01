@@ -63,6 +63,78 @@ function docsPrefix(docsRoot: string): string {
 		: docsRoot.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 
+/** A 1-based inclusive line range – diff hunks here, block spans in the UI. */
+export interface LineRange {
+	start: number;
+	end: number;
+}
+
+/**
+ * `git diff -U0` hunk headers → NEW-side inclusive line ranges. d=0 (a pure
+ * deletion has no new lines) collapses to the single join line [c, c].
+ */
+export function parseDiffNewLines(diffText: string): LineRange[] {
+	const out: LineRange[] = [];
+	for (const line of diffText.split("\n")) {
+		const m = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+		if (!m) continue;
+		const start = Number(m[1]);
+		const count = m[2] === undefined ? 1 : Number(m[2]);
+		out.push({ start, end: count === 0 ? start : start + count - 1 });
+	}
+	return out;
+}
+
+/**
+ * The draft gutter's payload (#18): body-relative ranges of the lines the
+ * current draft branch's commits touched in one doc. [] on main, without a
+ * draft model, mid-merge (a resolution owns the file), or with no diff –
+ * the gutter is a decoration, never an error surface.
+ */
+export async function draftDiffLines(
+	repoRoot: string,
+	docsRoot: string,
+	docPath: string,
+): Promise<LineRange[]> {
+	const main = await mainBranch(repoRoot);
+	const current = await currentBranch(repoRoot);
+	if (!main || current === main || inMerge(repoRoot)) return [];
+	const diff = await git(repoRoot, [
+		"diff",
+		`${main}..HEAD`,
+		"-U0",
+		"--",
+		pathspec(docsRoot, docPath),
+	]);
+	const ranges = parseDiffNewLines(diff);
+	if (ranges.length === 0) return [];
+
+	// ponytail: one diff spawn per call; mainBranch/currentBranch above are
+	// the same two reads repoMeta already pays per refresh. Batch only if a
+	// caller ever fetches per-keystroke.
+	const raw = readFileSync(resolveDocPath(repoRoot, docsRoot, docPath), "utf8")
+		.replace(/\r\n/g, "\n")
+		.split("\n");
+	// File line → body line: the served body starts after the `---` fence
+	// pair, any blank gap lines, and the leading blanks canonicalBody strips.
+	let body = 0;
+	if (raw[0]?.trim() === "---") {
+		let close = 1;
+		while (close < raw.length && raw[close].trim() !== "---") close++;
+		body = close + 1;
+	}
+	while (raw[body]?.trim() === "") body++;
+	let last = raw.length - 1;
+	while (last >= body && raw[last].trim() === "") last--;
+	const bodyCount = last - body + 1; // 0 when the body is empty
+	return ranges
+		.map(({ start, end }) => ({
+			start: Math.max(1, start - body),
+			end: Math.min(end - body, bodyCount),
+		}))
+		.filter((r) => r.end >= r.start);
+}
+
 /**
  * Start (or join) the draft for a doc: already on a non-main branch → no-op;
  * an existing drafts/* branch whose <main>..<branch> diff touches the doc →

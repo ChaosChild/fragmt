@@ -8,6 +8,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { mapRangesToBlocks, sourceBlockSpans } from "./draft-gutter";
 import type { AtDoc, AtMenuState } from "./editor/at";
 import { BubbleToolbar } from "./editor/BubbleToolbar";
 import { editorExtensions } from "./editor/extensions";
@@ -64,6 +65,7 @@ export function EditorPane({
 	onAnchorConsumed,
 	commenting = true,
 	spanTitleFor,
+	changedLines,
 	ref,
 }: {
 	markdown: string;
@@ -111,6 +113,10 @@ export function EditorPane({
 	 *  mark's static "View comment" with the thread's summary – see the
 	 *  title pass below. Absent = the mark's own title stands. */
 	spanTitleFor?: (id: string) => string;
+	/** Body-relative line ranges the current draft's commits touched (#18) –
+	 *  the draft-changed gutter's input. Absent/empty = no marking. The
+	 *  slideout preview never receives it (the main pane only). */
+	changedLines?: { start: number; end: number }[];
 	ref?: Ref<EditorPaneHandle>;
 }) {
 	const [slashState, setSlashState] = useState<SlashMenuState | null>(null);
@@ -199,6 +205,32 @@ export function EditorPane({
 			el.title = spanTitleFor(el.getAttribute("data-c") ?? "");
 		}
 	}, [editor, markdown, spanTitleFor]);
+
+	// Draft-changed gutter (#18): a `draft-changed` class on the top-level
+	// blocks the draft's commits touched – read AND edit mode, one code path
+	// (the same mounted editor serves both). Clear-then-mark is idempotent,
+	// the heading-id walk's pattern; the class lives only in the rendered
+	// DOM, never the markdown. changedLines re-runs it when a fetch lands.
+	useEffect(() => {
+		if (!editor) return;
+		for (const el of Array.from(
+			editor.view.dom.querySelectorAll<HTMLElement>(".draft-changed"),
+		)) {
+			el.classList.remove("draft-changed");
+		}
+		if (!changedLines || changedLines.length === 0) return;
+		const marked = mapRangesToBlocks(
+			changedLines,
+			sourceBlockSpans(markdown),
+			editor.state.doc.childCount,
+		);
+		if (marked.size === 0) return;
+		// ProseMirror renders each top-level doc node as exactly one element
+		// child of view.dom – index-aligned with the doc children we mapped.
+		Array.from(editor.view.dom.children).forEach((el, i) => {
+			if (marked.has(i)) el.classList.add("draft-changed");
+		});
+	}, [editor, markdown, changedLines]);
 
 	// Edit/Cancel flips editability on the SAME mounted editor – the DOM
 	// never rebuilds, so the text cannot reflow (M2 rule). A stale bubble

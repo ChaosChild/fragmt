@@ -804,6 +804,24 @@ body {
 	border-color: var(--accent);
 }
 
+/* Draft-changed gutter (#18): a 3px amber bar beside the top-level blocks
+   the draft's commits touched – a decoration, not a diff surface. The bar
+   sits 12px left of the text, inside the doc pane's 32px padding (a wider
+   negative offset would clip). */
+.markdown .draft-changed {
+	position: relative;
+}
+.markdown .draft-changed::before {
+	content: "";
+	position: absolute;
+	left: -12px;
+	top: 0;
+	bottom: 0;
+	width: 3px;
+	border-radius: 2px;
+	background: var(--warn);
+}
+
 /* Markdown typography – fragmt reading mode (Newsreader). Both modes
    render through the same ProseMirror div (M4: read mode is the editor
    with editable: false), so these rules and the injected ProseMirror

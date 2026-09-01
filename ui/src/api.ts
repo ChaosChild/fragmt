@@ -237,6 +237,16 @@ export const startDraft = (docPath: string) =>
 		body: JSON.stringify({ docPath }),
 	});
 
+export interface DraftDiffResponse {
+	doc: string;
+	/** Body-relative 1-based inclusive changed-line ranges (#18). */
+	lines: { start: number; end: number }[];
+}
+
+/** The draft gutter's payload for one doc – empty `lines` off-draft (#18). */
+export const getDraftDiff = (docPath: string) =>
+	request<DraftDiffResponse>(`/api/draft-diff/${encodeURI(docPath)}`);
+
 /** Own fetch (saveDoc's pattern): the 409 conflict body carries `message`,
  *  not `error` – callers branch on SaveError.status to show the banner. A
  *  conflict body throws MergeError instead (M4-4 b3): `stood` decides
