@@ -57,15 +57,15 @@
 	},
 	"dependencies": {
 		"@hono/node-server": "^2.1.0",
-		"@tiptap/core": "^3.30.0",
-		"@tiptap/extension-bubble-menu": "^3.30.0",
-		"@tiptap/extension-image": "^3.30.0",
-		"@tiptap/extension-list": "^3.30.0",
-		"@tiptap/extension-table": "^3.30.0",
-		"@tiptap/extensions": "^3.30.0",
-		"@tiptap/react": "^3.30.0",
-		"@tiptap/starter-kit": "^3.30.0",
-		"@tiptap/suggestion": "^3.30.0",
+		"@tiptap/core": "^3.30.6",
+		"@tiptap/extension-bubble-menu": "^3.30.6",
+		"@tiptap/extension-image": "^3.30.6",
+		"@tiptap/extension-list": "^3.30.6",
+		"@tiptap/extension-table": "^3.30.6",
+		"@tiptap/extensions": "^3.30.6",
+		"@tiptap/react": "^3.30.6",
+		"@tiptap/starter-kit": "^3.30.6",
+		"@tiptap/suggestion": "^3.30.6",
 		"gray-matter": "^4.0.3",
 		"hono": "^4.13.0",
 		"lucide-react": "^1.31.0",
@@ -74,5 +74,8 @@
 		"react-markdown": "^10.1.0",
 		"remark-gfm": "^4.0.1",
 		"tiptap-markdown": "^0.9.0"
+	},
+	"overrides": {
+		"@tiptap/extension-floating-menu": "3.30.6"
 	}
 }
