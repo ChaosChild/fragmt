@@ -42,6 +42,10 @@ GitHub's web editor attributes edits).
    server. Never put them in `.fragmt.json` – that file is committed to the
    docs repo. If either is missing, `serve --auth` refuses to start.
 
+The app requests the `user:email` scope in addition to `repo` – users see
+**Email addresses (read-only)** on the consent screen. Emails are used only
+to resolve avatars, kept in memory, never logged.
+
 ## Permissions: GitHub collaborators are the system
 
 | Collaborator permission | Access |
@@ -64,6 +68,22 @@ How it works, and its edges:
 - Merges of draft branches currently commit with the server's git identity;
   edit and comment commits carry the signed-in author. True per-user push
   identity arrives with PR wiring ([#27](https://github.com/ChaosChild/fragmt/issues/27)).
+
+## Avatars and the authors map
+
+Commit authors are shown with their **GitHub avatar** automatically once they
+have signed in through this instance: at sign-in the server matches commit
+emails against the user's verified GitHub emails – no setup. Contributors who
+never sign in here (plain local git commits) need an **authors map** in
+`.fragmt.json`, mapping email to GitHub username:
+
+```json
+{ "authors": { "dev@example.com": "theirlogin" } }
+```
+
+`fragmt init` and local-mode `serve` print which author emails have no avatar
+path, so filling in the map is a two-minute fix. The map is cosmetic only –
+access control is always collaborator permissions.
 
 ## TLS
 
