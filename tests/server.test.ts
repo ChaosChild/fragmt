@@ -83,6 +83,25 @@ test("an unknown /api route is 404", async () => {
 	expect(res.status).toBe(404);
 });
 
+test("GET /api/health answers 200 {ok:true} with no session", async () => {
+	// Local mode (the running server): no gate at all.
+	const res = await fetch(`http://localhost:${port}/api/health`);
+	expect(res.status).toBe(200);
+	expect(await res.json()).toEqual({ ok: true });
+	// Auth mode: the gate exempts it – the Docker HEALTHCHECK has no session.
+	const authApp = createApp({
+		repoRoot: root,
+		docsRoot: "docs",
+		auth: { clientId: "cid", clientSecret: "secret" },
+		// Never reached (health is exempted pre-session); injected so no
+		// request can touch the network.
+		githubFetch: async () => new Response(null, { status: 404 }),
+	});
+	const authRes = await authApp.request("/api/health");
+	expect(authRes.status).toBe(200);
+	expect(await authRes.json()).toEqual({ ok: true });
+});
+
 // Trust boundary. These four must stay 400 – a 404 here means the raw-URL guard
 // was lost to a refactor and the framework silently normalized the path instead.
 test.each([

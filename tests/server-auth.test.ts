@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
+import { verifiedEmailLogins } from "../src/server/auth.js";
 import { createApp } from "../src/server/index.js";
 
 // #20 batch 2: serve --auth. GitHub OAuth web flow (login/callback/session/
@@ -13,6 +14,8 @@ import { createApp } from "../src/server/index.js";
 interface StubUser {
 	id: number;
 	permission: string;
+	/** The /user/emails answer; absent → that call fails (non-200). */
+	emails?: { email: string; verified: boolean; primary?: boolean }[];
 }
 
 const repos: string[] = [];
@@ -38,7 +41,7 @@ function gitRepo(origin?: string): string {
 	return root;
 }
 
-/** Stub for the three GitHub calls the auth flow makes. */
+/** Stub for the GitHub calls the auth flow makes. */
 function stubGithub(users: Record<string, StubUser>): {
 	fetch: typeof fetch;
 	permissionCalls: () => number;
@@ -62,6 +65,13 @@ function stubGithub(users: Record<string, StubUser>): {
 			return u
 				? Response.json({ id: u.id, login })
 				: new Response(null, { status: 401 });
+		}
+		if (url === "https://api.github.com/user/emails") {
+			const login = (headers.authorization ?? "").slice("Bearer tok-".length);
+			const u = users[login];
+			return u?.emails
+				? Response.json(u.emails)
+				: new Response(null, { status: 500 });
 		}
 		const m = /\/collaborators\/([^/]+)\/permission$/.exec(url);
 		if (m) {
@@ -188,7 +198,7 @@ test("login redirects to GitHub's authorize URL with a signed state cookie", asy
 		"https://github.com/login/oauth/authorize",
 	);
 	expect(location.searchParams.get("client_id")).toBe("cid");
-	expect(location.searchParams.get("scope")).toBe("repo");
+	expect(location.searchParams.get("scope")).toBe("repo user:email");
 	expect(location.searchParams.get("redirect_uri")).toBe(
 		"http://localhost/api/auth/callback",
 	);
@@ -220,6 +230,58 @@ test("callback with the matching state signs in and lands on /", async () => {
 	expect(session).toMatch(/^fragmt_session=/);
 	const meta = await app.request("/api/meta", { headers: { cookie: session } });
 	expect(meta.status).toBe(200);
+});
+
+test("sign-in caches verified emails → login; unverified entries dropped", async () => {
+	const { app } = authApp(gitRepo("https://github.com/o/r.git"), {
+		ada: {
+			id: 1,
+			permission: "write",
+			emails: [
+				{ email: "ada@example.com", verified: true, primary: true },
+				{ email: "ghost@example.com", verified: false },
+			],
+		},
+	});
+	await signIn(app, "ada");
+	expect(verifiedEmailLogins()["ada@example.com"]).toBe("ada");
+	expect(verifiedEmailLogins()["ghost@example.com"]).toBeUndefined();
+});
+
+test("a failing emails fetch never fails sign-in – nothing new cached", async () => {
+	const { app } = authApp(gitRepo("https://github.com/o/r.git"), {
+		bob: { id: 2, permission: "write" }, // no emails → the stub 500s
+	});
+	const session = await signIn(app, "bob");
+	expect(session).toMatch(/^fragmt_session=/);
+	expect(Object.values(verifiedEmailLogins()).includes("bob")).toBe(false);
+});
+
+test("/api/meta: config authors beat verified emails; verified ones fill the gaps", async () => {
+	const root = gitRepo("https://github.com/o/r.git");
+	writeFileSync(
+		join(root, ".fragmt.json"),
+		JSON.stringify({
+			docsRoot: "docs",
+			authors: { "shared@example.com": "from-config" },
+		}),
+	);
+	const { app } = authApp(root, {
+		ada: {
+			id: 1,
+			permission: "write",
+			emails: [
+				{ email: "shared@example.com", verified: true },
+				{ email: "derived-only@example.com", verified: true },
+			],
+		},
+	});
+	const session = await signIn(app, "ada");
+	const meta = (await (
+		await app.request("/api/meta", { headers: { cookie: session } })
+	).json()) as { authors: Record<string, string> };
+	expect(meta.authors["shared@example.com"]).toBe("from-config");
+	expect(meta.authors["derived-only@example.com"]).toBe("ada");
 });
 
 test("a write collaborator's mutation commits under their login", async () => {

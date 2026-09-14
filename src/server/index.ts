@@ -61,6 +61,7 @@ import {
 	commitAuthor,
 	registerAuth,
 	sessionDisabled,
+	verifiedEmailLogins,
 } from "./auth.js";
 
 export interface ServerContext {
@@ -628,9 +629,19 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 
 	// --- M4-2: meta, drafting, merge, restore -------------------------------
 
-	app.get("/api/meta", async (c) =>
-		c.json(await repoMeta(ctx.repoRoot, ctx.docsRoot)),
-	);
+	// Unauthenticated by design (the gate exempts it): the Docker HEALTHCHECK
+	// has no session, and {ok:true} leaks nothing.
+	app.get("/api/health", (c) => c.json({ ok: true }));
+
+	app.get("/api/meta", async (c) => {
+		const meta = await repoMeta(ctx.repoRoot, ctx.docsRoot);
+		// Explicit .fragmt.json authors entries override derived mappings; the
+		// merge happens server-side so core/meta stays free of auth state.
+		return c.json({
+			...meta,
+			authors: { ...verifiedEmailLogins(), ...meta.authors },
+		});
+	});
 
 	// Search (#14): a thin GET over the core's flat scan. `q` missing is a
 	// 400; present-but-short is searchDocs' own empty array, not an error.
