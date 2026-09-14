@@ -18,5 +18,5 @@ RUN git config --global user.name "fragmt" && \
 
 WORKDIR /docs
 EXPOSE 4400
-HEALTHCHECK CMD node -e "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HEALTHCHECK CMD ["node", "-e", "fetch('http://127.0.0.1:4400/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 CMD ["fragmt", "serve", "--auth", "--port", "4400"]
