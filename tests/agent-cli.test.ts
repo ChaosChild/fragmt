@@ -11,7 +11,7 @@ import {
 	threadsLines,
 	truncateBody,
 } from "../src/cli/agent.js";
-import { usage } from "../src/cli/index.js";
+import { runInit, usage } from "../src/cli/index.js";
 import {
 	addThread,
 	type CommentThread,
@@ -564,4 +564,82 @@ test("unresolvable conflict: aborted fallback lists the files", async () => {
 	// Aborted: back on the draft, nothing standing.
 	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("drafts/r");
 	expect(run(root, ["branch", "--list", "drafts/r"])).not.toBe("");
+});
+
+// --- init: the avatar-path notice (rung B) -----------------------------------
+
+/** Commit the working tree under a specific author email (rung-B fixtures). */
+function commitAs(root: string, email: string, message: string): void {
+	run(root, ["add", "-A"]);
+	run(root, ["-c", `user.email=${email}`, "commit", "-q", "-m", message]);
+}
+
+/** runInit with the writer injected: exit code + the raw emitted output. */
+async function initCli(
+	root: string,
+	rootFlag?: string,
+): Promise<{ code: number; out: string }> {
+	let out = "";
+	const code = await runInit(rootFlag, root, (s) => {
+		out += s;
+	});
+	return { code, out };
+}
+
+test("init: the notice lists exactly the unresolvable authors", async () => {
+	const root = repo();
+	write(root, "docs/a.md", "# a\n");
+	commitAs(root, "one@work.dev", "a");
+	write(root, "docs/b.md", "# b\n");
+	commitAs(root, "octocat@users.noreply.github.com", "b");
+	write(root, "docs/c.md", "# c\n");
+	commitAs(root, "two@work.dev", "c");
+
+	const r = await initCli(root, "docs");
+	expect(r.code).toBe(0);
+	// After the fresh-init block (a fresh config carries no authors map, so
+	// both plain emails lack a path; the noreply shape does not).
+	expect(r.out).toContain("Initialized fragmt");
+	expect(r.out).toContain("2 commit author(s) have no avatar path:");
+	expect(r.out).toContain("one@work.dev");
+	expect(r.out).toContain("two@work.dev");
+	expect(r.out).not.toContain("octocat@users.noreply.github.com");
+});
+
+test("init: no notice when every author resolves", async () => {
+	const root = repo();
+	write(root, "docs/a.md", "# a\n");
+	commitAs(root, "octocat@users.noreply.github.com", "a");
+	write(root, "docs/b.md", "# b\n");
+	commitAs(root, "583231+hubot@users.noreply.github.com", "b");
+
+	const r = await initCli(root, "docs");
+	expect(r.code).toBe(0);
+	expect(r.out).toContain("Initialized fragmt");
+	expect(r.out).not.toContain("no avatar path");
+});
+
+test("init re-run: already initialized still prints the notice, minus mapped entries", async () => {
+	const root = repo();
+	write(root, "docs/a.md", "# a\n");
+	commitAs(root, "mapped@work.dev", "a");
+	write(root, "docs/b.md", "# b\n");
+	commitAs(root, "123456+octocat@users.noreply.github.com", "b");
+	write(root, "docs/c.md", "# c\n");
+	commitAs(root, "stray@work.dev", "c");
+	initRepo(root, "docs");
+	// The operator maps one plain email; the other stays unresolvable.
+	write(
+		root,
+		".fragmt.json",
+		`${JSON.stringify({ docsRoot: "docs", order: {}, authors: { "mapped@work.dev": "octocat" } }, null, "\t")}\n`,
+	);
+
+	const r = await initCli(root);
+	expect(r.code).toBe(0);
+	expect(r.out.split("\n")[0]).toBe("already initialized");
+	expect(r.out).toContain("1 commit author(s) have no avatar path:");
+	expect(r.out).toContain("stray@work.dev");
+	expect(r.out).not.toContain("mapped@work.dev");
+	expect(r.out).not.toContain("users.noreply.github.com");
 });
