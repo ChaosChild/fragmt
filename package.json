@@ -53,7 +53,7 @@
 		"tsx": "^4.23.7",
 		"typescript": "^7.0.2",
 		"vite": "^8.2.0",
-		"vitest": "^4.1.10"
+		"vitest": "^4.1.11"
 	},
 	"dependencies": {
 		"@hono/node-server": "^2.1.0",
@@ -67,7 +67,7 @@
 		"@tiptap/starter-kit": "^3.30.6",
 		"@tiptap/suggestion": "^3.30.6",
 		"gray-matter": "^4.0.3",
-		"hono": "^4.13.0",
+		"hono": "^4.13.7",
 		"lucide-react": "^1.31.0",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
