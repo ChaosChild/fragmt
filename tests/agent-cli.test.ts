@@ -73,6 +73,7 @@ const meta = (over: {
 	deleted: [],
 	authors: {},
 	agents: [],
+	okf: false,
 	merge: over.merge ?? null,
 });
 
