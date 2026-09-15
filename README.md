@@ -82,7 +82,9 @@ Or globally: `npm i -g fragmt`, then `fragmt init` and `fragmt serve`.
 
 `init` must run inside a git clone. It never overwrites an existing config – a
 second run prints `already initialized` and exits 0. Scope it to a subfolder
-with `fragmt init --root docs`.
+with `fragmt init --root docs`. Docs can also live in their own git repo
+nested inside a code repo (`fragmt init --folder docs --new`) – with its own
+history, remote, and a submodule link the host renders.
 
 > **Platforms:** tested on Windows. Linux and macOS verification is in progress
 > – reports from those platforms are welcome.
