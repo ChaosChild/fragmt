@@ -59,6 +59,16 @@ interface Session {
 	expiresAt: number;
 }
 
+// Avatar resolution (rung A): verified email → login, learned at sign-in.
+// ponytail: plain module-level Map, never expires – in-memory sessions die
+// with the process and force re-sign-in, which repopulates it.
+const emailLogins = new Map<string, string>();
+
+/** The verified-email → login cache (a copy) for /api/meta's authors merge. */
+export function verifiedEmailLogins(): Record<string, string> {
+	return Object.fromEntries(emailLogins);
+}
+
 /** registerAuth adds the gate, the OAuth routes, and GET /api/auth/session. */
 export function registerAuth(
 	app: Hono<AppEnv>,
@@ -148,10 +158,13 @@ export function registerAuth(
 		return out;
 	}
 
-	// The gate: all of /api/* needs a session, except /api/auth/* itself.
-	// Registered before every other middleware and route in createApp.
+	// The gate: all of /api/* needs a session, except /api/auth/* itself and
+	// /api/health – the Docker HEALTHCHECK has no session; health answers
+	// unauthenticated and leaks nothing. Registered before every other
+	// middleware and route in createApp.
 	app.use("/api/*", async (c, next) => {
 		if (c.req.path.startsWith("/api/auth/")) return next();
+		if (c.req.path === "/api/health") return next();
 		const session = sessionOf(c);
 		if (session === undefined) return c.json({ error: "sign in" }, 401);
 		const { perm, failClosed } = await permissionOf(session.user);
@@ -201,7 +214,9 @@ export function registerAuth(
 		// are) – a scopeless token would fail-closed every private repo. The PR
 		// wiring round (#27) needs write anyway. The token rides the in-memory
 		// session only (never persisted, never client-visible).
-		authorize.searchParams.set("scope", "repo");
+		// user:email powers the verified-email → login caching that resolves
+		// avatars in /api/meta.
+		authorize.searchParams.set("scope", "repo user:email");
 		return c.redirect(authorize.toString(), 302);
 	});
 
@@ -252,6 +267,34 @@ export function registerAuth(
 			: {};
 		if (typeof gh.id !== "number" || typeof gh.login !== "string" || !gh.login)
 			return c.json({ error: "github rejected the sign-in" }, 502);
+
+		// Avatar resolution (rung A): learn verified email → login. Any failure
+		// is swallowed – sign-in must NEVER fail over avatars; the worst case
+		// is an emptier cache. Email addresses are never logged.
+		try {
+			const emailsRes = await ghFetch("https://api.github.com/user/emails", {
+				headers: {
+					authorization: `Bearer ${token}`,
+					accept: "application/vnd.github+json",
+				},
+			});
+			if (emailsRes.ok) {
+				const list = (await emailsRes.json()) as unknown;
+				if (Array.isArray(list)) {
+					for (const e of list) {
+						if (
+							typeof e === "object" &&
+							e !== null &&
+							typeof (e as { email?: unknown }).email === "string" &&
+							(e as { verified?: unknown }).verified === true
+						)
+							emailLogins.set((e as { email: string }).email, gh.login);
+					}
+				}
+			}
+		} catch {
+			// non-200, network, malformed body – the cache stays empty
+		}
 
 		const id = crypto.randomUUID();
 		sessions.set(id, {

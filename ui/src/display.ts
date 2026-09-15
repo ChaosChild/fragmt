@@ -32,6 +32,7 @@ export function avatarUser(
 ): string | undefined {
 	return (
 		authors[email] ||
+		// Mirrors src/core/authors.ts' noreply regex (core cannot import ui) – keep the two in sync.
 		/^(\d+\+)?([a-z0-9-]+)@users\.noreply\.github\.com$/i.exec(email)?.[2] ||
 		undefined
 	);

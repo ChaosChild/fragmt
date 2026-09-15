@@ -100,7 +100,9 @@ fragmt --help
 
 `serve --auth` turns the editor into a small multi-user server: GitHub
 sign-in, your repo's collaborator permissions as access control, Docker
-samples included – see [HOSTING](docs/HOSTING.md).
+samples included – see [HOSTING](docs/HOSTING.md). Commit authors are
+recognized by their GitHub avatar – automatically for signed-in users, and
+via a two-line authors map in `.fragmt.json` for everyone else.
 
 ## Agents
 

@@ -3,7 +3,14 @@ import { realpathSync } from "node:fs";
 import { networkInterfaces } from "node:os";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { findRepoRoot, initRepo, loadConfig } from "../core/index.js";
+import {
+	authorsNotice,
+	classifyAuthorEmails,
+	findRepoRoot,
+	initRepo,
+	loadConfig,
+	logCommits,
+} from "../core/index.js";
 import { createApp, startServer } from "../server/index.js";
 import { runAgent } from "./agent.js";
 
@@ -53,8 +60,7 @@ export async function main(argv: string[]): Promise<void> {
 
 	const command = positionals[0];
 	if (command === "init") {
-		await runInit(values.root);
-		return;
+		process.exit(await runInit(values.root, resolveRepoRoot("init")));
 	}
 	if (command === "serve") {
 		await runServe(values.port, values.auth === true);
@@ -78,23 +84,63 @@ function resolveRepoRoot(command: string): string {
 	}
 }
 
-async function runInit(rootFlag: string | undefined): Promise<void> {
-	const repoRoot = resolveRepoRoot("init");
+/**
+ * `fragmt init`: adopt the docs root (initRepo), then the avatar-path notice
+ * (rung B) – on both the fresh and the already-initialized path, the same
+ * check serve runs. Returns the exit code; `write` is injectable for tests,
+ * stdout live (runAgent's convention).
+ */
+export async function runInit(
+	rootFlag: string | undefined,
+	repoRoot: string,
+	write: (s: string) => void = (s) => {
+		process.stdout.write(s);
+	},
+): Promise<number> {
 	const docsRoot = rootFlag ?? ".";
 	try {
 		const result = initRepo(repoRoot, docsRoot);
 		if (result.alreadyInitialized) {
-			process.stdout.write("already initialized\n");
-			process.exit(0);
+			write("already initialized\n");
+		} else {
+			const count = result.count ?? 0;
+			const noun = count === 1 ? "file" : "files";
+			write(
+				`Initialized fragmt\n  docs root: ${docsRoot}\n  ${count} markdown ${noun}\n`,
+			);
 		}
-		const count = result.count ?? 0;
-		const noun = count === 1 ? "file" : "files";
-		process.stdout.write(
-			`Initialized fragmt\n  docs root: ${docsRoot}\n  ${count} markdown ${noun}\n`,
-		);
-		process.exit(0);
+		await printAvatarNotice(repoRoot, docsRoot, write);
+		return 0;
 	} catch (e) {
 		fail((e as Error).message);
+	}
+}
+
+/**
+ * The avatar-path notice (rung B), shared by init and local serve: the unique
+ * commit-author emails under docsRoot vs the config authors map. Purely
+ * cosmetic – any git or config failure prints nothing, never fails the command.
+ */
+async function printAvatarNotice(
+	repoRoot: string,
+	docsRoot: string,
+	write: (s: string) => void,
+): Promise<void> {
+	try {
+		const emails = [
+			...new Set(
+				(await logCommits(repoRoot, ["--format=%ae", "--", docsRoot]))
+					.split("\n")
+					.filter(Boolean),
+			),
+		];
+		const notice = authorsNotice(
+			classifyAuthorEmails(emails, loadConfig(repoRoot).authors ?? {})
+				.unresolvable,
+		);
+		if (notice) write(notice);
+	} catch {
+		// Cosmetic feature – silence on any failure.
 	}
 }
 
@@ -213,6 +259,12 @@ async function runServe(
 					Object.values(networkInterfaces()).flatMap((n) => n ?? []),
 				).join("\n")}\n`,
 			);
+			// Rung B, local mode only: the same avatar notice init prints, once.
+			if (!serve.auth) {
+				void printAvatarNotice(repoRoot, docsRoot, (s) => {
+					process.stdout.write(s);
+				});
+			}
 		},
 		serve.host,
 	);
