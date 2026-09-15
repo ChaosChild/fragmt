@@ -358,7 +358,7 @@ export async function runAgent(
 		// #16: run from the outer repo of a nested setup – the shared redirect
 		// (serve's fail() twin) instead of the bare "not initialized". Only the
 		// missing-config case can land here; the helper nulls out otherwise.
-		const redirect = nestedDocsRedirect(repoRoot);
+		const redirect = nestedDocsRedirect(repoRoot, "agent");
 		if (redirect) {
 			out(`error: ${redirect}`);
 			return 1;

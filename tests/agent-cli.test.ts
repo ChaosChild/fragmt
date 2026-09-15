@@ -828,27 +828,30 @@ test("nestedDocsRedirect: exactly one nested candidate resolves, else null", asy
 	const graduated = repo();
 	write(graduated, "docs/a.md", "# a\n");
 	await nestedInit(graduated, "docs", async () => bareOrigin());
-	expect(nestedDocsRedirect(graduated)).toBe(
-		"docs live in the nested fragmt repo at docs/\n  run from there:  cd docs && fragmt <command>",
+	expect(nestedDocsRedirect(graduated, "serve")).toBe(
+		"docs live in the nested fragmt repo at docs/\n  run from there:  cd docs && fragmt serve",
 	);
 
 	const skipped = repo();
 	write(skipped, "docs/a.md", "# a\n");
 	await nestedInit(skipped, "docs", async () => "");
-	expect(nestedDocsRedirect(skipped)).toMatch(
+	expect(nestedDocsRedirect(skipped, "agent")).toMatch(
 		/docs live in the nested fragmt repo at docs\//,
 	);
+	expect(nestedDocsRedirect(skipped, "agent")).toMatch(
+		/cd docs && fragmt agent/,
+	);
 
-	expect(nestedDocsRedirect(repo())).toBeNull(); // no candidate at all
+	expect(nestedDocsRedirect(repo(), "serve")).toBeNull(); // no candidate at all
 
 	const two = repo(); // ambiguous: two candidates
 	for (const f of ["docs-a", "docs-b"]) {
 		write(two, `${f}/a.md`, "# a\n");
 		await nestedInit(two, f, async () => "");
 	}
-	expect(nestedDocsRedirect(two)).toBeNull();
+	expect(nestedDocsRedirect(two, "serve")).toBeNull();
 
-	expect(nestedDocsRedirect(seeded())).toBeNull(); // config at the root
+	expect(nestedDocsRedirect(seeded(), "serve")).toBeNull(); // config at the root
 });
 
 test("agent from the outer root: the redirect error names the folder", async () => {

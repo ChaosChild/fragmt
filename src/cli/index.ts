@@ -466,7 +466,10 @@ export function listenLines(
  * several candidates keep today's error. Returns the message to fail with,
  * or null when the classic error should stand.
  */
-export function nestedDocsRedirect(repoRoot: string): string | null {
+export function nestedDocsRedirect(
+	repoRoot: string,
+	command: string,
+): string | null {
 	if (existsSync(configPath(repoRoot))) return null;
 	let candidates: string[];
 	try {
@@ -481,7 +484,7 @@ export function nestedDocsRedirect(repoRoot: string): string | null {
 	}
 	if (candidates.length !== 1) return null;
 	const dir = candidates[0];
-	return `docs live in the nested fragmt repo at ${dir}/\n  run from there:  cd ${dir} && fragmt <command>`;
+	return `docs live in the nested fragmt repo at ${dir}/\n  run from there:  cd ${dir} && fragmt ${command}`;
 }
 
 async function runServe(
@@ -502,7 +505,7 @@ async function runServe(
 		docsRoot = loadConfig(repoRoot).docsRoot;
 	} catch (e) {
 		// #16: run from the outer repo of a nested setup – point at the folder.
-		fail(nestedDocsRedirect(repoRoot) ?? (e as Error).message);
+		fail(nestedDocsRedirect(repoRoot, "serve") ?? (e as Error).message);
 	}
 
 	const clientId = process.env.GH_CLIENT_ID;
