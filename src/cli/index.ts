@@ -1,15 +1,27 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
+import {
+	existsSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	writeFileSync,
+} from "node:fs";
 import { networkInterfaces } from "node:os";
+import { join, resolve } from "node:path";
+import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
 	authorsNotice,
 	classifyAuthorEmails,
+	configPath,
 	findRepoRoot,
+	git,
+	initNestedRepo,
 	initRepo,
 	loadConfig,
 	logCommits,
+	writeOuterAgentsBlock,
 } from "../core/index.js";
 import { createApp, startServer } from "../server/index.js";
 import { runAgent } from "./agent.js";
@@ -19,7 +31,7 @@ export const usage = `\
 fragmt – git-native documentation environment
 
 Usage:
-  fragmt init [--root <path>]
+  fragmt init [--root <path>] [--folder <name>] [--new]
   fragmt serve [--port <n>] [--auth]
   fragmt agent [status]
   fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--full]
@@ -27,7 +39,7 @@ Usage:
   fragmt --help
 
 Commands:
-  init   Adopt an existing docs repo (write .fragmt.json)
+  init   Adopt an existing docs repo (write .fragmt.json); --folder <name> --new creates a nested docs repo
   serve  Start the local web server
   agent  The agent surface: status, comment, draft (AXI-conformant)
 `;
@@ -46,6 +58,10 @@ export async function main(argv: string[]): Promise<void> {
 		options: {
 			help: { type: "boolean", default: false },
 			root: { type: "string" },
+			// #16: the nested docs repo flags – --new only means anything with
+			// --folder, and is ignored otherwise.
+			folder: { type: "string" },
+			new: { type: "boolean", default: false },
 			port: { type: "string" },
 			auth: { type: "boolean", default: false },
 		},
@@ -60,7 +76,12 @@ export async function main(argv: string[]): Promise<void> {
 
 	const command = positionals[0];
 	if (command === "init") {
-		process.exit(await runInit(values.root, resolveRepoRoot("init")));
+		process.exit(
+			await runInit(values.root, resolveRepoRoot("init"), undefined, {
+				folder: values.folder,
+				new: values.new === true,
+			}),
+		);
 	}
 	if (command === "serve") {
 		await runServe(values.port, values.auth === true);
@@ -84,11 +105,36 @@ function resolveRepoRoot(command: string): string {
 	}
 }
 
+/** `fragmt init`'s flags beyond the docs root (#16 nested-create path). */
+export interface InitOptions {
+	folder?: string;
+	/** --new: create the nested repo (only meaningful with --folder). */
+	new?: boolean;
+	/** The graduation prompt's answer reader – real readline in production. */
+	ask?: () => Promise<string>;
+}
+
+/** The live prompt: one line from stdin (the prompt text is already written). */
+function askLine(): Promise<string> {
+	return new Promise((resolve) => {
+		const rl = createInterface({
+			input: process.stdin,
+			output: process.stdout,
+		});
+		rl.question("", (answer) => {
+			rl.close();
+			resolve(answer);
+		});
+	});
+}
+
 /**
- * `fragmt init`: adopt the docs root (initRepo), then the avatar-path notice
- * (rung B) – on both the fresh and the already-initialized path, the same
- * check serve runs. Returns the exit code; `write` is injectable for tests,
- * stdout live (runAgent's convention).
+ * `fragmt init`: today's adopt flow, plus the #16 nested-create path.
+ * `--folder X --new` (or a re-run on an existing nested repo) creates/adopts
+ * the folder as its own fragmt repo, writes the outer AGENTS.md redirect,
+ * then offers the graduation (remote + push + submodule signal); everything
+ * else keeps today's semantics, with --folder as the docs root. Returns the
+ * exit code; `write` and `ask` are injectable for tests, stdout/stdin live.
  */
 export async function runInit(
 	rootFlag: string | undefined,
@@ -96,24 +142,224 @@ export async function runInit(
 	write: (s: string) => void = (s) => {
 		process.stdout.write(s);
 	},
+	options: InitOptions = {},
 ): Promise<number> {
-	const docsRoot = rootFlag ?? ".";
 	try {
-		const result = initRepo(repoRoot, docsRoot);
-		if (result.alreadyInitialized) {
-			write("already initialized\n");
-		} else {
-			const count = result.count ?? 0;
-			const noun = count === 1 ? "file" : "files";
-			write(
-				`Initialized fragmt\n  docs root: ${docsRoot}\n  ${count} markdown ${noun}\n`,
-			);
+		const folder = options.folder;
+		if (
+			folder !== undefined &&
+			(options.new === true ||
+				existsSync(configPath(resolve(repoRoot, folder))))
+		) {
+			return await runNestedInit(repoRoot, folder, write, options);
 		}
-		await printAvatarNotice(repoRoot, docsRoot, write);
-		return 0;
+		return await runPlainInit(rootFlag ?? folder ?? ".", repoRoot, write);
 	} catch (e) {
 		fail((e as Error).message);
 	}
+}
+
+/**
+ * Today's adopt flow (`fragmt init [--root <path>]`): initRepo, then the
+ * avatar-path notice (rung B) – on both the fresh and the already-initialized
+ * path, the same check serve runs.
+ */
+async function runPlainInit(
+	docsRoot: string,
+	repoRoot: string,
+	write: (s: string) => void,
+): Promise<number> {
+	const result = initRepo(repoRoot, docsRoot);
+	if (result.alreadyInitialized) {
+		write("already initialized\n");
+	} else {
+		const count = result.count ?? 0;
+		const noun = count === 1 ? "file" : "files";
+		write(
+			`Initialized fragmt\n  docs root: ${docsRoot}\n  ${count} markdown ${noun}\n`,
+		);
+	}
+	await printAvatarNotice(repoRoot, docsRoot, write);
+	return 0;
+}
+
+/**
+ * The #16 nested flow (`--folder X [--new]`): create the nested repo when
+ * asked (a folder already holding `.fragmt.json` is a re-run – "already
+ * initialized"), the outer AGENTS.md redirect, then the ask-and-wait
+ * graduation – re-offered on a re-run when it never completed. The avatar
+ * notice operates on the nested repo now (docsRoot ".").
+ */
+async function runNestedInit(
+	repoRoot: string,
+	folder: string,
+	write: (s: string) => void,
+	options: InitOptions,
+): Promise<number> {
+	const nestedRoot = resolve(repoRoot, folder);
+	if (!existsSync(configPath(nestedRoot))) {
+		const { count } = await initNestedRepo(repoRoot, folder);
+		const noun = count === 1 ? "file" : "files";
+		write(
+			`Initialized fragmt\n  docs root: ${folder} (nested repo)\n  ${count} markdown ${noun}\n`,
+		);
+		writeOuterAgentsBlock(repoRoot, folder);
+	} else {
+		write("already initialized\n");
+	}
+	if (await needsGraduation(repoRoot, nestedRoot, folder)) {
+		await graduate(repoRoot, folder, write, options.ask ?? askLine);
+	}
+	await printAvatarNotice(nestedRoot, ".", write);
+	return 0;
+}
+
+/** The graduation never completed: no origin on the nested repo, or the outer
+ *  repo has no `.gitmodules` entry for the folder (skip or a failed dance). */
+async function needsGraduation(
+	outerRoot: string,
+	nestedRoot: string,
+	folder: string,
+): Promise<boolean> {
+	let remotes = "";
+	try {
+		remotes = await git(nestedRoot, ["remote"]);
+	} catch {
+		return true;
+	}
+	if (remotes === "") return true;
+	const modules = join(outerRoot, ".gitmodules");
+	if (!existsSync(modules)) return true;
+	return !readFileSync(modules, "utf8").includes(`path = ${folder}`);
+}
+
+const GRADUATION_PROMPT =
+	"Add a remote for the docs repo now? Paste the origin URL (Enter to skip):";
+
+/**
+ * The ask-and-wait graduation (#16): a URL runs the dance – origin, push,
+ * untrack, ignore-cleanup, submodule – every step via git() and printed as
+ * it completes; an empty answer .gitignores the folder and prints the steps
+ * for later. A failed push or submodule falls through to the printed steps:
+ * the signal can't complete, and a half-state is never left silently.
+ */
+async function graduate(
+	outerRoot: string,
+	folder: string,
+	write: (s: string) => void,
+	ask: () => Promise<string>,
+): Promise<void> {
+	write(`${GRADUATION_PROMPT} `);
+	const url = (await ask()).trim();
+	if (url === "") {
+		await skipGraduation(outerRoot, folder, write);
+		return;
+	}
+	const nestedRoot = resolve(outerRoot, folder);
+	try {
+		await git(nestedRoot, ["remote", "add", "origin", url]);
+	} catch {
+		// A re-run: origin already exists – point it at the URL instead.
+		await git(nestedRoot, ["remote", "set-url", "origin", url]);
+	}
+	write(`origin set in ${folder}\n`);
+	try {
+		await git(nestedRoot, ["push", "-u", "origin", "main"]);
+		write("pushed main to origin\n");
+	} catch (e) {
+		write(`push failed: ${(e as Error).message}\n`);
+		await printGraduationSteps(outerRoot, folder, url, write);
+		return;
+	}
+	if (await isTracked(outerRoot, folder)) {
+		await git(outerRoot, ["rm", "-r", "-q", "--cached", folder]);
+		write(`untracked ${folder} from the outer repo\n`);
+	}
+	removeIgnoredLine(outerRoot, folder, write);
+	try {
+		await git(outerRoot, ["submodule", "add", url, folder]);
+		write(`staged ${folder} as a submodule\n`);
+	} catch (e) {
+		write(`submodule add failed: ${(e as Error).message}\n`);
+		await printGraduationSteps(outerRoot, folder, url, write);
+		return;
+	}
+	const status = await git(outerRoot, ["status", "--short"]);
+	write(
+		`staged in the outer repo — review and commit:\n${status ? `${status}\n` : ""}`,
+	);
+}
+
+/** The empty answer: .gitignore the folder (idempotent) + the steps for later. */
+async function skipGraduation(
+	outerRoot: string,
+	folder: string,
+	write: (s: string) => void,
+): Promise<void> {
+	const line = `${folder}/`;
+	const text = readGitignore(outerRoot);
+	if (!text.split(/\r?\n/).includes(line)) {
+		const base = text === "" || text.endsWith("\n") ? text : `${text}\n`;
+		writeFileSync(join(outerRoot, ".gitignore"), `${base}${line}\n`);
+		write(`added ${line} to .gitignore\n`);
+	}
+	await printGraduationSteps(outerRoot, folder, "<url>", write);
+}
+
+/**
+ * The steps for later, copy-pasteable: one step per line, `cd` on its own
+ * line, no step ever riding a comment line. The `rm --cached` step appears
+ * only when the outer repo's history tracks the folder.
+ */
+async function printGraduationSteps(
+	outerRoot: string,
+	folder: string,
+	url: string,
+	write: (s: string) => void,
+): Promise<void> {
+	write("finish the graduation later, from the outer repo root:\n");
+	const steps = [
+		`cd ${folder}`,
+		`git remote add origin ${url}`,
+		"git push -u origin main",
+		"cd ..",
+	];
+	if (await isTracked(outerRoot, folder)) {
+		steps.push(`git rm -r --cached ${folder}`);
+	}
+	steps.push(`git submodule add ${url} ${folder}`);
+	for (const step of steps) write(`${step}\n`);
+}
+
+/** Does the outer repo's history track anything under the folder? */
+async function isTracked(outerRoot: string, folder: string): Promise<boolean> {
+	try {
+		return (await logCommits(outerRoot, ["--oneline", "--", folder])) !== "";
+	} catch {
+		return false; // no commits yet / not a repo – nothing tracked
+	}
+}
+
+function readGitignore(root: string): string {
+	try {
+		return readFileSync(join(root, ".gitignore"), "utf8");
+	} catch {
+		return ""; // absent – same as empty for both callers
+	}
+}
+
+/** A prior skip left `folder/` ignored – it would hide the submodule. */
+function removeIgnoredLine(
+	outerRoot: string,
+	folder: string,
+	write: (s: string) => void,
+): void {
+	const text = readGitignore(outerRoot);
+	const lines = text.split(/\r?\n/);
+	const kept = lines.filter((l) => l !== folder && l !== `${folder}/`);
+	if (kept.length === lines.length) return;
+	writeFileSync(join(outerRoot, ".gitignore"), kept.join("\n"));
+	write(`removed ${folder}/ from .gitignore\n`);
 }
 
 /**
@@ -213,6 +459,31 @@ export function listenLines(
 	return lines;
 }
 
+/**
+ * #16 wrong-root redirect, shared by `serve` and the agent namespace: the
+ * command ran from the OUTER repo of a nested docs setup – no `.fragmt.json`
+ * at the root, but exactly one first-level directory has one. Zero or
+ * several candidates keep today's error. Returns the message to fail with,
+ * or null when the classic error should stand.
+ */
+export function nestedDocsRedirect(repoRoot: string): string | null {
+	if (existsSync(configPath(repoRoot))) return null;
+	let candidates: string[];
+	try {
+		candidates = readdirSync(repoRoot, { withFileTypes: true })
+			.filter(
+				(d) =>
+					d.isDirectory() && existsSync(join(repoRoot, d.name, ".fragmt.json")),
+			)
+			.map((d) => d.name);
+	} catch {
+		return null;
+	}
+	if (candidates.length !== 1) return null;
+	const dir = candidates[0];
+	return `docs live in the nested fragmt repo at ${dir}/\n  run from there:  cd ${dir} && fragmt <command>`;
+}
+
 async function runServe(
 	portFlag: string | undefined,
 	authFlag: boolean,
@@ -230,7 +501,8 @@ async function runServe(
 	try {
 		docsRoot = loadConfig(repoRoot).docsRoot;
 	} catch (e) {
-		fail((e as Error).message);
+		// #16: run from the outer repo of a nested setup – point at the folder.
+		fail(nestedDocsRedirect(repoRoot) ?? (e as Error).message);
 	}
 
 	const clientId = process.env.GH_CLIENT_ID;

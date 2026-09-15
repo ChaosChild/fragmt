@@ -14,6 +14,7 @@ import {
 	setResolved,
 	startDraft,
 } from "../core/index.js";
+import { nestedDocsRedirect } from "./index.js";
 
 // The agent front door (M4-4 b4): a thin AXI-conformant shell over the same
 // core functions the UI rides. TOON rows (`name[fields]:` headers, comma
@@ -354,6 +355,14 @@ export async function runAgent(
 		if (verb === "comment") return await runComment(repoRoot, parsed, out);
 		return await runDraft(repoRoot, docsRoot, parsed, out);
 	} catch (e) {
+		// #16: run from the outer repo of a nested setup – the shared redirect
+		// (serve's fail() twin) instead of the bare "not initialized". Only the
+		// missing-config case can land here; the helper nulls out otherwise.
+		const redirect = nestedDocsRedirect(repoRoot);
+		if (redirect) {
+			out(`error: ${redirect}`);
+			return 1;
+		}
 		out(`error: ${humanError(e)}`);
 		return 1;
 	}
