@@ -82,10 +82,37 @@ Or globally: `npm i -g fragmt`, then `fragmt init` and `fragmt serve`.
 
 `init` must run inside a git clone. It never overwrites an existing config – a
 second run prints `already initialized` and exits 0. Scope it to a subfolder
-with `fragmt init --root docs`.
+with `fragmt init --root docs`. Or give the docs a repo of their own, nested
+inside a code repo – see [Docs in a code repo](#docs-in-a-code-repo).
 
 > **Platforms:** tested on Windows. Linux and macOS verification is in progress
 > – reports from those platforms are welcome.
+
+## Docs in a code repo
+
+When the docs belong to a code repository, mixing docs commits into code
+history gets old fast: separate PRs, tangled diffs, agents wading through it
+all. fragmt can give the docs folder a git repo of its own, nested inside the
+working tree:
+
+```sh
+fragmt init --folder docs --new   # docs/ becomes its own git repo
+fragmt serve                      # run from docs/ – the outer repo is untouched
+```
+
+The folder is created if missing, and markdown already sitting there rides the
+nested repo's initial commit – the outer repo's own history is left alone.
+After creation, `init` offers to wire up an origin: paste a fresh GitHub or
+GitLab URL and fragmt pushes the docs repo and stages it as a **submodule** in
+the outer repo, so the host renders `docs/` as a linked folder and teammates
+get everything with `git clone --recursive`. Skip the prompt and fragmt writes
+a `.gitignore` entry instead and prints the exact commands for later – a
+re-run of `init` offers the wiring again.
+
+An `AGENTS.md` lands at **both** roots: the outer one tells coding agents the
+docs live in the nested repo; the inner one carries the usual fragmt rules.
+Running `serve` or `agent` from the outer root simply points you at the
+folder.
 
 ## CLI
 

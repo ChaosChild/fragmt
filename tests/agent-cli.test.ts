@@ -1,5 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -11,7 +18,7 @@ import {
 	threadsLines,
 	truncateBody,
 } from "../src/cli/agent.js";
-import { runInit, usage } from "../src/cli/index.js";
+import { nestedDocsRedirect, runInit, usage } from "../src/cli/index.js";
 import {
 	addThread,
 	type CommentThread,
@@ -642,4 +649,219 @@ test("init re-run: already initialized still prints the notice, minus mapped ent
 	expect(r.out).toContain("stray@work.dev");
 	expect(r.out).not.toContain("mapped@work.dev");
 	expect(r.out).not.toContain("users.noreply.github.com");
+});
+
+// --- init --folder: the #16 nested docs repo ----------------------------------
+
+/** A local bare repo standing in for the docs origin – never the network.
+ *  Forward slashes: the URL lands in .gitmodules, where a backslash escapes. */
+function bareOrigin(): string {
+	const root = mkdtempSync(join(tmpdir(), "fragmt-bare-"));
+	run(root, ["init", "-q", "--bare", "-b", "main"]);
+	dirs.push(root);
+	return root.split("\\").join("/");
+}
+
+/** runInit on the nested path with writer and ask injected. */
+async function nestedInit(
+	root: string,
+	folder: string,
+	ask: () => Promise<string>,
+	createNew = true,
+): Promise<{ code: number; out: string }> {
+	let out = "";
+	const code = await runInit(
+		undefined,
+		root,
+		(s) => {
+			out += s;
+		},
+		{ folder, new: createNew, ask },
+	);
+	return { code, out };
+}
+
+/** Every instruction step stands on its own output line. */
+const ownLine = (out: string, step: string) =>
+	expect(out).toContain(`\n${step}\n`);
+
+test("usage advertises the nested init flags", () => {
+	expect(usage).toContain(
+		"fragmt init [--root <path>] [--folder <name>] [--new]",
+	);
+});
+
+test("nested init, fresh folder: nested repo, both AGENTS blocks, skip graduation", async () => {
+	const root = repo();
+	const r = await nestedInit(root, "docs", async () => "");
+	expect(r.code).toBe(0);
+	expect(r.out).toContain(
+		"Initialized fragmt\n  docs root: docs (nested repo)\n  0 markdown files",
+	);
+	// The folder became its own repo with the identity-proof initial commit.
+	const nested = join(root, "docs");
+	expect(run(nested, ["log", "--oneline"])).toContain(
+		"Adopt docs into nested fragmt repo",
+	);
+	// The outer AGENTS.md redirects to the folder; the inner one is standard.
+	expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain(
+		"docs live in the nested repo at docs/",
+	);
+	expect(readFileSync(join(nested, "AGENTS.md"), "utf8")).toContain(
+		"## fragmt – docs environment for this repo",
+	);
+});
+
+test("nested init on existing markdown: files ride the initial commit", async () => {
+	const root = repo();
+	write(root, "docs/a.md", "# a\n");
+	write(root, "docs/b.md", "# b\n");
+	commit(root, "seed docs");
+
+	const r = await nestedInit(root, "docs", async () => "");
+	expect(r.code).toBe(0);
+	expect(r.out).toContain("2 markdown files");
+	expect(
+		run(join(root, "docs"), ["show", "--name-only", "--format=", "HEAD"]),
+	).toContain("a.md");
+	// Skipping keeps the outer repo's tracking alone – untracking is the
+	// graduation's business, and it never ran.
+	expect(run(root, ["ls-files", "docs"])).toContain("docs/a.md");
+});
+
+test("skip path: .gitignore entry + one-step-per-line instructions", async () => {
+	const root = repo();
+	write(root, "docs/a.md", "# a\n");
+	commit(root, "seed docs"); // tracked fixture
+
+	const r = await nestedInit(root, "docs", async () => "");
+	expect(r.code).toBe(0);
+	expect(r.out).toContain("added docs/ to .gitignore");
+	expect(readFileSync(join(root, ".gitignore"), "utf8")).toBe("docs/\n");
+	// Real folder, placeholder URL, rm --cached present (tracked fixture)…
+	for (const step of [
+		"cd docs",
+		"git remote add origin <url>",
+		"git push -u origin main",
+		"cd ..",
+		"git rm -r --cached docs",
+		"git submodule add <url> docs",
+	]) {
+		ownLine(r.out, step);
+	}
+
+	// …and absent on an untracked fixture (fresh folder, no outer commit).
+	const untracked = repo();
+	const u = await nestedInit(untracked, "docs", async () => "");
+	expect(u.out).toContain("git submodule add <url> docs");
+	expect(u.out).not.toContain("rm -r --cached");
+});
+
+test("graduation with a URL: origin, push, untrack, submodule signal staged", async () => {
+	const root = repo();
+	write(root, "docs/a.md", "# a\n");
+	commit(root, "seed docs");
+	const url = bareOrigin();
+
+	const r = await nestedInit(root, "docs", async () => url);
+	expect(r.code).toBe(0);
+	for (const line of [
+		"origin set in docs",
+		"pushed main to origin",
+		"untracked docs from the outer repo",
+		"staged docs as a submodule",
+		"staged in the outer repo — review and commit:",
+	]) {
+		expect(r.out).toContain(line);
+	}
+	const nested = join(root, "docs");
+	expect(run(nested, ["remote", "get-url", "origin"])).toBe(url);
+	// The origin received main…
+	expect(run(url, ["rev-parse", "--verify", "main"])).not.toBe("");
+	// …and the outer repo staged gitlink + .gitmodules, untracked the files.
+	expect(run(root, ["diff", "--cached", "--name-only"]).split("\n")).toEqual(
+		expect.arrayContaining([".gitmodules", "docs"]),
+	);
+	expect(readFileSync(join(root, ".gitmodules"), "utf8")).toContain(
+		"path = docs",
+	);
+	expect(run(root, ["ls-files", "docs"])).toBe("docs"); // gitlink only
+	expect(existsSync(join(nested, "a.md"))).toBe(true); // files stay on disk
+});
+
+test("graduation with an unreachable origin: honest error, steps fallback", async () => {
+	const root = repo();
+	write(root, "docs/a.md", "# a\n");
+	commit(root, "seed docs");
+	const bad = join(tmpdir(), "fragmt-no-such-origin").split("\\").join("/");
+
+	const r = await nestedInit(root, "docs", async () => bad);
+	expect(r.code).toBe(0); // the offer failed, not the command
+	expect(r.out).toContain("push failed:");
+	// The printed steps carry the URL the operator gave.
+	expect(r.out).toContain(`git remote add origin ${bad}`);
+	ownLine(r.out, `git submodule add ${bad} docs`);
+	// The remote was still set on the nested repo; nothing staged outside.
+	expect(run(join(root, "docs"), ["remote", "get-url", "origin"])).toContain(
+		"fragmt-no-such-origin",
+	);
+	expect(run(root, ["diff", "--cached", "--name-only"])).toBe("");
+});
+
+test("re-run after a skip: already initialized + the graduation re-offered", async () => {
+	const root = repo();
+	write(root, "docs/a.md", "# a\n");
+	await nestedInit(root, "docs", async () => "");
+
+	// The spec's re-run form: --folder without --new still detects the nest.
+	const r = await nestedInit(root, "docs", async () => "", false);
+	expect(r.code).toBe(0);
+	expect(r.out.split("\n")[0]).toBe("already initialized");
+	expect(r.out).toContain("Add a remote for the docs repo now?");
+	// The second skip does not duplicate the ignore line.
+	expect(readFileSync(join(root, ".gitignore"), "utf8")).toBe("docs/\n");
+});
+
+test("nestedDocsRedirect: exactly one nested candidate resolves, else null", async () => {
+	// The serve/agent wrong-root seam (serve can't run headlessly; the helper
+	// is exactly what both error paths call).
+	const graduated = repo();
+	write(graduated, "docs/a.md", "# a\n");
+	await nestedInit(graduated, "docs", async () => bareOrigin());
+	expect(nestedDocsRedirect(graduated, "serve")).toBe(
+		"docs live in the nested fragmt repo at docs/\n  run from there:  cd docs && fragmt serve",
+	);
+
+	const skipped = repo();
+	write(skipped, "docs/a.md", "# a\n");
+	await nestedInit(skipped, "docs", async () => "");
+	expect(nestedDocsRedirect(skipped, "agent")).toMatch(
+		/docs live in the nested fragmt repo at docs\//,
+	);
+	expect(nestedDocsRedirect(skipped, "agent")).toMatch(
+		/cd docs && fragmt agent/,
+	);
+
+	expect(nestedDocsRedirect(repo(), "serve")).toBeNull(); // no candidate at all
+
+	const two = repo(); // ambiguous: two candidates
+	for (const f of ["docs-a", "docs-b"]) {
+		write(two, `${f}/a.md`, "# a\n");
+		await nestedInit(two, f, async () => "");
+	}
+	expect(nestedDocsRedirect(two, "serve")).toBeNull();
+
+	expect(nestedDocsRedirect(seeded(), "serve")).toBeNull(); // config at the root
+});
+
+test("agent from the outer root: the redirect error names the folder", async () => {
+	const root = repo();
+	write(root, "docs/a.md", "# a\n");
+	await nestedInit(root, "docs", async () => "");
+
+	const r = await agent(root, ["status"]);
+	expect(r.code).toBe(1);
+	const out = r.out.join("\n");
+	expect(out).toContain("error: docs live in the nested fragmt repo at docs/");
+	expect(out).toContain("cd docs && fragmt");
 });

@@ -85,6 +85,40 @@ never sign in here (plain local git commits) need an **authors map** in
 path, so filling in the map is a two-minute fix. The map is cosmetic only –
 access control is always collaborator permissions.
 
+## Nested docs repos
+
+`fragmt init --folder docs --new` creates a docs repo with its own history
+inside the code repo. The folder is created if missing, existing markdown
+rides the initial commit, and the outer repo's old docs commits stay in its
+history.
+
+When the docs repo needs its own remote, init offers the graduation:
+
+```sh
+cd docs
+git remote add origin <your docs repo URL>
+git push -u origin main
+cd ..
+# only if docs/ was previously tracked in the outer repo – untracks it, the files stay on disk
+git rm -r --cached docs
+# records the gitlink and .gitmodules in the outer repo – review and commit
+git submodule add <url> docs
+```
+
+Push the inner repo first – the gitlink must point at a commit that exists
+on the remote, or clones of the outer repo break.
+
+On the host, GitHub and GitLab render the submodule as a linked folder
+(@sha → the docs repo); teammates use `git clone --recursive`.
+
+Skipping the prompt writes a `.gitignore` entry instead – zero host signal,
+an interim state; a later `fragmt init` re-run re-offers the graduation.
+
+From the code repo root, `serve` and `agent` point you at the nested repo
+(`cd docs`) – they never operate on the outer repo.
+
+`.gitmodules` supports relative URLs for same-org hosting.
+
 ## TLS
 
 fragmt speaks plain HTTP only. Terminate TLS in front of it and keep

@@ -18,16 +18,24 @@ Rules for agents:
 `;
 
 /**
- * Write/refresh the managed block in the repo root's AGENTS.md: no file →
- * create it holding only the block; file without the markers → append the
- * block after a blank line; markers present → replace exactly between them
- * (a re-run of `fragmt init` refreshes to the current copy). NOTHING
- * outside the markers is ever touched – the rest of the file belongs to
- * the repo.
+ * The outer repo's redirect block (#16): same fences as the standard block,
+ * so re-running the nested-init (or a later copy bump) replaces in place.
  */
-export function writeAgentsBlock(repoRoot: string): void {
-	const file = join(repoRoot, "AGENTS.md");
-	const block = `${AGENTS_BEGIN}\n${AGENTS_BODY}${AGENTS_END}`;
+export function AGENTS_OUTER_BODY(folder: string): string {
+	return `## fragmt – docs live in the nested repo at ${folder}/
+Do NOT edit docs in this repo. \`cd ${folder}\` and follow the AGENTS.md there; fragmt commands run from that root.
+`;
+}
+
+/**
+ * Shared marker-splice (b5 discipline): write/refresh a managed block in an
+ * AGENTS.md. No file → create it holding only the block; file without the
+ * markers → append the block after a blank line; markers present → replace
+ * exactly between them. NOTHING outside the markers is ever touched – the
+ * rest of the file belongs to the repo.
+ */
+function spliceBlock(file: string, body: string): void {
+	const block = `${AGENTS_BEGIN}\n${body}${AGENTS_END}`;
 	if (!existsSync(file)) {
 		writeFileSync(file, `${block}\n`);
 		return;
@@ -44,4 +52,20 @@ export function writeAgentsBlock(repoRoot: string): void {
 	}
 	const base = text.endsWith("\n") ? text : `${text}\n`;
 	writeFileSync(file, `${base}\n${block}\n`);
+}
+
+/**
+ * Write/refresh the standard managed block in the repo root's AGENTS.md (a
+ * re-run of `fragmt init` refreshes to the current copy).
+ */
+export function writeAgentsBlock(repoRoot: string): void {
+	spliceBlock(join(repoRoot, "AGENTS.md"), AGENTS_BODY);
+}
+
+/**
+ * Write/refresh the outer repo's redirect block (#16): the nested-init's
+ * second call – replaces the standard block the plain init left there.
+ */
+export function writeOuterAgentsBlock(outerRoot: string, folder: string): void {
+	spliceBlock(join(outerRoot, "AGENTS.md"), AGENTS_OUTER_BODY(folder));
 }
