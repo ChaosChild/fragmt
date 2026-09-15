@@ -7,7 +7,13 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import type { DeletedDoc, DocMeta, RepoMeta, TreeNode } from "./api";
+import type {
+	DeletedDoc,
+	DocMeta,
+	OkfFinding,
+	RepoMeta,
+	TreeNode,
+} from "./api";
 import { displayTitle } from "./display";
 import {
 	basename,
@@ -422,11 +428,39 @@ function withGhosts(tree: TreeNode, ghosts: Map<string, string>): TreeNode {
 	return root;
 }
 
+/**
+ * The OKF conformance banner (#21, D5): one compact warn line above the doc
+ * list, expanding to the path + clause findings. Server-computed data only,
+ * native details/summary for the expand (keyboard-free a11y); a conformant
+ * repo never mounts it (App hands null/[]).
+ */
+function OkfBanner({ findings }: { findings: OkfFinding[] }) {
+	const docs = new Set(findings.map((f) => f.path)).size;
+	return (
+		<details className="okf-banner">
+			<summary>
+				{docs} {docs === 1 ? "doc" : "docs"} non-conformant
+				<span className="count">{findings.length}</span>
+			</summary>
+			<ul className="okf-findings">
+				{findings.map((f) => (
+					// The full clause sentence rides the row as its title.
+					<li key={`${f.path}:${f.clause}`} title={f.detail}>
+						<span className="okf-path">{f.path}</span>
+						<span className="okf-clause">{f.clause}</span>
+					</li>
+				))}
+			</ul>
+		</details>
+	);
+}
+
 export function Sidebar({
 	tree,
 	selected,
 	onSelect,
 	meta,
+	okfFindings,
 	expandFolder,
 	onOpenGhost,
 	onRestore,
@@ -437,6 +471,9 @@ export function Sidebar({
 	selected: string | null;
 	onSelect: (path: string) => void;
 	meta: RepoMeta | null;
+	/** OKF findings (#21) – the banner above the doc list; null/[] hides it
+	 *  (non-OKF repos and conformant ones alike). */
+	okfFindings: OkfFinding[] | null;
 	/** A folder-link click's expand request (M4-3 b6): the path's ancestors
 	 *  and the folder itself leave the collapsed set – App bumps `n` so a
 	 *  repeat click on the same folder re-arms the effect. */
@@ -522,6 +559,11 @@ export function Sidebar({
 	if (!tree) return null;
 	return (
 		<>
+			{/* The OKF banner (#21): findings only – a conformant repo stays
+			    quiet. Sits above the list, outside its scroll. */}
+			{okfFindings !== null && okfFindings.length > 0 && (
+				<OkfBanner findings={okfFindings} />
+			)}
 			{/* The list's own background/padding is the "/" (docsRoot root)
 			    target (M4-3 b5): folder rows stop their dragovers so row drops
 			    never double-fire as root drops; doc rows bubble – a drop on a

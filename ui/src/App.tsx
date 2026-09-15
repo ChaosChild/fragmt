@@ -20,6 +20,7 @@ import {
 	deleteComment,
 	deleteDoc,
 	deleteFolder,
+	fetchOkfValidate,
 	getBranches,
 	getComments,
 	getDoc,
@@ -28,6 +29,8 @@ import {
 	MergeError,
 	mergeDraft,
 	moveDoc,
+	type OkfFinding,
+	type OkfValidate,
 	patchComment,
 	type RepoMeta,
 	renameFolder,
@@ -149,9 +152,20 @@ export function App() {
 	// switches, file ops, and saves – a failure is quiet (the UI falls back to
 	// version-less cards).
 	const [meta, setMeta] = useState<RepoMeta | null>(null);
+	// OKF (#21): the sidebar banner's findings, fetched on meta's own cadence
+	// (load + every post-save/post-op meta refresh) so the count follows the
+	// repo. Non-OKF repos fetch nothing; a failure is quiet like meta's.
+	const [okfValidate, setOkfValidate] = useState<OkfValidate | null>(null);
 	const refreshMeta = useCallback(() => {
 		getMeta()
-			.then(setMeta)
+			.then((m) => {
+				setMeta(m);
+				if (m.okf)
+					fetchOkfValidate()
+						.then(setOkfValidate)
+						.catch(() => {});
+				else setOkfValidate(null);
+			})
 			.catch(() => {});
 	}, []);
 	// Whether a sync has confirmed the latest local commit – splits the
@@ -1108,6 +1122,14 @@ export function App() {
 	);
 	const newDocBtn = <NewDocButton onFileOp={runFileOp} />;
 
+	// The OKF banner's payload (#21): findings only once an OKF repo's
+	// validate answered; null hides the banner everywhere else. A conformant
+	// repo renders nothing either (findings []) – lazy by spec (D5).
+	const okfFindings: OkfFinding[] | null =
+		meta?.okf === true && okfValidate?.okf === true
+			? (okfValidate.findings ?? [])
+			: null;
+
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
@@ -1199,6 +1221,7 @@ export function App() {
 							selected={selected}
 							onSelect={setSelected}
 							meta={meta}
+							okfFindings={okfFindings}
 							expandFolder={expandFolder}
 							onOpenGhost={(path, branchName) =>
 								void openGhost(path, branchName)
