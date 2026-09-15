@@ -1,7 +1,8 @@
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { writeAgentsBlock } from "./agents.js";
 import { ConfigError, configPath, writeConfig } from "./config.js";
+import { git } from "./git.js";
 import { countDocs, listTree } from "./tree.js";
 
 export interface InitResult {
@@ -42,4 +43,53 @@ export function initRepo(repoRoot: string, docsRoot: string): InitResult {
 		alreadyInitialized: false,
 		count,
 	};
+}
+
+/**
+ * The #16 create path: turn `folder` inside the outer repo into its own
+ * nested fragmt repo – `git init -b main` at the folder (markdown already
+ * there is adopted), `.fragmt.json` with docsRoot ".", the standard AGENTS
+ * block, then one identity-proof commit of everything. The outer repo's
+ * AGENTS.md redirect is the CLI's call (writeOuterAgentsBlock). Unlike
+ * initRepo this spawns git, so it is async.
+ */
+export async function initNestedRepo(
+	outerRoot: string,
+	folder: string,
+): Promise<{ count: number }> {
+	const nestedRoot = resolve(outerRoot, folder);
+	const rel = relative(outerRoot, nestedRoot);
+	if (
+		isAbsolute(folder) ||
+		rel === "" || // the outer root itself – nothing to nest
+		rel.split(sep)[0] === ".." ||
+		isAbsolute(rel) ||
+		(existsSync(nestedRoot) && !statSync(nestedRoot).isDirectory())
+	) {
+		throw new ConfigError(
+			`docs folder "${folder}" is not a folder inside the repo`,
+		);
+	}
+
+	mkdirSync(nestedRoot, { recursive: true });
+	await git(nestedRoot, ["init", "-q", "-b", "main"]);
+	writeConfig(nestedRoot, ".");
+	// Count before the AGENTS.md write – the block is tool-owned, not an
+	// adopted doc (same rule as initRepo; docsRoot "." would count it).
+	const count = countDocs(listTree(nestedRoot, "."));
+	writeAgentsBlock(nestedRoot);
+	// add -A always stages ≥ .fragmt.json + AGENTS.md → the commit can't be
+	// empty, no skip check needed.
+	await git(nestedRoot, ["add", "-A"]);
+	await git(nestedRoot, [
+		"-c",
+		"user.name=fragmt",
+		"-c",
+		"user.email=fragmt@localhost",
+		"commit",
+		"-q",
+		"-m",
+		"Adopt docs into nested fragmt repo",
+	]);
+	return { count };
 }
