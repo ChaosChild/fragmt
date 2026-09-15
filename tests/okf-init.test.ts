@@ -19,6 +19,7 @@ import { afterEach, expect, test } from "vitest";
 import { runInit, runValidate } from "../src/cli/index.js";
 import {
 	configPath,
+	createDoc,
 	loadConfig,
 	validateOkf,
 	writeConfig,
@@ -187,6 +188,28 @@ test("validate --fix reaches a conformant end state in one commit", async () => 
 	expect(readFileSync(join(root, "docs", "a.md"), "utf8")).toBe(
 		'---\ntype: Metric\nreferenced-by: ["notes.md"]\n---\n\n# A\n',
 	);
+});
+
+test("OKF create on a fenceless, link-free body still gets the type block", async () => {
+	const root = repo();
+	writeConfig(root, "docs", true);
+	put(root, "docs/a.md", "---\ntype: Metric\n---\n\n# A\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	await createDoc(root, "docs", "empty.md");
+	await createDoc(root, "docs", "hello.md", "# hello\n");
+
+	// saveWithRefs declines (fenceless + nothing to carry); the create
+	// fallback owes the block either way – the UI's New Doc button sends "".
+	expect(readFileSync(join(root, "docs", "empty.md"), "utf8")).toBe(
+		"---\ntype: concept\n---\n",
+	);
+	expect(readFileSync(join(root, "docs", "hello.md"), "utf8")).toBe(
+		"---\ntype: concept\n---\n# hello\n",
+	);
+	const check = await validateOkf(root, "docs");
+	expect(check.conformant).toBe(true);
 });
 
 test("validate exit codes: 2 with the hint off-mode, 0 when conformant", async () => {

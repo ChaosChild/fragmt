@@ -20,6 +20,7 @@ import {
 import { git } from "./git.js";
 import { localUser } from "./identity.js";
 import {
+	DEFAULT_TYPE,
 	docPaths,
 	extractRefs,
 	generateIndexes,
@@ -135,9 +136,12 @@ export async function createDoc(
 			await docPaths(repoRoot, docsRoot),
 		);
 		// saveWithRefs over the seed body itself: the type block + references.
+		// Its null (fenceless + nothing to carry) is a save-path contract; a
+		// create still owes the type block, so the fallback is not `normalized`.
 		writeFileSync(
 			abs,
-			saveWithRefs(normalized, targets, normalized) ?? normalized,
+			saveWithRefs(normalized, targets, normalized) ??
+				`---\ntype: ${DEFAULT_TYPE}\n---\n${normalized}`,
 		);
 		for (const p of await propagateRefs(
 			repoRoot,
