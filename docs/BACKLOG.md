@@ -6,8 +6,6 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 
 ### v1.x – polish & workflow (roadmap round, 2026-08-21)
 
-- Nested docs repo – create path, interactive origin graduation with submodule signal, AGENTS.md at both roots – #16
-
 ### Post-v1 – collaboration first, then the OKF era (order locked 2026-08-21)
 
 - Multi-user auth foundation – **leads** – #20 (PR wiring split to #27, 2026-09-01 round-2 Lavish review)
@@ -33,4 +31,5 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 - Search #14 → shipped 2026-08-26 in the first backlog-driven round (`feat/search-slideout` → v0.6.0): server-side flat scan behind `GET /api/search`, Ctrl/Cmd+K palette opening through the navigation queue; spec in [milestones/search-and-link-slideout.md](milestones/search-and-link-slideout.md).
 - Link slideout #15 → same round: the comment rail became a two-mode slideout (comments + read-only preview) with the collapse chrome, promote-to-editor, and the Escape-chain slot; spec in [milestones/search-and-link-slideout.md](milestones/search-and-link-slideout.md).
 - Draft change visibility #18 → shipped 2026-09-01 in backlog round 2 (`feat/draft-gutter-multiuser` → 0.7.0 candidate): one `git diff main..HEAD -U0` spawn behind `GET /api/draft-diff`, a pure blank-line/fence-aware block mapping with a correct-or-absent guard, amber bars on the touched blocks in read and edit mode; spec in [milestones/draft-change-visibility.md](milestones/draft-change-visibility.md).
-- Avatar resolution #30 → shipped 2026-09-15 in `feat/avatar-resolution` → v0.8.0 candidate: verified-email cache for signed-in users, authors-map notice for local mode; the avatar gap described is closed both ways.
+- Avatar resolution #30 → shipped 2026-09-15 in `feat/avatar-resolution` → v0.8.0: verified-email cache for signed-in users, authors-map notice for local mode; the avatar gap described is closed both ways.
+- Nested docs repo #16 → shipped 2026-09-15 in `feat/nested-docs-repo` → v0.8.0: init --folder --new create path (folder created if missing, existing markdown into the initial commit), ask-and-wait origin graduation staging gitlink + .gitmodules (tracked-folder migration included), AGENTS.md at both roots, wrong-root redirect for serve/agent; the OKF subdirectory shape #21 composes on.
