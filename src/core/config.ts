@@ -7,6 +7,8 @@ export interface Config {
 	authors?: Record<string, string>;
 	/** Agent display names (the UI agent chip); absent when not configured. */
 	agents?: string[];
+	/** OKF mode (open-knowledge-format v0.2). Absent ⇒ legacy behavior. */
+	okf?: boolean;
 }
 
 /** Repo-level config file (always at the git repo root). */
@@ -76,11 +78,34 @@ export function loadConfig(repoRoot: string): Config {
 			(a): a is string => typeof a === "string" && a !== "",
 		);
 	}
+	// okf: optional mode flag. Absent (or non-boolean) ⇒ undefined ⇒ legacy.
+	if ((parsed as Record<string, unknown>).okf === true) config.okf = true;
 	return config;
 }
 
-/** Write a fresh config. `order` is reserved, always `{}` in v1. */
-export function writeConfig(repoRoot: string, docsRoot: string): void {
-	const body = `${JSON.stringify({ docsRoot, order: {} }, null, "\t")}\n`;
+/** Write a fresh config. `order` is reserved, always `{}` in v1. `okf`
+ *  emits the flag only when true – every other repo keeps today's bytes. */
+export function writeConfig(
+	repoRoot: string,
+	docsRoot: string,
+	okf = false,
+): void {
+	const body = `${JSON.stringify(
+		okf ? { docsRoot, order: {}, okf: true } : { docsRoot, order: {} },
+		null,
+		"\t",
+	)}\n`;
 	writeFileSync(configPath(repoRoot), body);
+}
+
+/** Flip OKF mode ON in an existing config (D1): rewrite the raw JSON with
+ *  `okf: true` so authors/agents and any other keys survive untouched. */
+export function enableOkf(repoRoot: string): void {
+	const file = configPath(repoRoot);
+	const parsed = JSON.parse(readFileSync(file, "utf8")) as Record<
+		string,
+		unknown
+	>;
+	parsed.okf = true;
+	writeFileSync(file, `${JSON.stringify(parsed, null, "\t")}\n`);
 }
