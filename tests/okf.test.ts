@@ -274,28 +274,32 @@ function gitOut(r: string, args: string[]): string {
 	return execFileSync("git", args, { cwd: r, encoding: "utf8" }).trim();
 }
 
-test("fixOkf: prepends the block, forces type in place, leaves the conformant untouched – one commit", async () => {
+test("fixOkf: prepends the block, forces type in place, materializes absent status – one commit", async () => {
 	const r = gitRepo();
 	const put = (rel: string, text: string) => writeFileSync(join(r, rel), text);
 	put("a.md", "content a\n");
 	put("b.md", "---\nauthor: x\n---\n\n# B\n");
-	const conformantBytes =
-		"---\ntype:  Playbook\ntags:   [a, b]\n---\n\n# C\n\nkept: as-is\n";
-	put("c.md", conformantBytes);
+	put(
+		"c.md",
+		"---\ntype:  Playbook\ntags:   [a, b]\n---\n\n# C\n\nkept: as-is\n",
+	);
 	gitOut(r, ["add", "-A"]);
 	gitOut(r, ["commit", "-q", "-m", "seed"]);
 
 	const { sha, files } = await fixOkf(r, ".");
 
-	expect(files.sort()).toEqual(["a.md", "b.md", "index.md"].sort());
+	expect(files.sort()).toEqual(["a.md", "b.md", "c.md", "index.md"].sort());
 	expect(readFileSync(join(r, "a.md"), "utf8")).toBe(
-		"---\ntype: concept\n---\ncontent a\n",
+		'---\ntype: concept\nstatus: "draft"\n---\ncontent a\n',
 	);
 	expect(readFileSync(join(r, "b.md"), "utf8")).toBe(
-		'---\nauthor: x\ntype: "concept"\n---\n\n# B\n',
+		'---\nauthor: x\ntype: "concept"\nstatus: "draft"\n---\n\n# B\n',
 	);
-	// Non-canonical but conformant YAML keeps its bytes verbatim.
-	expect(readFileSync(join(r, "c.md"), "utf8")).toBe(conformantBytes);
+	// Non-canonical but conformant YAML keeps its bytes verbatim – A3's
+	// status line appends at the fence end, nothing else is touched.
+	expect(readFileSync(join(r, "c.md"), "utf8")).toBe(
+		'---\ntype:  Playbook\ntags:   [a, b]\nstatus: "draft"\n---\n\n# C\n\nkept: as-is\n',
+	);
 	expect(gitOut(r, ["log", "-1", "--format=%s"])).toBe(
 		"OKF: apply conformance fixes",
 	);

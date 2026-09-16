@@ -163,10 +163,9 @@ test("POST /api/docs with a reserved path in OKF mode → 400, nothing written",
 
 // --- the OKF create commit ----------------------------------------------------
 
-// ponytail: the seed body links a.md so the type block rides the create –
-// core's saveWithRefs skips frontmatter on a fenceless, link-free seed
-// (probe-verified), a gap against the milestone's "every NEW doc" that
-// belongs to the core slice, reported in the round notes.
+// ponytail: the seed body links a.md so the references ride the create; the
+// pre-fenced seed (type + A3's status: "draft") keeps the block even on a
+// link-free body (the 3646d18 gap, closed by pre-fencing).
 test("POST /api/docs in OKF mode: type block + references on the file, index.md in the commit", async () => {
 	writeConfig(true);
 	const res = await api("POST", "/api/docs", {
@@ -178,7 +177,7 @@ test("POST /api/docs in OKF mode: type block + references on the file, index.md 
 	expect(sha).toBe(gitOut(["rev-parse", "HEAD"])); // one commit, create + all
 	// The user's body rides under the server-side frontmatter verbatim.
 	expect(readFileSync(join(root, "new.md"), "utf8")).toBe(
-		'---\ntype: concept\nreferences: ["a.md"]\n---\n# hello\n\nSee [a](/a.md).\n',
+		'---\ntype: concept\nstatus: "draft"\nreferences: ["a.md"]\n---\n# hello\n\nSee [a](/a.md).\n',
 	);
 	// The generated index (§8) landed in the same commit, both docs listed.
 	const index = gitOut(["show", "HEAD:index.md"]);

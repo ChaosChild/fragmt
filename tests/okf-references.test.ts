@@ -251,10 +251,10 @@ test("fixOkf populates both fields across the repo in its single pass", async ()
 	await fixOkf(root, ".");
 
 	expect(readFileSync(join(root, "a.md"), "utf8")).toBe(
-		'---\ntype: concept\nreferences: ["b.md", "sub/c.md"]\n---\n# A\n\nSee [B](/b.md) and [C](/sub/c.md).\n',
+		'---\ntype: concept\nstatus: "draft"\nreferences: ["b.md", "sub/c.md"]\n---\n# A\n\nSee [B](/b.md) and [C](/sub/c.md).\n',
 	);
 	expect(readFileSync(join(root, "b.md"), "utf8")).toBe(
-		'---\ntype: concept\nreferenced-by: ["a.md"]\n---\n# B\n',
+		'---\ntype: concept\nstatus: "draft"\nreferenced-by: ["a.md"]\n---\n# B\n',
 	);
 	const c = readDoc(root, ".", "sub/c.md");
 	expect(c.frontmatter["referenced-by"]).toEqual(["a.md"]);

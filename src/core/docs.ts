@@ -5,12 +5,15 @@ import matter from "gray-matter";
 import { commitAs } from "./commit.js";
 import { localUser } from "./identity.js";
 import {
+	actorOf,
+	appendVerified,
 	docPaths,
 	extractRefs,
 	okfEnabled,
 	propagateRefs,
 	refsList,
 	saveWithRefs,
+	stampGenerated,
 } from "./okf.js";
 
 export class DocPathError extends Error {}
@@ -165,7 +168,12 @@ export async function prepareDocWrite(
  * symmetric difference into the changed targets' `referenced-by` lists
  * BEFORE any byte hits disk (a stale target aborts the whole batch,
  * StaleDocError → 409): one commit, 1 + |symmetric difference| files.
- * `user` (serve --auth) overrides the commit author; omitted → localUser().
+ * Rung 4 rides on the same commit: the `generated` stamp is rewritten first
+ * (§5.2, `opts.actor` verbatim or the committing identity as
+ * `human:<email-local-part>`), plus a `verified` event when `opts.verified`
+ * – a fence-less doc gains its fence here, or the save would lose the
+ * stamp. `user` (serve --auth) overrides the commit author; omitted →
+ * localUser(). Non-OKF saves ignore `opts` entirely.
  */
 export async function writeDoc(
 	repoRoot: string,
@@ -174,6 +182,7 @@ export async function writeDoc(
 	body: string,
 	baseHash: string,
 	user?: { name: string; email: string },
+	opts: { verified?: boolean; actor?: string } = {},
 ): Promise<{ sha: string; hash: string }> {
 	const {
 		abs,
@@ -186,8 +195,13 @@ export async function writeDoc(
 		// The previous references list comes from the doc's own frontmatter,
 		// read pre-write; the new list derives from the incoming body.
 		const text = readFileSync(abs, "utf8");
+		const actor = opts.actor ?? actorOf(who);
+		const stamped = stampGenerated(text, actor) ?? text;
+		const withEvent = opts.verified
+			? (appendVerified(stamped, actor) ?? stamped)
+			: stamped;
 		const prev = refsList(
-			(matter(text, {}).data as Record<string, unknown>).references,
+			(matter(withEvent, {}).data as Record<string, unknown>).references,
 		);
 		const next = extractRefs(
 			normalized,
@@ -201,7 +215,10 @@ export async function writeDoc(
 			prev,
 			next,
 		);
-		writeFileSync(abs, saveWithRefs(text, next, normalized) ?? raw(normalized));
+		writeFileSync(
+			abs,
+			saveWithRefs(withEvent, next, normalized) ?? raw(normalized),
+		);
 		const sha = await commitAs(
 			who,
 			{
@@ -219,6 +236,38 @@ export async function writeDoc(
 		repoRoot,
 	);
 	return { sha, hash: docHash(normalized) };
+}
+
+/**
+ * Rung 4's standalone Verify affordance (A1): append the committing
+ * identity's verified event (§5.2) in one commit, `Verify <docPath>` – the
+ * append-only twin of writeDoc's `verified` flag. `generated` is untouched
+ * (the spec keeps them independent: content may change without
+ * re-confirmation and vice versa). `user` (serve --auth) overrides the
+ * commit author AND the event's `human:` actor; omitted → localUser().
+ */
+export async function verifyDoc(
+	repoRoot: string,
+	docsRoot: string,
+	docPath: string,
+	user?: { name: string; email: string },
+): Promise<{ sha: string }> {
+	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		throw new DocNotFoundError(docPath);
+	}
+	const who = user ?? (await localUser(repoRoot));
+	const next = appendVerified(readFileSync(abs, "utf8"), actorOf(who));
+	if (next !== null) writeFileSync(abs, next);
+	const sha = await commitAs(
+		who,
+		{
+			files: [relative(repoRoot, abs).split(sep).join("/")],
+			message: `Verify ${docPath}`,
+		},
+		repoRoot,
+	);
+	return { sha };
 }
 
 /**

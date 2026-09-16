@@ -22,6 +22,14 @@ export const RESERVED_NAMES = ["index.md", "log.md"];
  *  conformant (consumers MUST tolerate unknown types) – a generic default
  *  costs nothing. */
 export const DEFAULT_TYPE = "concept";
+/** A2: `status` is OKF's one closed vocabulary – everything else tolerates
+ *  unknown values, this key is enum-only (the UI edits it with a select,
+ *  the seam rejects anything else before a byte is written). */
+export const STATUS_VALUES = ["draft", "stable", "deprecated"] as const;
+
+/** A frontmatter edit failed validation at the seam (a `status` outside the
+ *  enum) – the server maps this to 400; nothing is ever spliced. */
+export class OkfFieldError extends Error {}
 
 /** Is this path's basename one of the reserved filenames? */
 export function isReservedBase(path: string): boolean {
@@ -278,27 +286,27 @@ export function refsList(value: unknown): string[] {
 		: [];
 }
 
-/** A YAML string-array line: `references: ["a.md", "b.md"]` – each item
+/** A YAML string-array line for any list key: `tags: ["a", "b"]` – each item
  *  JSON-stringified (a valid YAML double-quoted scalar, the setTitle trick)
- *  so paths with colons or quotes round-trip. */
-function listLine(
-	key: "references" | "referenced-by",
-	targets: string[],
-): string {
+ *  so values with colons or quotes round-trip. */
+function listLine(key: string, targets: string[]): string {
 	return `${key}: [${targets.map((t) => JSON.stringify(t)).join(", ")}]`;
 }
 
 /** setTitle's editTitleLine, generalized: replace the top-level `<key>:`
- *  line in place, append at the fence's end when absent, remove on null. */
+ *  line in place, append at the fence's end when absent, remove on null. A
+ *  replaced or removed key also consumes its indented continuation lines –
+ *  a hand-written block-form value (`verified:` over `  - …` items, §5.2's
+ *  canonical shape) must not leave orphans after the fence. */
 function replaceLine(raw: string, key: string, line: string | null): string {
 	const lines = raw.split("\n");
 	const at = lines.findIndex((l) => l.startsWith(`${key}:`));
 	if (at === -1) {
 		if (line !== null) lines.push(line);
-	} else if (line === null) {
-		lines.splice(at, 1);
 	} else {
-		lines[at] = line;
+		let end = at + 1;
+		while (end < lines.length && /^[ \t]/.test(lines[end])) end++;
+		lines.splice(at, end - at, ...(line === null ? [] : [line]));
 	}
 	return lines.join("\n");
 }
@@ -361,6 +369,189 @@ export function spliceDocFields(
 	for (const f of fields) raw = replaceLine(raw, f.key, f.line);
 	const next = `---${raw}\n---\n${gap}${canonicalBody(parsed.content)}`;
 	return next === text ? null : next;
+}
+
+/** One metadata-editor edit: `value` writes a scalar key, `list` a
+ *  string-list key (tags). null (or an empty string/list) REMOVES the key –
+ *  cleared fields are omitted, the updateRefsField rule. */
+export interface FrontmatterEdit {
+	key: string;
+	/** Scalar form: rendered as `key: <JSON.stringify(value)>`. */
+	value?: string | null;
+	/** List form: rendered as `key: [<JSON.stringify each>]`. */
+	list?: string[] | null;
+}
+
+/**
+ * Rung 3's metadata editor (D2): apply field edits to one doc FILE through
+ * the spliceDocFields discipline – line-spliced, never re-serialized,
+ * unknown keys byte-preserved, fence-less docs gaining a fence with `type`
+ * first. `status` is enum-only (A2): anything outside STATUS_VALUES throws
+ * OkfFieldError at this seam, BEFORE any line is rendered – the server maps
+ * it to 400. Free-text values ride JSON.stringify'd lines, so colons,
+ * quotes, and newlines cannot break the fence. Returns the new text, or
+ * null when nothing changed.
+ */
+export function setFrontmatterKeys(
+	text: string,
+	edits: FrontmatterEdit[],
+): string | null {
+	const fields: FieldUpdate[] = [];
+	for (const e of edits) {
+		if (e.list !== undefined) {
+			if (e.key === "status")
+				throw new OkfFieldError("status is enum-only, not a list");
+			fields.push({
+				key: e.key,
+				line:
+					e.list === null || e.list.length === 0
+						? null
+						: listLine(e.key, e.list),
+			});
+			continue;
+		}
+		if (
+			e.key === "status" &&
+			e.value !== null &&
+			e.value !== undefined &&
+			!(STATUS_VALUES as readonly string[]).includes(e.value)
+		) {
+			throw new OkfFieldError(
+				`status must be one of ${STATUS_VALUES.join(", ")}: ${JSON.stringify(e.value)}`,
+			);
+		}
+		fields.push({
+			key: e.key,
+			line:
+				e.value === null || e.value === undefined || e.value === ""
+					? null
+					: `${e.key}: ${JSON.stringify(e.value)}`,
+		});
+	}
+	return spliceDocFields(text, fields);
+}
+
+/** A §7 actor for the committing identity (D3): the email local-part under
+ *  the `human:` prefix trust classification keys off (§5.3). */
+export function actorOf(who: { name: string; email: string }): string {
+	return `human:${who.email.split("@")[0]}`;
+}
+
+/** D4: the agent CLI's self-declared default – verbatim producer/version,
+ *  never a false `human:` prefix (a machine must not claim human review). */
+export const AGENT_DEFAULT = "fragmt-agent/unspecified";
+
+/** One verification event (§5.2): `by` is the actor, `at` optional because a
+ *  hand-written event may carry any (or a non-string) `at`. */
+interface VerifiedEvent {
+	by: string;
+	at?: string;
+}
+
+function isVerifiedEvent(v: unknown): v is { by: string; at?: unknown } {
+	return (
+		typeof v === "object" &&
+		v !== null &&
+		typeof (v as { by?: unknown }).by === "string"
+	);
+}
+
+/** The `verified` value in event form (§5.2): a list of events, or a bare
+ *  mapping – which consumers MUST read as a one-element list. Anything
+ *  hand-mangled reads as no events (the refsList rule: recompute, never
+ *  throw, never preserve what cannot be rendered). `at` values js-yaml
+ *  handed us as Dates are normalized to ISO strings. */
+export function verifiedEvents(value: unknown): VerifiedEvent[] {
+	const one = (v: unknown): VerifiedEvent | null => {
+		if (!isVerifiedEvent(v)) return null;
+		const at =
+			v.at instanceof Date
+				? v.at.toISOString()
+				: typeof v.at === "string"
+					? v.at
+					: undefined;
+		return { by: v.by, ...(at === undefined ? {} : { at }) };
+	};
+	if (Array.isArray(value))
+		return value.flatMap((v) => {
+			const e = one(v);
+			return e === null ? [] : [e];
+		});
+	const single = one(value);
+	return single === null ? [] : [single];
+}
+
+/**
+ * Rung 4 (§5.2): rewrite the `generated` stamp – ONE flow-mapping line
+ * `{ by: <actor>, at: <ISO UTC> }` – through the spliceDocFields discipline
+ * (replaced in place, appended at the fence end; a fence-less doc gains a
+ * fence with `type` first). The actor string rides JSON.stringify, so a
+ * producer/version containing colons cannot break the fence. Returns the
+ * new text, or null when the stamp would not change a byte.
+ */
+export function stampGenerated(text: string, actor: string): string | null {
+	return spliceDocFields(text, [
+		{
+			key: "generated",
+			line: `generated: { by: ${JSON.stringify(actor)}, at: ${JSON.stringify(new Date().toISOString())} }`,
+		},
+	]);
+}
+
+/**
+ * Append one verification event (§5.2): `verified` is an append-only list,
+ * and a bare existing mapping (the single-verifier shorthand) migrates to
+ * list form on the first append. The list is one flow line, every scalar
+ * JSON.stringify'd. Returns the new text (an append always changes a byte),
+ * or null only in the same-ms no-op.
+ */
+export function appendVerified(text: string, actor: string): string | null {
+	const events = verifiedEvents(
+		(matter(text, {}).data as Record<string, unknown>).verified,
+	);
+	events.push({ by: actor, at: new Date().toISOString() });
+	return spliceDocFields(text, [
+		{
+			key: "verified",
+			line: `verified: [${events
+				.map(
+					(e) =>
+						`{ by: ${JSON.stringify(e.by)}${e.at === undefined ? "" : `, at: ${JSON.stringify(e.at)}`} }`,
+				)
+				.join(", ")}]`,
+		},
+	]);
+}
+
+/** §5.3's advisory tiers, derived and never stored: no verified events →
+ *  unverified; non-`human:` actors only → machine-confirmed; ANY `human:`
+ *  actor → human-reviewed. */
+export function trustTier(
+	fm: Record<string, unknown>,
+): "unverified" | "machine-confirmed" | "human-reviewed" {
+	const events = verifiedEvents(fm.verified);
+	if (events.length === 0) return "unverified";
+	return events.some((e) => e.by.startsWith("human:"))
+		? "human-reviewed"
+		: "machine-confirmed";
+}
+
+/** §5.5: stale when `now >= stale_after` – an absolute instant, a plain
+ *  comparison. A missing or malformed value (including anything that is
+ *  neither a string nor one of js-yaml's Dates) reads as fresh; staleness
+ *  never throws. */
+export function isStale(
+	fm: Record<string, unknown>,
+	now: Date = new Date(),
+): boolean {
+	const v = fm.stale_after;
+	const at =
+		v instanceof Date
+			? v.getTime()
+			: typeof v === "string"
+				? Date.parse(v)
+				: Number.NaN;
+	return !Number.isNaN(at) && now.getTime() >= at;
 }
 
 /**
@@ -628,11 +819,12 @@ async function recomputeGraph(
 
 /**
  * `fragmt validate --fix` (D4) in one commit, "OKF: apply conformance
- * fixes": prepend `---\ntype: concept\n---\n` to fence-less docs, force the
- * missing type through the setTitle splice, recompute references/
- * referenced-by repo-wide, regenerate the indexes. Existing YAML is never
- * re-serialized; an unparseable block is left for the operator (validate
- * reports it – no repair exists that does not rewrite their YAML).
+ * fixes": prepend the conformant block to fence-less docs, force a missing
+ * type through the setTitle splice, materialize `status: "draft"` where the
+ * key is absent (A3), recompute references/referenced-by repo-wide,
+ * regenerate the indexes. Existing YAML is never re-serialized; an
+ * unparseable block is left for the operator (validate reports it – no
+ * repair exists that does not rewrite their YAML).
  */
 export async function fixOkf(
 	repoRoot: string,
@@ -654,15 +846,28 @@ export async function fixOkf(
 		if (!hasFence(text)) {
 			// The literal conformant block; the derived fields land in the same
 			// commit through recomputeGraph's splice.
-			writeFileSync(abs, `---\ntype: ${DEFAULT_TYPE}\n---\n${text}`);
+			writeFileSync(
+				abs,
+				`---\ntype: ${DEFAULT_TYPE}\nstatus: ${JSON.stringify("draft")}\n---\n${text}`,
+			);
 			files.add(repoRel(repoRoot, abs));
 			continue;
 		}
-		const type = (matter(text, {}).data as Record<string, unknown>).type;
-		if (typeof type !== "string" || type.trim() === "") {
-			const updated = spliceDocFields(text, [
-				{ key: "type", line: `type: ${JSON.stringify(DEFAULT_TYPE)}` },
-			]);
+		const data = matter(text, {}).data as Record<string, unknown>;
+		// A3 beside the type forcing: status is materialized ONLY where the
+		// key is absent (a present one, any value, is the author's choice).
+		const fixes: FieldUpdate[] = [];
+		if (typeof data.type !== "string" || data.type.trim() === "") {
+			fixes.push({
+				key: "type",
+				line: `type: ${JSON.stringify(DEFAULT_TYPE)}`,
+			});
+		}
+		if (!("status" in data)) {
+			fixes.push({ key: "status", line: `status: ${JSON.stringify("draft")}` });
+		}
+		if (fixes.length > 0) {
+			const updated = spliceDocFields(text, fixes);
 			if (updated !== null) {
 				writeFileSync(abs, updated);
 				files.add(repoRel(repoRoot, abs));

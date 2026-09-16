@@ -183,10 +183,10 @@ test("validate --fix reaches a conformant end state in one commit", async () => 
 		"OKF: apply conformance fixes",
 	);
 	expect(readFileSync(join(root, "docs", "notes.md"), "utf8")).toBe(
-		'---\ntype: concept\nreferences: ["a.md"]\n---\n# N\n\nSee [a](/a.md).\n',
+		'---\ntype: concept\nstatus: "draft"\nreferences: ["a.md"]\n---\n# N\n\nSee [a](/a.md).\n',
 	);
 	expect(readFileSync(join(root, "docs", "a.md"), "utf8")).toBe(
-		'---\ntype: Metric\nreferenced-by: ["notes.md"]\n---\n\n# A\n',
+		'---\ntype: Metric\nstatus: "draft"\nreferenced-by: ["notes.md"]\n---\n\n# A\n',
 	);
 });
 
@@ -200,13 +200,14 @@ test("OKF create on a fenceless, link-free body still gets the type block", asyn
 	await createDoc(root, "docs", "empty.md");
 	await createDoc(root, "docs", "hello.md", "# hello\n");
 
-	// saveWithRefs declines (fenceless + nothing to carry); the create
-	// fallback owes the block either way – the UI's New Doc button sends "".
+	// The seed is pre-fenced with type + status (A3), so saveWithRefs rides
+	// the refs on top and can never drop the block it owes – the UI's New
+	// Doc button sends "".
 	expect(readFileSync(join(root, "docs", "empty.md"), "utf8")).toBe(
-		"---\ntype: concept\n---\n",
+		'---\ntype: concept\nstatus: "draft"\n---\n',
 	);
 	expect(readFileSync(join(root, "docs", "hello.md"), "utf8")).toBe(
-		"---\ntype: concept\n---\n# hello\n",
+		'---\ntype: concept\nstatus: "draft"\n---\n# hello\n',
 	);
 	const check = await validateOkf(root, "docs");
 	expect(check.conformant).toBe(true);
