@@ -18,10 +18,12 @@ import {
 	enableOkf,
 	findRepoRoot,
 	fixOkf,
+	GitIdentityError,
 	git,
 	initNestedRepo,
 	initRepo,
 	loadConfig,
+	localUser,
 	logCommits,
 	populateOkf,
 	validateOkf,
@@ -255,7 +257,21 @@ async function adoptOkf(
 		for (const f of findings) write(`${f.path}: ${f.clause}: ${f.detail}\n`);
 		write("fix with: fragmt validate --fix\n");
 	}
-	const { files } = await populateOkf(repoRoot, docsRoot);
+	// The adoption commit's identity: the operator's when git has one, else
+	// the fragmt machine identity (the nested initial commit's author),
+	// materialized as repo-local config so the COMMITTER resolves too —
+	// commitAs passes --author only, and fresh nested bundles / CI runners
+	// ship no identity anywhere git looks.
+	let who: { name: string; email: string };
+	try {
+		who = await localUser(repoRoot);
+	} catch (e) {
+		if (!(e instanceof GitIdentityError)) throw e;
+		who = { name: "fragmt", email: "fragmt@localhost" };
+		await git(repoRoot, ["config", "user.name", who.name]);
+		await git(repoRoot, ["config", "user.email", who.email]);
+	}
+	const { files } = await populateOkf(repoRoot, docsRoot, who);
 	write(
 		files.length === 0
 			? "OKF: nothing to populate\n"
