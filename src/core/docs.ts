@@ -9,10 +9,12 @@ import {
 	appendVerified,
 	docPaths,
 	extractRefs,
+	type FrontmatterEdit,
 	okfEnabled,
 	propagateRefs,
 	refsList,
 	saveWithRefs,
+	setFrontmatterKeys,
 	stampGenerated,
 } from "./okf.js";
 
@@ -264,6 +266,46 @@ export async function verifyDoc(
 		{
 			files: [relative(repoRoot, abs).split(sep).join("/")],
 			message: `Verify ${docPath}`,
+		},
+		repoRoot,
+	);
+	return { sha };
+}
+
+/**
+ * Rung 3's metadata editor write (D2): apply FrontmatterEdit[] to one doc
+ * through setFrontmatterKeys – the setTitle line-splice discipline (YAML
+ * never re-serialized, unknown keys byte-preserved, a fence-less doc gains
+ * a fence carrying `type` first) – in ONE commit, `Update metadata for
+ * <docPath>`. The A2 enum gate fires inside the splice, BEFORE the
+ * identity read and any write (a bad `status` costs no spawn and no
+ * byte); a no-op edit (null splice) commits nothing and returns the empty
+ * sha (the fixOkf rule). `user` (serve --auth) overrides the commit
+ * author; omitted → localUser().
+ * ponytail: no stale-check (no baseHash – the editor sends field diffs,
+ * not the buffer), so concurrent metadata edits are last-write-wins; add
+ * one only if that ever bites a two-editor repo.
+ */
+export async function setDocMeta(
+	repoRoot: string,
+	docsRoot: string,
+	docPath: string,
+	edits: FrontmatterEdit[],
+	user?: { name: string; email: string },
+): Promise<{ sha: string }> {
+	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		throw new DocNotFoundError(docPath);
+	}
+	const next = setFrontmatterKeys(readFileSync(abs, "utf8"), edits);
+	if (next === null) return { sha: "" };
+	const who = user ?? (await localUser(repoRoot));
+	writeFileSync(abs, next);
+	const sha = await commitAs(
+		who,
+		{
+			files: [relative(repoRoot, abs).split(sep).join("/")],
+			message: `Update metadata for ${docPath}`,
 		},
 		repoRoot,
 	);

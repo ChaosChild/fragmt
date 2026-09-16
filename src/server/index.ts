@@ -24,6 +24,7 @@ import {
 	deleteThreadWithDoc,
 	docHash,
 	draftDiffLines,
+	type FrontmatterEdit,
 	GitError,
 	GitIdentityError,
 	gitAllowList,
@@ -34,12 +35,14 @@ import {
 	mergeState,
 	mergeToMain,
 	moveDoc,
+	OkfFieldError,
 	OnMainBranchError,
 	okfEnabled,
 	PathExistsError,
 	populateOkf,
 	readComments,
 	readDoc,
+	refsList,
 	renameFolder,
 	repoMeta,
 	resolveDocPath,
@@ -48,6 +51,7 @@ import {
 	restoreDoc,
 	StaleDocError,
 	searchDocs,
+	setDocMeta,
 	setResolved,
 	setTitle,
 	startDraft,
@@ -55,6 +59,8 @@ import {
 	ThreadNotFoundError,
 	unmergedPaths,
 	validateOkf,
+	verifiedEvents,
+	verifyDoc,
 	writeComments,
 	writeDoc,
 } from "../core/index.js";
@@ -203,6 +209,22 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 					);
 					return c.json({ sha });
 				}
+			} else if (c.req.method === "POST" && tail.endsWith("/verify")) {
+				// #33 (A1): the standalone Verify affordance – the committing
+				// identity's verified event in its own commit. Rides the comments
+				// middleware for the same reason the comment tails do: Hono's `*`
+				// spans slashes only at pattern end, so nested docPaths need the
+				// hand-split tail. A path segment can never end in "/verify" for
+				// a .md doc, so no collision with the doc routes.
+				const docPath = tail.slice(0, -"/verify".length);
+				if (docPath === "") return c.json({ error: "invalid doc path" }, 400);
+				const { sha } = await verifyDoc(
+					ctx.repoRoot,
+					ctx.docsRoot,
+					docPath,
+					commitAuthor(c),
+				);
+				return c.json({ sha });
 			} else {
 				const cut = tail.lastIndexOf("/comments/");
 				if (cut !== -1) {
@@ -310,10 +332,13 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		}
 		try {
 			const doc = readDoc(ctx.repoRoot, ctx.docsRoot, docPath);
-			// rawFrontmatter held back from the UI in v1 (M2 reattaches it on save).
+			// Raw YAML bytes stay withheld (v1) and unknown keys never leave
+			// the server either (#33): the payload carries the curated keys –
+			// the metadata editor's fields, the trust family, and the derived
+			// graph lists the References pane reads.
 			return c.json({
 				path: doc.path,
-				frontmatter: doc.frontmatter,
+				frontmatter: curateFrontmatter(doc.frontmatter),
 				markdown: doc.markdown,
 				hash: docHash(doc.markdown),
 			});
@@ -332,7 +357,7 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		} catch {
 			return c.json({ error: "invalid doc path" }, 400);
 		}
-		let payload: { markdown?: unknown; baseHash?: unknown };
+		let payload: { markdown?: unknown; baseHash?: unknown; verified?: unknown };
 		try {
 			payload = (await c.req.json()) as typeof payload;
 		} catch {
@@ -344,6 +369,11 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		) {
 			return c.json({ error: "markdown and baseHash are required" }, 400);
 		}
+		// #33 (A1): Save as Verified – the verified event rides the save's
+		// own commit (writeDoc's OKF half appends it beside the generated
+		// stamp). Non-OKF repos ignore the flag entirely.
+		if (payload.verified !== undefined && typeof payload.verified !== "boolean")
+			return c.json({ error: "verified must be a boolean" }, 400);
 		try {
 			const { sha, hash } = await writeDoc(
 				ctx.repoRoot,
@@ -352,6 +382,7 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 				payload.markdown,
 				payload.baseHash,
 				commitAuthor(c),
+				payload.verified ? { verified: true } : {},
 			);
 			return c.json({ sha, hash });
 		} catch (e) {
@@ -389,19 +420,69 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		}
 	});
 
-	// M4-3 b4: the doc PATCH is a two-way dispatch – {to} moves the file
-	// (M3), {title} writes the frontmatter title (rename, path unchanged).
-	// Exactly one action per call.
+	// M4-3 b4 + #33: the doc PATCH is a three-way dispatch – {to} moves the
+	// file (M3), {title} writes the frontmatter title (rename, path
+	// unchanged), {meta} writes the metadata editor's fields. Exactly one
+	// action per call.
 	app.patch("/api/docs/*", async (c) => {
 		const from = tailPath(c, DOCS_PREFIX);
 		if (from === undefined) return c.json({ error: "invalid doc path" }, 400);
 		const body = await jsonBody(c);
 		if (body === null) return c.json({ error: "invalid request body" }, 400);
-		const hasTo = body.to !== undefined;
-		const hasTitle = body.title !== undefined;
-		if (hasTo === hasTitle)
-			return c.json({ error: "exactly one of to or title is required" }, 400);
-		if (hasTitle) {
+		const picked = (["to", "title", "meta"] as const).filter(
+			(k) => body[k] !== undefined,
+		);
+		if (picked.length !== 1)
+			return c.json(
+				{ error: "exactly one of to, title, or meta is required" },
+				400,
+			);
+		if (picked[0] === "meta") {
+			// #33 (D2): the metadata editor's one-commit field write. Only the
+			// five editor keys pass (a stray key is a 400, never a write);
+			// values are string | null | string[] (tags), and null/empty
+			// REMOVES the key (setFrontmatterKeys' rule). `status` is
+			// enum-only (A2) – OkfFieldError from the core seam maps to 400
+			// below, before any byte is touched.
+			const meta = body.meta;
+			if (typeof meta !== "object" || meta === null || Array.isArray(meta))
+				return c.json({ error: "meta must be an object" }, 400);
+			const edits: FrontmatterEdit[] = [];
+			for (const [key, value] of Object.entries(meta)) {
+				if (
+					!["type", "description", "tags", "status", "stale_after"].includes(
+						key,
+					)
+				)
+					return c.json({ error: `unknown meta key: ${key}` }, 400);
+				if (value === null) {
+					edits.push({ key, value: null });
+					continue;
+				}
+				if (key === "tags") {
+					if (!Array.isArray(value) || value.some((v) => typeof v !== "string"))
+						return c.json({ error: "tags must be an array of strings" }, 400);
+					edits.push({ key, list: value });
+					continue;
+				}
+				if (typeof value !== "string")
+					return c.json({ error: `${key} must be a string or null` }, 400);
+				edits.push({ key, value });
+			}
+			try {
+				const { sha } = await setDocMeta(
+					ctx.repoRoot,
+					ctx.docsRoot,
+					from,
+					edits,
+					commitAuthor(c),
+				);
+				return c.json({ sha });
+			} catch (e) {
+				return respondFileError(c, e);
+			}
+		}
+		if (picked[0] === "title") {
 			if (typeof body.title !== "string" || !body.title.trim())
 				return c.json({ error: "title must be a non-empty string" }, 400);
 			try {
@@ -856,6 +937,37 @@ function tailPath(c: Context<AppEnv>, prefix: string): string | undefined {
 	}
 }
 
+/** The doc payload's `frontmatter` (#33): the curated keys only – `title`
+ *  (the display-name model) plus the OKF editor/trust fields. Unknown keys
+ *  never leave the server; the list fields normalize through their core
+ *  readers (refsList, verifiedEvents – hand-mangled shapes read as empty,
+ *  never throw) and are omitted when empty, the updateRefsField rule – so a
+ *  doc carrying only `title` serializes exactly as it did before rung 3. */
+function curateFrontmatter(
+	fm: Record<string, unknown>,
+): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const key of ["title", "type", "description", "status", "stale_after"]) {
+		if (key in fm) out[key] = fm[key];
+	}
+	const generated = fm.generated;
+	if (
+		typeof generated === "object" &&
+		generated !== null &&
+		typeof (generated as { by?: unknown }).by === "string"
+	)
+		out.generated = generated;
+	const verified = verifiedEvents(fm.verified);
+	if (verified.length > 0) out.verified = verified;
+	const tags = refsList(fm.tags);
+	if (tags.length > 0) out.tags = tags;
+	for (const key of ["references", "referenced-by"] as const) {
+		const list = refsList(fm[key]);
+		if (list.length > 0) out[key] = list;
+	}
+	return out;
+}
+
 /** Parse a JSON object body; null when absent, malformed, or not an object. */
 async function jsonBody(
 	c: Context<AppEnv>,
@@ -873,9 +985,12 @@ async function jsonBody(
 /**
  * Map core file-op errors to responses, mirroring the PUT /api/docs/* handler
  * (DocPathError 400, DocNotFound/ThreadNotFound 404, exists/identity/stale
- * 409). Unmapped errors propagate to Hono's default 500.
+ * 409). OkfFieldError (a `status` outside the enum, A2) is a 400 like
+ * DocPathError – the seam rejected it before any byte was written. Unmapped
+ * errors propagate to Hono's default 500.
  */
 function respondFileError(c: Context<AppEnv>, e: unknown): Response {
+	if (e instanceof OkfFieldError) return c.json({ error: e.message }, 400);
 	if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
 	if (e instanceof DocNotFoundError)
 		return c.json({ error: "doc not found" }, 404);
