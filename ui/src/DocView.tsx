@@ -1,15 +1,34 @@
-import { Check, FolderInput, Pencil, Trash2, X } from "lucide-react";
+import {
+	BadgeCheck,
+	Check,
+	FolderInput,
+	Link2,
+	Pencil,
+	Tags,
+	Trash2,
+	X,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
 	addComment,
 	type DocMeta,
+	type DocMetaEdit,
 	type DocResponse,
 	getDraftDiff,
+	patchDocMeta,
 	SaveError,
+	STATUS_VALUES,
 	saveDoc,
 	setTitle,
+	verifyDoc,
 } from "./api";
-import { avatarUser, displayTitle } from "./display";
+import {
+	avatarUser,
+	displayTitle,
+	isoToLocal,
+	isStaleIso,
+	toIsoUtc,
+} from "./display";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 import type { AtDoc } from "./editor/at";
 import { MenuPopover, useMenu } from "./Menus";
@@ -59,6 +78,41 @@ function Avatar({
 	);
 }
 
+/** The metadata form's five fields (#33, D2) – status "" means unset (null
+ *  on save, which REMOVES the key); stale is the datetime-local value. */
+interface MetaForm {
+	type: string;
+	description: string;
+	tags: string;
+	status: string;
+	stale: string;
+}
+
+/** Seed the form from the doc payload's curated frontmatter: a non-string
+ *  scalar (hand-mangled YAML) reads as unset, the refsList rule. */
+function metaFormOf(doc: DocResponse): MetaForm {
+	const fm = doc.frontmatter;
+	return {
+		type: typeof fm.type === "string" ? fm.type : "",
+		description: typeof fm.description === "string" ? fm.description : "",
+		tags: (fm.tags ?? []).join(", "),
+		status: typeof fm.status === "string" ? fm.status : "",
+		stale: isoToLocal(fm.stale_after),
+	};
+}
+
+/** The status select's options: the enum plus the doc's own out-of-enum
+ *  value when one is stored (A2 gates WRITES at the seam; a stored oddity
+ *  must stay visible, or the select would read unset and a save would
+ *  silently drop it). */
+function statusOptions(current: string): string[] {
+	return (
+		current !== "" && !(STATUS_VALUES as readonly string[]).includes(current)
+			? [current]
+			: []
+	).concat([...STATUS_VALUES]);
+}
+
 /**
  * The doc pane: reading mode by default (DESIGN §3), one explicit Edit action
  * flips the SAME mounted Tiptap editor to editable (M4 review decision 3 –
@@ -101,9 +155,13 @@ export function DocView({
 	folders,
 	rootMoveValid,
 	onBeforeRename,
+	onBeforeMetaEdit,
 	onMoveDoc,
 	onDeleteDoc,
 	onRenamed,
+	okf,
+	referencesOpen,
+	onOpenReferences,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
@@ -174,14 +232,27 @@ export function DocView({
 	 *  the draft starts (and checks out) first; false = App bannered and
 	 *  the box stays closed. The dirty gate is DocView's banner (below). */
 	onBeforeRename: () => Promise<boolean>;
+	/** The metadata editor's gate (#33, D2) – the rename gate's twin: on
+	 *  main the field write drafts first; false = App bannered. */
+	onBeforeMetaEdit: () => Promise<boolean>;
 	/** Move to a tree folder ("" = docsRoot root) – App runs the dirty guard
 	 *  and the existing move op; selection follows the new path. */
 	onMoveDoc: (folder: string) => void;
 	/** Delete the open doc – App runs the dirty guard, the confirm, and the
 	 *  existing delete op; the display name rides along for the confirm. */
 	onDeleteDoc: (displayName: string) => void;
-	/** A title landed – App reloads the doc (frontmatter changed) + meta. */
+	/** A frontmatter write landed (rename or metadata edit, #33) – App
+	 *  reloads the doc (frontmatter changed) + meta. */
 	onRenamed: () => void;
+	/** OKF mode (#33) – gates the doc-head metadata chips/editor, the
+	 *  Verify affordances, and the references toggle (App, from meta). */
+	okf: boolean;
+	/** The slideout's References mode is showing this doc (#33, D1) – the
+	 *  toggle's pressed state. */
+	referencesOpen: boolean;
+	/** Open the References pane (App toggles the slideout's third mode and
+	 *  lifts the ≤1180px sheet). */
+	onOpenReferences: () => void;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -206,6 +277,25 @@ export function DocView({
 	const [renameError, setRenameError] = useState<string | null>(null);
 	const [renameBusy, setRenameBusy] = useState(false);
 	const [pendingRename, setPendingRename] = useState(false);
+	// #33 (D2): the metadata editor – the rename box's pattern (dirty gate,
+	// then App's draft-on-main gate, then the compact form). The seed holds
+	// the values the form opened with: submit sends ONLY changed fields, so
+	// untouched lines keep their bytes (a JSON.stringify'd rewrite of an
+	// unquoted YAML scalar would churn the diff for no semantic change).
+	const [metaEditing, setMetaEditing] = useState(false);
+	const [metaBusy, setMetaBusy] = useState(false);
+	const [metaError, setMetaError] = useState<string | null>(null);
+	const [metaForm, setMetaForm] = useState<MetaForm>({
+		type: "",
+		description: "",
+		tags: "",
+		status: "",
+		stale: "",
+	});
+	const [metaSeed, setMetaSeed] = useState<MetaForm | null>(null);
+	const [pendingMeta, setPendingMeta] = useState(false);
+	// #33 (A1): the read-mode Verify button's in-flight state.
+	const [verifying, setVerifying] = useState(false);
 	// M4-3 b6: the dead-link note's payload – a relative .md link that matched
 	// nothing in the tree. Cleared on doc change (the note describes the open
 	// doc's links) and by its Dismiss button.
@@ -243,10 +333,10 @@ export function DocView({
 	// The confirm banners render at the top of the pane – bring them into view
 	// when one appears, otherwise a mid-document Esc raises it unseen.
 	useEffect(() => {
-		if (confirmingCancel || pendingAction || pendingRename) {
+		if (confirmingCancel || pendingAction || pendingRename || pendingMeta) {
 			paneRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
 		}
-	}, [confirmingCancel, pendingAction, pendingRename]);
+	}, [confirmingCancel, pendingAction, pendingRename, pendingMeta]);
 
 	// The rename box opens focused with its initial value selected (and
 	// re-selects on refocus).
@@ -332,6 +422,94 @@ export function DocView({
 			setRenameBusy(false);
 		}
 		closeRename();
+		onRenamed();
+	}
+
+	// --- #33 (D2): the metadata editor, the rename pattern extended -------
+
+	// Rename's gate order verbatim: a dirty buffer raises the save-or-discard
+	// banner first (the meta save reloads the doc), then App's gate – on main
+	// the field write is a doc write, so a draft starts first.
+	function requestMeta() {
+		if (!doc) return;
+		if (dirty) {
+			setPendingMeta(true);
+			return;
+		}
+		void proceedMeta();
+	}
+
+	async function proceedMeta() {
+		if (!doc || !(await onBeforeMetaEdit())) return;
+		const form = metaFormOf(doc);
+		setMetaSeed(form);
+		setMetaForm(form);
+		setMetaError(null);
+		setMetaEditing(true);
+	}
+
+	function closeMeta() {
+		setMetaEditing(false);
+		setMetaError(null);
+	}
+
+	async function submitMeta() {
+		if (!doc || metaBusy || !metaSeed) return;
+		// Only changed fields ride the PATCH (the seed diff) – one commit.
+		const edits: DocMetaEdit = {};
+		const type = metaForm.type.trim();
+		if (type !== metaSeed.type.trim()) edits.type = type || null;
+		const description = metaForm.description.trim();
+		if (description !== metaSeed.description.trim())
+			edits.description = description || null;
+		const tags = metaForm.tags
+			.split(",")
+			.map((t) => t.trim())
+			.filter(Boolean);
+		const seedTags = metaSeed.tags
+			.split(",")
+			.map((t) => t.trim())
+			.filter(Boolean);
+		if (tags.join("\u0000") !== seedTags.join("\u0000")) edits.tags = tags;
+		if (metaForm.status !== metaSeed.status)
+			edits.status = metaForm.status || null;
+		// Diff in form space (minutes precision) – the ISO conversion happens
+		// only on send, so a round-trip through toIsoUtc never reads as a change.
+		if (metaForm.stale !== metaSeed.stale)
+			edits.stale_after = metaForm.stale ? toIsoUtc(metaForm.stale) : null;
+		if (Object.keys(edits).length === 0) {
+			closeMeta(); // nothing changed – closing is saving
+			return;
+		}
+		setMetaBusy(true);
+		setMetaError(null);
+		try {
+			await patchDocMeta(doc.path, edits);
+		} catch (e) {
+			// The form stays open – the error sits inline after it.
+			setMetaError(e instanceof Error ? e.message : String(e));
+			return;
+		} finally {
+			setMetaBusy(false);
+		}
+		closeMeta();
+		onRenamed();
+	}
+
+	// #33 (A1): the read-mode Verify button – the verified event in its own
+	// commit; the reload picks up the doc's new tier chip. Like comment
+	// resolve (its sibling affordance), it never flips the mode.
+	async function handleVerify() {
+		if (!doc || verifying) return;
+		setVerifying(true);
+		try {
+			await verifyDoc(doc.path);
+		} catch (e) {
+			setSaveError(e instanceof Error ? e.message : String(e));
+			return;
+		} finally {
+			setVerifying(false);
+		}
 		onRenamed();
 	}
 
@@ -468,13 +646,14 @@ export function DocView({
 	// The one PUT seam both save paths share (M2): sends the buffer with
 	// DocView's base hash; on success the doc state/hash refresh through
 	// onSaved (App.setDoc → same-content setContent → dirty resets), so the
-	// next save doesn't 409 itself.
-	async function persist(markdown: string): Promise<boolean> {
+	// next save doesn't 409 itself. `verified` (#33, A1) is Save as
+	// Verified – the event rides the save's own commit.
+	async function persist(markdown: string, verified = false): Promise<boolean> {
 		if (!doc || saving) return false;
 		setSaving(true);
 		setSaveError(null);
 		try {
-			const { hash } = await saveDoc(doc.path, markdown, doc.hash);
+			const { hash } = await saveDoc(doc.path, markdown, doc.hash, verified);
 			setDirty(false);
 			onSaved({ ...doc, markdown, hash });
 			return true;
@@ -490,8 +669,8 @@ export function DocView({
 		}
 	}
 
-	async function handleSave(): Promise<boolean> {
-		const ok = await persist(editorRef.current?.getMarkdown() ?? "");
+	async function handleSave(verified = false): Promise<boolean> {
+		const ok = await persist(editorRef.current?.getMarkdown() ?? "", verified);
 		if (ok) {
 			setEditing(false);
 			setConfirmingCancel(false);
@@ -620,6 +799,13 @@ export function DocView({
 			() => setPendingRename(false),
 			() => void proceedRename(),
 		);
+	const pendingMetaBanner =
+		pendingMeta &&
+		guardBanner(
+			"Edit this document's metadata",
+			() => setPendingMeta(false),
+			() => void proceedMeta(),
+		);
 
 	// The doc-head meta line (item 3): "vN · branch · saved <time>" in read
 	// mode, "editing vN · branch" in edit mode, then the sync LED + word –
@@ -686,6 +872,54 @@ export function DocView({
 								{syncWord}
 							</span>
 						</div>
+						{/* #33: the metadata chips + the two pane affordances. Quiet by
+						    default – tier always (lowest emphasis), type/status only
+						    when they say something (absent status renders NOTHING,
+						    never implied-stable; stable is silence too), stale in the
+						    warn tint. Tier comes from meta's derived walk; the rest
+						    from the doc payload. */}
+						{okf && (
+							<div className="dh-badges">
+								{typeof doc.frontmatter.type === "string" &&
+									doc.frontmatter.type.trim() !== "" && (
+										<span className="okf-chip">{doc.frontmatter.type}</span>
+									)}
+								{typeof doc.frontmatter.status === "string" &&
+									doc.frontmatter.status !== "" &&
+									doc.frontmatter.status !== "stable" && (
+										<span className="okf-chip">{doc.frontmatter.status}</span>
+									)}
+								{docMeta?.okf && (
+									<span className="okf-chip" title="trust tier (OKF §5.3)">
+										{docMeta.okf.tier}
+									</span>
+								)}
+								{isStaleIso(doc.frontmatter.stale_after) && (
+									<span className="okf-chip warn">stale</span>
+								)}
+								<span className="dh-badge-actions">
+									<button
+										type="button"
+										className="tool-btn"
+										aria-label="Edit metadata"
+										title="Edit metadata"
+										onClick={requestMeta}
+									>
+										<Tags aria-hidden="true" />
+									</button>
+									<button
+										type="button"
+										className={`tool-btn${referencesOpen ? " active" : ""}`}
+										aria-label="References"
+										title="References"
+										aria-pressed={referencesOpen}
+										onClick={onOpenReferences}
+									>
+										<Link2 aria-hidden="true" />
+									</button>
+								</span>
+							</div>
+						)}
 					</div>
 					{/* The draft pill (item 3): only on main, when a draft elsewhere
 					    touches this doc – click checks the draft out (App). Its flip
@@ -719,31 +953,172 @@ export function DocView({
 									<Check aria-hidden="true" />
 									<span className="label">{saving ? "Saving…" : "Save"}</span>
 								</button>
+								{/* #33 (A1): Save as Verified – the event lands in the
+								    save's own commit (the PUT's verified flag). */}
+								{okf && (
+									<button
+										type="button"
+										className="iconbtn"
+										onClick={() => void handleSave(true)}
+										disabled={saving}
+									>
+										<BadgeCheck aria-hidden="true" />
+										<span className="label">Save as Verified</span>
+									</button>
+								)}
 							</>
 						) : (
-							<button
-								type="button"
-								className="iconbtn"
-								onClick={() => {
-									// App gates the flip (protected main: draft
-									// first) – only a true enters edit mode.
-									void onBeforeEdit().then((proceed) => {
-										if (!proceed) return;
-										setEditing(true);
-										setSaveError(null);
-									});
-								}}
-							>
-								<Pencil aria-hidden="true" />
-								<span className="label">Edit</span>
-							</button>
+							<>
+								{/* #33 (A1): Verify beside Edit, read mode only – the
+								    verified event in its own commit, the mode never
+								    flips (comment resolve's sibling). */}
+								{okf && (
+									<button
+										type="button"
+										className="iconbtn"
+										onClick={() => void handleVerify()}
+										disabled={verifying || saving}
+									>
+										<BadgeCheck aria-hidden="true" />
+										<span className="label">
+											{verifying ? "Verifying…" : "Verify"}
+										</span>
+									</button>
+								)}
+								<button
+									type="button"
+									className="iconbtn"
+									onClick={() => {
+										// App gates the flip (protected main: draft
+										// first) – only a true enters edit mode.
+										void onBeforeEdit().then((proceed) => {
+											if (!proceed) return;
+											setEditing(true);
+											setSaveError(null);
+										});
+									}}
+								>
+									<Pencil aria-hidden="true" />
+									<span className="label">Edit</span>
+								</button>
+							</>
 						)}
 					</div>
 				</header>
 			)}
+			{/* #33 (D2): the metadata editor – the rename box's pattern scaled
+			    to five compact fields. Only changed fields ride the PATCH; the
+			    seed diff keeps untouched YAML bytes untouched. */}
+			{metaEditing && doc && (
+				<form
+					className="meta-form"
+					onSubmit={(e) => {
+						e.preventDefault();
+						void submitMeta();
+					}}
+					onKeyDown={(e) => {
+						if (e.key === "Escape") {
+							// Consumed (#15 b5): the form is an Escape surface –
+							// the window fallback must not also close the slideout.
+							e.preventDefault();
+							closeMeta();
+						}
+					}}
+				>
+					<label>
+						Type
+						<input
+							value={metaForm.type}
+							onChange={(e) =>
+								setMetaForm({ ...metaForm, type: e.target.value })
+							}
+							disabled={metaBusy}
+						/>
+					</label>
+					<label className="mf-grow">
+						Description
+						<input
+							value={metaForm.description}
+							onChange={(e) =>
+								setMetaForm({ ...metaForm, description: e.target.value })
+							}
+							disabled={metaBusy}
+						/>
+					</label>
+					<label className="mf-grow">
+						Tags
+						<input
+							value={metaForm.tags}
+							placeholder="comma-separated"
+							onChange={(e) =>
+								setMetaForm({ ...metaForm, tags: e.target.value })
+							}
+							disabled={metaBusy}
+						/>
+					</label>
+					<label>
+						Status
+						{/* Enum-only (A2): the select is the convenience, the API
+						    seam is the guard; a stored out-of-enum value stays
+						    visible as its own option. */}
+						<select
+							value={metaForm.status}
+							onChange={(e) =>
+								setMetaForm({ ...metaForm, status: e.target.value })
+							}
+							disabled={metaBusy}
+						>
+							<option value="">unset</option>
+							{statusOptions(metaForm.status).map((s) => (
+								<option key={s} value={s}>
+									{s}
+								</option>
+							))}
+						</select>
+					</label>
+					<label>
+						Stale after
+						<input
+							type="datetime-local"
+							value={metaForm.stale}
+							onChange={(e) =>
+								setMetaForm({ ...metaForm, stale: e.target.value })
+							}
+							disabled={metaBusy}
+						/>
+					</label>
+					<div className="meta-actions">
+						<button
+							type="submit"
+							className="tool-btn"
+							aria-label="Save metadata"
+							title="Save metadata"
+							disabled={metaBusy}
+						>
+							<Check aria-hidden="true" />
+						</button>
+						<button
+							type="button"
+							className="tool-btn"
+							aria-label="Cancel metadata edit"
+							title="Cancel"
+							onClick={closeMeta}
+							disabled={metaBusy}
+						>
+							<X aria-hidden="true" />
+						</button>
+					</div>
+					{metaError && (
+						<span className="rename-error" role="alert">
+							{metaError}
+						</span>
+					)}
+				</form>
+			)}
 			{conflictBanner}
 			{pendingBanner}
 			{pendingRenameBanner}
+			{pendingMetaBanner}
 			{confirmingCancel && (
 				<div className="conflict-banner" role="alert">
 					<div>

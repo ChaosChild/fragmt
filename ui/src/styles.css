@@ -467,6 +467,28 @@ body {
 	line-height: 1.5;
 }
 
+/* OKF badge chips (#33) – the clause chip's recipe at rest: quiet caps and
+   a hairline border, shared by the doc head and the sidebar cards. .warn
+   (stale) is the only tinted variant – everything else stays quiet, the
+   tier chip the lowest emphasis of all. */
+.okf-chip {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	font-size: 9px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+	border: 1px solid var(--border);
+	border-radius: 3px;
+	padding: 0 4px;
+	line-height: 1.5;
+}
+.okf-chip.warn {
+	color: var(--warn);
+	border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+
 .doc-card {
 	display: block;
 	width: 100%;
@@ -533,6 +555,7 @@ body {
 	display: flex;
 	align-items: center;
 	gap: 6px;
+	flex-wrap: wrap; /* #33: the badge chips wrap, never force a second line */
 }
 .dc-draft {
 	font-size: 9px;
@@ -715,6 +738,52 @@ body {
 	font-size: 11px;
 	color: var(--danger);
 }
+/* #33 (D2): the metadata editor – the rename box's pattern scaled to five
+   compact fields; the labels are the mono micro-caps, the inputs and
+   select the rename input's recipe. */
+.meta-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2) var(--space-3);
+	align-items: flex-end;
+	padding-bottom: var(--space-5);
+	border-bottom: 1px solid var(--border);
+	margin-bottom: var(--space-8);
+	font-family: var(--font-mono);
+}
+.meta-form label {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	font-size: 9px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+	min-width: 0;
+}
+.meta-form .mf-grow {
+	flex: 1 1 200px;
+}
+.meta-form input,
+.meta-form select {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--fg);
+	background: var(--glass-inner);
+	border: 1px solid var(--glass-border);
+	border-radius: var(--radius);
+	padding: 6px 8px;
+	min-width: 0;
+}
+.meta-form input:focus-visible,
+.meta-form select:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.meta-actions {
+	display: flex;
+	gap: 2px;
+}
 .doc-actions {
 	display: flex;
 	align-items: center;
@@ -874,6 +943,22 @@ body {
 }
 .draft-pill.on-draft:hover {
 	border-color: var(--accent);
+}
+
+/* #33: the doc head's metadata chips + the two pane affordances – quiet by
+   default, tier lowest emphasis, stale the one warn tint. */
+.dh-badges {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex-wrap: wrap;
+	margin-top: 5px;
+	min-width: 0;
+}
+.dh-badge-actions {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
 }
 
 /* Draft-changed gutter (#18): a 3px amber bar beside the top-level blocks
@@ -1439,7 +1524,9 @@ button.comment-quote:hover {
 	border-bottom: 1px solid var(--border);
 	flex-shrink: 0;
 }
-.slideout:not(.preview) .slideout-close {
+/* The close is preview/references-only on desktop (the rail has no closed
+   state there); the ≤1180px sheet re-shows it as its fold. */
+.slideout:not(.preview):not(.references) .slideout-close {
 	display: none;
 }
 .slideout-spacer {
@@ -1496,6 +1583,67 @@ button.comment-quote:hover {
 	min-height: 0;
 	display: flex;
 	flex-direction: column;
+}
+/* References mode body (#33, D1) – the pane's own scroll region, the
+   preview body's shape: two quiet sections of path-titled rows that
+   navigate the main pane. */
+.refs-pane {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+.refs-heading {
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: var(--track-label);
+	color: var(--muted);
+	margin: 0 0 var(--space-2);
+}
+.refs-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.refs-row {
+	display: block;
+	width: 100%;
+	text-align: left;
+	font-size: 12.5px;
+	color: var(--fg);
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	padding: 5px 8px;
+	cursor: pointer;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	transition:
+		background var(--motion-fast) var(--ease-standard),
+		color var(--motion-fast) var(--ease-standard);
+}
+.refs-row:hover {
+	background: var(--glass-inner);
+	color: var(--accent);
+}
+.refs-row:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.refs-empty {
+	margin: 0;
+	font-size: 12px;
+	color: var(--muted);
 }
 /* Preview body (b4) – the pane's own scroll region, .rail-body's shape. */
 .preview-body {
@@ -2127,6 +2275,11 @@ button.comment-quote:hover {
 	transition: color var(--motion-fast) var(--ease-standard);
 }
 .tool-btn:hover {
+	color: var(--accent);
+}
+/* #33: the references toggle's pressed state – the accent holds while the
+   pane it opened is showing. */
+.tool-btn.active {
 	color: var(--accent);
 }
 .tool-btn:focus-visible {

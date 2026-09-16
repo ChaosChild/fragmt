@@ -6,9 +6,34 @@ export interface TreeNode {
 	children?: TreeNode[];
 }
 
+/** One §5.2 verification event – `at` absent on a hand-written one. */
+export interface VerifiedEvent {
+	by: string;
+	at?: string;
+}
+
+/** Mirror of the doc payload's curated frontmatter (#33): the server sends
+ *  these keys ONLY (unknown frontmatter never leaves it), and omits the
+ *  list fields when empty (the updateRefsField rule) – read them as []. */
+export interface DocFrontmatter {
+	title?: string;
+	type?: string;
+	description?: string;
+	tags?: string[];
+	status?: string;
+	/** §5.2 stamp – guarded server-side to `{ by: string }`; `at` is ISO. */
+	generated?: { by: string; at?: string };
+	/** §5.2 events, list form (a bare mapping migrates on first append). */
+	verified?: VerifiedEvent[];
+	/** ISO, as written; the chips derive staleness client-side. */
+	stale_after?: string;
+	references?: string[];
+	"referenced-by"?: string[];
+}
+
 export interface DocResponse {
 	path: string;
-	frontmatter: Record<string, unknown>;
+	frontmatter: DocFrontmatter;
 	markdown: string;
 	/** sha256 of `markdown` – sent back as `baseHash` on save. */
 	hash: string;
@@ -43,15 +68,18 @@ export class SaveError extends Error {
 	}
 }
 
+/** #33 (A1): verified=true rides the PUT – the verified event lands in the
+ *  save's own commit (OKF mode; ignored elsewhere). */
 export async function saveDoc(
 	path: string,
 	markdown: string,
 	baseHash: string,
+	verified = false,
 ): Promise<SaveResponse> {
 	const res = await fetch(`/api/docs/${encodeURI(path)}`, {
 		method: "PUT",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ markdown, baseHash }),
+		body: JSON.stringify({ markdown, baseHash, verified }),
 	});
 	if (!res.ok) {
 		let message = `save failed (${res.status})`;
@@ -123,6 +151,35 @@ export const setTitle = (path: string, title: string) =>
 		method: "PATCH",
 		headers: JSON_HEADERS,
 		body: JSON.stringify({ title }),
+	});
+
+/** A2: `status` is OKF's one closed vocabulary – mirrored for the editor's
+ *  select (a convenience, never the guard; the API seam is). */
+export const STATUS_VALUES = ["draft", "stable", "deprecated"] as const;
+
+/** #33 (D2): the metadata editor's one-commit field write. Only the five
+ *  editor keys; null (or an empty tags list) REMOVES the key; send only
+ *  the fields that changed – untouched lines keep their bytes. */
+export interface DocMetaEdit {
+	type?: string | null;
+	description?: string | null;
+	tags?: string[] | null;
+	status?: string | null;
+	/** ISO UTC (toIsoUtc converts the datetime-local value). */
+	stale_after?: string | null;
+}
+
+export const patchDocMeta = (path: string, meta: DocMetaEdit) =>
+	request<{ sha: string }>(`/api/docs/${encodeURI(path)}`, {
+		method: "PATCH",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ meta }),
+	});
+
+/** #33 (A1): the doc head's Verify – the verified event in its own commit. */
+export const verifyDoc = (path: string) =>
+	request<{ sha: string }>(`/api/docs/${encodeURI(path)}/verify`, {
+		method: "POST",
 	});
 
 export const deleteDoc = (path: string) =>
@@ -205,6 +262,15 @@ export interface DocMeta {
 	snippet: string;
 	/** Frontmatter title – the display name; null = file name sans .md. */
 	title: string | null;
+	/** OKF badge fields (#33) – present only in OKF mode: the curated type,
+	 *  the status verbatim (absent = no chip, A3), the derived §5.3 tier,
+	 *  and stale_after as written (chips read it stale when now ≥ it). */
+	okf?: {
+		type: string | null;
+		status: string | null;
+		tier: "unverified" | "machine-confirmed" | "human-reviewed";
+		staleAfter: string | null;
+	};
 }
 export interface DraftEntry {
 	branch: string;

@@ -1,9 +1,15 @@
 // The avatar's email → user contract (owner round: initials where a GitHub
-// avatar was expected). Pure resolution, tested without React (highlight's
-// model): the authors map first, the two GitHub noreply forms keyless, a
-// plain git email resolves only through the map.
+// avatar was expected), plus the metadata editor's stale_after conversion
+// (#33): datetime-local ↔ ISO and the §5.5 chip staleness – pure,
+// timezone-honest (the browser-local input converts through the local
+// clock; the round trip is what must hold).
 import { describe, expect, test } from "vitest";
-import { avatarUser } from "../ui/src/display.js";
+import {
+	avatarUser,
+	isoToLocal,
+	isStaleIso,
+	toIsoUtc,
+} from "../ui/src/display.js";
 
 describe("avatarUser", () => {
 	test("the authors map wins – any email shape resolves through it", () => {
@@ -29,5 +35,32 @@ describe("avatarUser", () => {
 
 	test("a plain (non-noreply) email without a map entry is undefined", () => {
 		expect(avatarUser("owner@example.com", {})).toBeUndefined();
+	});
+});
+
+describe("toIsoUtc / isoToLocal", () => {
+	test("a datetime-local value converts to ISO UTC and seeds back losslessly", () => {
+		const iso = toIsoUtc("2027-06-01T12:00");
+		expect(iso).toMatch(/^2027-06-01T\d{2}:00:00\.000Z$/); // hour rides the local zone
+		expect(isoToLocal(iso)).toBe("2027-06-01T12:00");
+	});
+
+	test("empty and unparseable values read as unset, never as epoch", () => {
+		expect(toIsoUtc("")).toBe("");
+		expect(toIsoUtc("not a date")).toBe("");
+		expect(isoToLocal(null)).toBe("");
+		expect(isoToLocal("junk")).toBe("");
+	});
+});
+
+describe("isStaleIso (the badge chips' §5.5 rule)", () => {
+	test("now >= stale_after, boundary inclusive; missing/malformed reads fresh", () => {
+		expect(isStaleIso("2020-01-01T00:00:00Z")).toBe(true);
+		expect(isStaleIso("2999-01-01T00:00:00Z")).toBe(false);
+		expect(
+			isStaleIso("2999-01-01T00:00:00Z", Date.parse("2999-01-01T00:00:00Z")),
+		).toBe(true);
+		expect(isStaleIso(undefined)).toBe(false);
+		expect(isStaleIso("junk")).toBe(false);
 	});
 });

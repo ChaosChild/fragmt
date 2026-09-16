@@ -14,7 +14,7 @@ import type {
 	RepoMeta,
 	TreeNode,
 } from "./api";
-import { displayTitle } from "./display";
+import { displayTitle, isStaleIso } from "./display";
 import {
 	basename,
 	currentDrag,
@@ -177,6 +177,21 @@ function DocCard({
 				<span className="dc-meta">
 					{dm && `${dm.author} · ${shortDate(dm.date)}`}
 					{chip && <span className="dc-draft">{chip}</span>}
+					{/* #33: the OKF badge chips from meta's derived walk – quiet,
+					    wrapped (never a second line of force), tier always, stale
+					    in the warn tint, status only when it says something
+					    (absent = no chip, A3; stable is silence). */}
+					{dm?.okf && (
+						<span className="okf-chip" title="trust tier (OKF §5.3)">
+							{dm.okf.tier}
+						</span>
+					)}
+					{dm?.okf && isStaleIso(dm.okf.staleAfter) && (
+						<span className="okf-chip warn">stale</span>
+					)}
+					{dm?.okf?.status && dm.okf.status !== "stable" && (
+						<span className="okf-chip">{dm.okf.status}</span>
+					)}
 				</span>
 			)}
 			{dm?.snippet && <span className="dc-snippet">{dm.snippet}</span>}

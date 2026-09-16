@@ -37,3 +37,42 @@ export function avatarUser(
 		undefined
 	);
 }
+
+/**
+ * The metadata editor's stale_after conversion (#33): a datetime-local
+ * value ("YYYY-MM-DDTHH:mm", browser-local) → ISO UTC ("…Z"); "" or an
+ * unparseable value → "" (the caller sends null, clearing the key).
+ */
+export function toIsoUtc(local: string): string {
+	if (local === "") return "";
+	const ms = Date.parse(local);
+	return Number.isNaN(ms) ? "" : new Date(ms).toISOString();
+}
+
+/**
+ * The editor's stale_after SEED (#33): ISO → the datetime-local form
+ * (browser-local, 16 chars). Unparseable/absent → "" – an unset field; a
+ * value with seconds or millis loses them (the input's minute precision),
+ * which is why the save diffs form values, never round-tripped ISO.
+ */
+export function isoToLocal(iso: string | null | undefined): string {
+	if (!iso) return "";
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return "";
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * §5.5 staleness for the badge chips: `now ≥ stale_after`, client clock
+ * (shortDate's clock, same trade). A missing or malformed value reads
+ * fresh – core's isStale rule, mirrored for the UI's derived chips.
+ */
+export function isStaleIso(
+	iso: string | null | undefined,
+	now = Date.now(),
+): boolean {
+	if (!iso) return false;
+	const at = Date.parse(iso);
+	return !Number.isNaN(at) && now >= at;
+}

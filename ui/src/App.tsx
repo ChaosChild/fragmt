@@ -59,6 +59,7 @@ import {
 	type FileOp,
 	NewDocButton,
 } from "./Menus";
+import { ReferencesPane } from "./ReferencesPane";
 import { ResolutionView } from "./ResolutionView";
 import { SearchModal } from "./SearchModal";
 import { Sidebar, SidebarResizeHandle } from "./Sidebar";
@@ -183,6 +184,11 @@ export function App() {
 	// ≤1180px, where the CSS turns the pane into the bottom sheet; a preview
 	// (previewPath) is what widens it into the draggable split.
 	const [railOpen, setRailOpen] = useState(false);
+	// #33 (D1): the pane's third mode – References. A dismissible state over
+	// the permanent rail: the doc-head toggle opens it (and lifts the sheet),
+	// its close button and the Escape chain return to comments. It re-targets
+	// with the main doc; a preview still wins over it.
+	const [refsMode, setRefsMode] = useState(false);
 	const [slideoutShare, setSlideoutShare] = useState(() =>
 		readStoredSlideoutShare(),
 	);
@@ -573,6 +579,21 @@ export function App() {
 		return draftFirst();
 	}
 
+	// The metadata editor's gate (#33, D2) – the rename gate's twin: a field
+	// write is a doc write, so on main the draft starts first.
+	async function beforeMetaEdit(): Promise<boolean> {
+		if (!onMain) return true;
+		return draftFirst();
+	}
+
+	// #33 (D1): open the References pane – the toggle's one direction; the
+	// pane's close and the Escape chain return to the rail. Opening lifts
+	// the ≤1180px sheet like a span click does.
+	function openReferences() {
+		setRefsMode(true);
+		setRailOpen(true);
+	}
+
 	// --- header file actions (M4-3 b4): rename/move/delete on the open doc.
 
 	// A title landed: the frontmatter changed, so the doc reloads and meta
@@ -923,8 +944,9 @@ export function App() {
 	// editor preventDefaults every Escape it sees; read mode's Escapes arrive
 	// here by design, PM being keydown-inert on a non-editable view – the
 	// bubble's capture listener eats the selection-clearing ones). Modal
-	// first, then the preview: the modal usually closes itself (focus sits in
-	// its input), so this leg mostly covers focus escaping its trap.
+	// first, then the preview, then the References mode (#33): the modal
+	// usually closes itself (focus sits in its input), so this leg mostly
+	// covers focus escaping its trap.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: closePreview is re-created per render on purpose – its sidebar restore reads autoCollapsed (a ref), so the two open flags are the only state this listener branches on.
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -935,11 +957,14 @@ export function App() {
 			} else if (previewPath !== null) {
 				e.preventDefault();
 				closePreview();
+			} else if (refsMode) {
+				e.preventDefault();
+				setRefsMode(false);
 			}
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [searchOpen, previewPath]);
+	}, [searchOpen, previewPath, refsMode]);
 
 	// The preview's fetch – the main doc's read client, cancel-guarded like
 	// the sidecar fetch. Quiet both ways: DocPreview's skeleton while
@@ -1341,9 +1366,13 @@ export function App() {
 								folders={moveDest.folders}
 								rootMoveValid={moveDest.rootValid}
 								onBeforeRename={beforeRename}
+								onBeforeMetaEdit={beforeMetaEdit}
 								onMoveDoc={requestMoveDoc}
 								onDeleteDoc={requestDeleteDoc}
 								onRenamed={onRenamed}
+								okf={meta?.okf === true}
+								referencesOpen={refsMode && previewPath === null}
+								onOpenReferences={openReferences}
 							/>
 						)}
 					</main>
@@ -1356,29 +1385,45 @@ export function App() {
 						<Slideout
 							open={railOpen}
 							preview={previewPath !== null}
+							references={refsMode}
 							commentCount={threads.length}
 							previewTitle={previewTitle}
 							led={led}
 							ledLabel={ledLabel}
 							onPromote={previewPath ? promotePreview : undefined}
-							onClose={previewPath !== null ? closePreview : closeSheet}
+							onClose={
+								previewPath !== null
+									? closePreview
+									: refsMode
+										? () => setRefsMode(false)
+										: closeSheet
+							}
 							onShare={applySlideoutShare}
 						>
 							{previewPath === null ? (
-								<CommentsRail
-									threads={threads}
-									liveIds={liveIds}
-									agents={meta?.agents ?? []}
-									onClose={closeSheet}
-									focus={spanFocus}
-									onReply={(id, body) => railReply(id, body)}
-									onResolve={(id) => void railResolve(id, true)}
-									onReopen={(id) => void railResolve(id, false)}
-									onDelete={(id) => void railDelete(id)}
-									error={railError}
-									docs={docs}
-									onOpenDoc={setSelected}
-								/>
+								refsMode ? (
+									<ReferencesPane
+										references={doc?.frontmatter.references ?? []}
+										referencedBy={doc?.frontmatter["referenced-by"] ?? []}
+										docs={docs}
+										onSelect={onDocLink}
+									/>
+								) : (
+									<CommentsRail
+										threads={threads}
+										liveIds={liveIds}
+										agents={meta?.agents ?? []}
+										onClose={closeSheet}
+										focus={spanFocus}
+										onReply={(id, body) => railReply(id, body)}
+										onResolve={(id) => void railResolve(id, true)}
+										onReopen={(id) => void railResolve(id, false)}
+										onDelete={(id) => void railDelete(id)}
+										error={railError}
+										docs={docs}
+										onOpenDoc={setSelected}
+									/>
+								)
 							) : (
 								<DocPreview
 									path={previewPath}
