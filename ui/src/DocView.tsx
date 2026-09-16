@@ -25,6 +25,7 @@ import {
 import {
 	avatarUser,
 	displayTitle,
+	isReservedDoc,
 	isoToLocal,
 	isStaleIso,
 	toIsoUtc,
@@ -375,6 +376,9 @@ export function DocView({
 	// The display-name model (M4-3 b4): frontmatter title, else the basename
 	// sans .md – the sidebar cards and the @ menu resolve the same way.
 	const displayName = displayTitle(doc?.frontmatter.title, file);
+	// §3.1: reserved files (index.md/log.md) hold no concept frontmatter –
+	// the OKF affordances and badges never apply to them.
+	const reserved = isReservedDoc(selected);
 
 	// --- header file actions (M4-3 b4) --------------------------------------
 	// Rename gates in the spec's order: a dirty buffer raises the
@@ -878,7 +882,7 @@ export function DocView({
 						    never implied-stable; stable is silence too), stale in the
 						    warn tint. Tier comes from meta's derived walk; the rest
 						    from the doc payload. */}
-						{okf && (
+						{okf && !reserved && (
 							<div className="dh-badges">
 								{typeof doc.frontmatter.type === "string" &&
 									doc.frontmatter.type.trim() !== "" && (
@@ -955,7 +959,7 @@ export function DocView({
 								</button>
 								{/* #33 (A1): Save as Verified – the event lands in the
 								    save's own commit (the PUT's verified flag). */}
-								{okf && (
+								{okf && !reserved && (
 									<button
 										type="button"
 										className="iconbtn"
@@ -972,7 +976,7 @@ export function DocView({
 								{/* #33 (A1): Verify beside Edit, read mode only – the
 								    verified event in its own commit, the mode never
 								    flips (comment resolve's sibling). */}
-								{okf && (
+								{okf && !reserved && (
 									<button
 										type="button"
 										className="iconbtn"

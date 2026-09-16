@@ -10,6 +10,7 @@ import {
 	docPaths,
 	extractRefs,
 	type FrontmatterEdit,
+	isReservedBase,
 	okfEnabled,
 	propagateRefs,
 	refsList,
@@ -193,7 +194,9 @@ export async function writeDoc(
 	} = await prepareDocWrite(repoRoot, docsRoot, docPath, baseHash, user);
 	const normalized = canonicalBody(body);
 	const repoRelative = relative(repoRoot, abs).split(sep).join("/");
-	if (okfEnabled(repoRoot)) {
+	// Reserved files never carry concept frontmatter (§3.1) – no stamp, no
+	// verified event, no derived fields: the plain save path, OKF or not.
+	if (okfEnabled(repoRoot) && !isReservedBase(docPath)) {
 		// The previous references list comes from the doc's own frontmatter,
 		// read pre-write; the new list derives from the incoming body.
 		const text = readFileSync(abs, "utf8");
@@ -255,6 +258,10 @@ export async function verifyDoc(
 	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
+	// §3.1: reserved files hold no concept frontmatter – nothing to verify.
+	if (isReservedBase(docPath)) {
+		throw new DocPathError(`reserved filename: ${docPath}`);
+	}
 	if (!existsSync(abs) || !statSync(abs).isFile()) {
 		throw new DocNotFoundError(docPath);
 	}
@@ -294,6 +301,11 @@ export async function setDocMeta(
 	user?: { name: string; email: string },
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
+	// §3.1: the metadata editor is for concept docs; reserved files hold
+	// no concept frontmatter, so there is nothing to edit.
+	if (isReservedBase(docPath)) {
+		throw new DocPathError(`reserved filename: ${docPath}`);
+	}
 	if (!existsSync(abs) || !statSync(abs).isFile()) {
 		throw new DocNotFoundError(docPath);
 	}

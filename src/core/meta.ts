@@ -2,7 +2,7 @@ import { loadConfig } from "./config.js";
 import { readDoc } from "./docs.js";
 import { mergeState } from "./drafts.js";
 import { currentBranch, git, listBranches, logCommits } from "./git.js";
-import { trustTier } from "./okf.js";
+import { isReservedBase, trustTier } from "./okf.js";
 
 export interface DocMeta {
 	author: string;
@@ -136,7 +136,7 @@ function docExtras(
 		snippet = t.slice(0, 110);
 		break;
 	}
-	if (!okf) return { snippet, title };
+	if (!okf || isReservedBase(docPath)) return { snippet, title };
 	const stale = frontmatter.stale_after;
 	return {
 		snippet,

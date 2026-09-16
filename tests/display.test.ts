@@ -6,6 +6,7 @@
 import { describe, expect, test } from "vitest";
 import {
 	avatarUser,
+	isReservedDoc,
 	isoToLocal,
 	isStaleIso,
 	toIsoUtc,
@@ -63,4 +64,12 @@ describe("isStaleIso (the badge chips' §5.5 rule)", () => {
 		expect(isStaleIso(undefined)).toBe(false);
 		expect(isStaleIso("junk")).toBe(false);
 	});
+});
+
+test("isReservedDoc: basename match, path-aware, case-insensitive (§3.1)", () => {
+	expect(isReservedDoc("index.md")).toBe(true);
+	expect(isReservedDoc("docs/sub/INDEX.MD")).toBe(true);
+	expect(isReservedDoc("log.md")).toBe(true);
+	expect(isReservedDoc("docs/logs.md")).toBe(false);
+	expect(isReservedDoc("my-index.md")).toBe(false);
 });

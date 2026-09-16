@@ -22,9 +22,11 @@ import {
 	addThread,
 	createDoc,
 	docHash,
+	DocPathError,
 	fixOkf,
 	readComments,
 	readDoc,
+	setDocMeta,
 	setResolved,
 	verifyDoc,
 	writeConfig,
@@ -327,4 +329,33 @@ test("createDoc is born draft beside the type (A3)", async () => {
 	expect(readFileSync(join(root, "new.md"), "utf8")).toBe(
 		'---\ntype: concept\nstatus: "draft"\n---\n# N\n',
 	);
+});
+
+test("reserved files carry no concept frontmatter on any write path (§3.1)", async () => {
+	const root = repo();
+	seed(root, "index.md", "# Index\n\n* [a](/a.md)\n");
+	seed(root, "a.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	// A body save keeps the reserved file fence-less: no generated stamp,
+	// no verified event, no derived fields – the plain write path.
+	const doc = readDoc(root, ".", "index.md");
+	await writeDoc(
+		root,
+		".",
+		"index.md",
+		"# Index\n\n* [a](/a.md)\n\nedited\n",
+		docHash(doc.markdown),
+	);
+	const afterSave = readFileSync(join(root, "index.md"), "utf8");
+	expect(afterSave.startsWith("---")).toBe(false);
+	expect(afterSave).toContain("edited");
+
+	// The field-writing affordances refuse outright (the server's 400).
+	await expect(verifyDoc(root, ".", "index.md")).rejects.toThrow(DocPathError);
+	await expect(
+		setDocMeta(root, ".", "index.md", [{ key: "status", value: "stable" }]),
+	).rejects.toThrow(DocPathError);
+	expect(readFileSync(join(root, "index.md"), "utf8")).toBe(afterSave);
 });

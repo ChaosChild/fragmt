@@ -76,3 +76,14 @@ export function isStaleIso(
 	const at = Date.parse(iso);
 	return !Number.isNaN(at) && now >= at;
 }
+
+/**
+ * Core's isReservedBase twin (index.md/log.md, §3.1): reserved files hold no
+ * concept frontmatter, so the OKF affordances – metadata editor, Verify,
+ * Save as Verified, badge chips – never apply to them. Kept in sync with
+ * src/core/okf.ts by hand (the server never imports ui).
+ */
+export function isReservedDoc(path: string): boolean {
+	const base = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
+	return base === "index.md" || base === "log.md";
+}
