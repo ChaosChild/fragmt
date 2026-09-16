@@ -1406,7 +1406,7 @@ export function App() {
 										references={doc?.frontmatter.references ?? []}
 										referencedBy={doc?.frontmatter["referenced-by"] ?? []}
 										docs={docs}
-										onSelect={onDocLink}
+										onPreview={openPreviewDoc}
 									/>
 								) : (
 									<CommentsRail

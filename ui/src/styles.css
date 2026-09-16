@@ -738,31 +738,58 @@ body {
 	font-size: 11px;
 	color: var(--danger);
 }
-/* #33 (D2): the metadata editor – the rename box's pattern scaled to five
-   compact fields; the labels are the mono micro-caps, the inputs and
-   select the rename input's recipe. */
+/* #33 (D2): the metadata editor – operator round B: one `name: value` row
+   per field (the tag-editor look – key inline-left, input right) and a
+   single Save/Cancel pair owning the form's top-right corner. The row grid
+   keeps the input on minmax(0,1fr) so long values wrap inside the row,
+   never overflow the pane. */
 .meta-form {
 	display: flex;
-	flex-wrap: wrap;
-	gap: var(--space-2) var(--space-3);
-	align-items: flex-end;
+	flex-direction: column;
+	gap: var(--space-3);
 	padding-bottom: var(--space-5);
 	border-bottom: 1px solid var(--border);
 	margin-bottom: var(--space-8);
 	font-family: var(--font-mono);
+	min-width: 0;
 }
-.meta-form label {
+.meta-head {
 	display: flex;
-	flex-direction: column;
-	gap: 3px;
+	align-items: center;
+	gap: var(--space-2);
+}
+.meta-title {
 	font-size: 9px;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
 	color: var(--muted);
+}
+.meta-head .meta-actions {
+	margin-left: auto;
+}
+.meta-actions {
+	display: flex;
+	gap: var(--space-2);
+}
+.meta-rows {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
 	min-width: 0;
 }
-.meta-form .mf-grow {
-	flex: 1 1 200px;
+.meta-row {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	align-items: center;
+	gap: var(--space-2);
+	min-width: 0;
+}
+.meta-key {
+	font-size: 9px;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--muted);
+	white-space: nowrap;
 }
 .meta-form input,
 .meta-form select {
@@ -779,10 +806,6 @@ body {
 .meta-form select:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);
-}
-.meta-actions {
-	display: flex;
-	gap: 2px;
 }
 .doc-actions {
 	display: flex;
@@ -946,7 +969,10 @@ body {
 }
 
 /* #33: the doc head's metadata chips + the two pane affordances – quiet by
-   default, tier lowest emphasis, stale the one warn tint. */
+   default, tier lowest emphasis, stale the one warn tint. Operator round A:
+   the row renders in OKF mode alone (never gated on reserved) – the chips
+   are individually conditional, and the actions render DISABLED on reserved
+   files, their tooltip saying why, instead of vanishing. */
 .dh-badges {
 	display: flex;
 	align-items: center;
@@ -2285,6 +2311,13 @@ button.comment-quote:hover {
 .tool-btn:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);
+}
+/* Operator round A: a disabled action keeps its pointer events so its
+   explaining tooltip can hover (the .iconbtn rule's pointer-events:none
+   would swallow the hover); the click itself is already dead. */
+.tool-btn:disabled {
+	opacity: 0.5;
+	cursor: default;
 }
 .tool-btn svg {
 	width: 15px;

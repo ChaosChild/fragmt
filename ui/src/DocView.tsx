@@ -881,8 +881,14 @@ export function DocView({
 						    when they say something (absent status renders NOTHING,
 						    never implied-stable; stable is silence too), stale in the
 						    warn tint. Tier comes from meta's derived walk; the rest
-						    from the doc payload. */}
-						{okf && !reserved && (
+						    from the doc payload. Operator round A: the block renders
+						    on okf ALONE – every chip is individually conditional and
+						    meta's walk omits the okf fields for reserved docs (§3.1),
+						    so reserved files show the ACTIONS, never vanishing chips.
+						    The two buttons stay visible but DISABLED there, their
+						    tooltip saying why – a missing button reads as "can't
+						    open the editor", a disabled one tells the truth. */}
+						{okf && (
 							<div className="dh-badges">
 								{typeof doc.frontmatter.type === "string" &&
 									doc.frontmatter.type.trim() !== "" && (
@@ -906,8 +912,13 @@ export function DocView({
 										type="button"
 										className="tool-btn"
 										aria-label="Edit metadata"
-										title="Edit metadata"
+										title={
+											reserved
+												? "Reserved file – index.md and log.md hold no concept frontmatter (OKF §3.1)"
+												: "Edit metadata"
+										}
 										onClick={requestMeta}
+										disabled={reserved}
 									>
 										<Tags aria-hidden="true" />
 									</button>
@@ -915,9 +926,14 @@ export function DocView({
 										type="button"
 										className={`tool-btn${referencesOpen ? " active" : ""}`}
 										aria-label="References"
-										title="References"
+										title={
+											reserved
+												? "Reserved file – index.md and log.md hold no concept frontmatter (OKF §3.1)"
+												: "References"
+										}
 										aria-pressed={referencesOpen}
 										onClick={onOpenReferences}
+										disabled={reserved}
 									>
 										<Link2 aria-hidden="true" />
 									</button>
@@ -1012,7 +1028,11 @@ export function DocView({
 			)}
 			{/* #33 (D2): the metadata editor – the rename box's pattern scaled
 			    to five compact fields. Only changed fields ride the PATCH; the
-			    seed diff keeps untouched YAML bytes untouched. */}
+			    seed diff keeps untouched YAML bytes untouched. Operator round
+			    B: one `name: value` row per field (the tag-editor look) and a
+			    single Save/Cancel pair owning the form's TOP-RIGHT corner –
+			    actions beside a field row read as that field's, and they are
+			    the whole form's. */}
 			{metaEditing && doc && (
 				<form
 					className="meta-form"
@@ -1029,88 +1049,91 @@ export function DocView({
 						}
 					}}
 				>
-					<label>
-						Type
-						<input
-							value={metaForm.type}
-							onChange={(e) =>
-								setMetaForm({ ...metaForm, type: e.target.value })
-							}
-							disabled={metaBusy}
-						/>
-					</label>
-					<label className="mf-grow">
-						Description
-						<input
-							value={metaForm.description}
-							onChange={(e) =>
-								setMetaForm({ ...metaForm, description: e.target.value })
-							}
-							disabled={metaBusy}
-						/>
-					</label>
-					<label className="mf-grow">
-						Tags
-						<input
-							value={metaForm.tags}
-							placeholder="comma-separated"
-							onChange={(e) =>
-								setMetaForm({ ...metaForm, tags: e.target.value })
-							}
-							disabled={metaBusy}
-						/>
-					</label>
-					<label>
-						Status
-						{/* Enum-only (A2): the select is the convenience, the API
-						    seam is the guard; a stored out-of-enum value stays
-						    visible as its own option. */}
-						<select
-							value={metaForm.status}
-							onChange={(e) =>
-								setMetaForm({ ...metaForm, status: e.target.value })
-							}
-							disabled={metaBusy}
-						>
-							<option value="">unset</option>
-							{statusOptions(metaForm.status).map((s) => (
-								<option key={s} value={s}>
-									{s}
-								</option>
-							))}
-						</select>
-					</label>
-					<label>
-						Stale after
-						<input
-							type="datetime-local"
-							value={metaForm.stale}
-							onChange={(e) =>
-								setMetaForm({ ...metaForm, stale: e.target.value })
-							}
-							disabled={metaBusy}
-						/>
-					</label>
-					<div className="meta-actions">
-						<button
-							type="submit"
-							className="tool-btn"
-							aria-label="Save metadata"
-							title="Save metadata"
-							disabled={metaBusy}
-						>
-							<Check aria-hidden="true" />
-						</button>
-						<button
-							type="button"
-							className="tool-btn"
-							aria-label="Cancel metadata edit"
-							title="Cancel"
-							onClick={closeMeta}
-							disabled={metaBusy}
-						>
-							<X aria-hidden="true" />
-						</button>
+					<div className="meta-head">
+						<span className="meta-title">metadata</span>
+						<div className="meta-actions">
+							<button
+								type="submit"
+								className="iconbtn primary"
+								disabled={metaBusy}
+							>
+								<Check aria-hidden="true" />
+								<span className="label">{metaBusy ? "Saving…" : "Save"}</span>
+							</button>
+							<button
+								type="button"
+								className="iconbtn subtle"
+								onClick={closeMeta}
+								disabled={metaBusy}
+							>
+								<X aria-hidden="true" />
+								<span className="label">Cancel</span>
+							</button>
+						</div>
+					</div>
+					<div className="meta-rows">
+						<label className="meta-row">
+							<span className="meta-key">type:</span>
+							<input
+								value={metaForm.type}
+								onChange={(e) =>
+									setMetaForm({ ...metaForm, type: e.target.value })
+								}
+								disabled={metaBusy}
+							/>
+						</label>
+						<label className="meta-row">
+							<span className="meta-key">description:</span>
+							<input
+								value={metaForm.description}
+								onChange={(e) =>
+									setMetaForm({ ...metaForm, description: e.target.value })
+								}
+								disabled={metaBusy}
+							/>
+						</label>
+						<label className="meta-row">
+							<span className="meta-key">tags:</span>
+							<input
+								value={metaForm.tags}
+								placeholder="comma-separated"
+								onChange={(e) =>
+									setMetaForm({ ...metaForm, tags: e.target.value })
+								}
+								disabled={metaBusy}
+							/>
+						</label>
+						<label className="meta-row">
+							<span className="meta-key">status:</span>
+							{/* Enum-only (A2): the select is the convenience, the API
+								    seam is the guard; a stored out-of-enum value stays
+								    visible as its own option. */}
+							<select
+								value={metaForm.status}
+								onChange={(e) =>
+									setMetaForm({ ...metaForm, status: e.target.value })
+								}
+								disabled={metaBusy}
+							>
+								<option value="">unset</option>
+								{statusOptions(metaForm.status).map((s) => (
+									<option key={s} value={s}>
+										{s}
+									</option>
+								))}
+							</select>
+						</label>
+						<label className="meta-row">
+							<span className="meta-key">stale_after:</span>
+							<input
+								type="datetime-local"
+								value={metaForm.stale}
+								onChange={(e) =>
+									setMetaForm({ ...metaForm, stale: e.target.value })
+								}
+								disabled={metaBusy}
+							/>
+						</label>
 					</div>
 					{metaError && (
 						<span className="rename-error" role="alert">
