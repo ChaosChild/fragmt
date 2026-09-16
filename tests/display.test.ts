@@ -6,8 +6,8 @@
 import { describe, expect, test } from "vitest";
 import {
 	avatarUser,
-	isReservedDoc,
 	isoToLocal,
+	isReservedDoc,
 	isStaleIso,
 	toIsoUtc,
 } from "../ui/src/display.js";

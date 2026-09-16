@@ -25,8 +25,8 @@ import {
 import {
 	avatarUser,
 	displayTitle,
-	isReservedDoc,
 	isoToLocal,
+	isReservedDoc,
 	isStaleIso,
 	toIsoUtc,
 } from "./display";
