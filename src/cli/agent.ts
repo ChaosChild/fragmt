@@ -1,17 +1,25 @@
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { relative, sep } from "node:path";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
+	AGENT_DEFAULT,
 	addReply,
 	type CommentThread,
+	commitAs,
 	currentBranch,
 	GitIdentityError,
 	inMerge,
 	loadConfig,
 	localUser,
 	mergeToMain,
+	okfEnabled,
+	populateOkf,
 	type RepoMeta,
 	readComments,
 	repoMeta,
+	resolveDocPath,
 	setResolved,
+	stampGenerated,
 	startDraft,
 } from "../core/index.js";
 import { nestedDocsRedirect } from "./index.js";
@@ -157,6 +165,8 @@ type AgentValues = {
 	body?: string;
 	resolve?: boolean;
 	author?: string;
+	/** D4: the agent's self-declared OKF actor, verbatim. */
+	"as-actor"?: string;
 	full?: boolean;
 	merge?: boolean;
 };
@@ -165,6 +175,7 @@ function parseVerb(
 	verb: "status" | "comment" | "draft",
 	args: string[],
 ): { values: AgentValues; positionals: string[] } {
+	const asActor = { "as-actor": { type: "string" } } as const;
 	const options: ParseArgsOptionsConfig =
 		verb === "comment"
 			? {
@@ -173,9 +184,10 @@ function parseVerb(
 					resolve: { type: "boolean", default: false },
 					author: { type: "string" },
 					full: { type: "boolean", default: false },
+					...asActor,
 				}
 			: verb === "draft"
-				? { merge: { type: "boolean", default: false } }
+				? { merge: { type: "boolean", default: false }, ...asActor }
 				: {};
 	const { values, positionals } = parseArgs({
 		args,
@@ -267,7 +279,16 @@ async function runComment(
 		if (values.resolve === true) {
 			if (thread.resolved) out(`ok: thread ${id} already resolved`);
 			else {
-				await setResolved(repoRoot, doc, id, true, user);
+				// D4: the event's actor is the agent's self-declaration, default
+				// AGENT_DEFAULT – never a false human: off the git identity.
+				await setResolved(
+					repoRoot,
+					doc,
+					id,
+					true,
+					user,
+					values["as-actor"] ?? AGENT_DEFAULT,
+				);
 				out(`ok: thread ${id} resolved · author: ${user.name} · 1 commit`);
 			}
 		}
@@ -306,8 +327,39 @@ async function runDraft(
 		return 0;
 	}
 	const branch = await currentBranch(repoRoot);
+	// D4: OKF mode stamps the draft's doc on the DRAFT branch pre-merge – a
+	// tiny commit that rides into main with the merge. A doc path that does
+	// not resolve (or a doc deleted in the draft) skips the stamp; the merge
+	// itself proceeds exactly as before.
+	if (okfEnabled(repoRoot)) {
+		const actor = values["as-actor"] ?? AGENT_DEFAULT;
+		let abs: string | null = null;
+		try {
+			const a = resolveDocPath(repoRoot, docsRoot, doc);
+			abs = existsSync(a) && statSync(a).isFile() ? a : null;
+		} catch {
+			abs = null;
+		}
+		if (abs !== null) {
+			const next = stampGenerated(readFileSync(abs, "utf8"), actor);
+			if (next !== null) {
+				writeFileSync(abs, next);
+				await commitAs(
+					await localUser(repoRoot),
+					{
+						files: [relative(repoRoot, abs).split(sep).join("/")],
+						message: `OKF: stamp ${doc} as ${actor}`,
+					},
+					repoRoot,
+				);
+			}
+		}
+	}
 	const result = await mergeToMain(repoRoot, docsRoot);
 	if (result.merged) {
+		// The server's conclude seam's twin: a clean merge regenerates the
+		// references graph and indexes on main.
+		if (okfEnabled(repoRoot)) await populateOkf(repoRoot, docsRoot);
 		out(`ok: merged to main · branch ${branch} deleted`);
 		helpBlock(out, ["fragmt agent status"]);
 		return 0;
