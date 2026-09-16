@@ -82,7 +82,7 @@ function commits(): number {
 
 // --- GET /api/docs/*: the curated frontmatter payload ------------------------
 
-test("GET payload (OKF): curated keys only – unknown withheld, verified list-normalized, graph lists served", async () => {
+test("GET payload (OKF): curated keys + §4.1 pass-through – objects and raw bytes withheld, verified list-normalized", async () => {
 	writeConfig(true);
 	writeFileSyncLF(
 		"b.md",
@@ -96,6 +96,8 @@ test("GET payload (OKF): curated keys only – unknown withheld, verified list-n
 			"verified: { by: human:b, at: 2026-09-16T00:00:00Z }",
 			"references: [a.md]",
 			"secret: keep",
+			"okf_version: 0.2",
+			"hidden: { deep: true }",
 			"---",
 			"# b",
 			"",
@@ -107,8 +109,11 @@ test("GET payload (OKF): curated keys only – unknown withheld, verified list-n
 	expect(res.status).toBe(200);
 	const body = (await res.json()) as Record<string, unknown>;
 	// The References pane's data source + the editor's fields; the bare
-	// verified mapping reads as a one-element list (§5.2); `secret` and the
-	// raw bytes never leave the server; empty lists are omitted entirely.
+	// verified mapping reads as a one-element list (§5.2); the raw bytes
+	// never leave the server; empty lists are omitted entirely. Operator
+	// round C: the scalar `secret` passes through PARSED (the §4.1 extension
+	// rows' data), while the managed okf_version and the object `hidden`
+	// stay home.
 	expect(body.frontmatter).toEqual({
 		title: "B",
 		type: "concept",
@@ -117,17 +122,50 @@ test("GET payload (OKF): curated keys only – unknown withheld, verified list-n
 		generated: { by: "human:b", at: "2026-09-16T00:00:00.000Z" },
 		verified: [{ by: "human:b", at: "2026-09-16T00:00:00.000Z" }],
 		references: ["a.md"],
+		secret: "keep",
 	});
 	expect(body).not.toHaveProperty("rawFrontmatter");
 });
 
-test("GET payload (non-OKF): same curation – title preserved, empties omitted byte-for-byte", async () => {
+test("GET payload (§4.1 pass-through): scalars and string arrays pass parsed, objects never leave", async () => {
+	writeConfig(true);
+	writeFileSyncLF(
+		"e.md",
+		[
+			"---",
+			"type: concept",
+			"owner: ops",
+			"priority: 2",
+			"published: true",
+			"reviewed-by: [alice, bob]",
+			"nested: { keep: me }",
+			"mixed: [one, { two: 2 }]",
+			"---",
+			"# e",
+			"",
+		].join("\n"),
+	);
+	commitFiles("add e");
+
+	const body = (await (await api("GET", "/api/docs/e.md")).json()) as {
+		frontmatter: Record<string, unknown>;
+	};
+	expect(body.frontmatter.owner).toBe("ops");
+	expect(body.frontmatter.priority).toBe(2);
+	expect(body.frontmatter.published).toBe(true);
+	expect(body.frontmatter["reviewed-by"]).toEqual(["alice", "bob"]);
+	expect(body.frontmatter).not.toHaveProperty("nested"); // objects stay home
+	expect(body.frontmatter).not.toHaveProperty("mixed"); // non-string array items too
+	expect(body).not.toHaveProperty("rawFrontmatter");
+});
+
+test("GET payload (non-OKF): same curation – title preserved, empties omitted, §4.1 pass-through rides along", async () => {
 	const a = (await (await api("GET", "/api/docs/a.md")).json()) as {
 		frontmatter: Record<string, unknown>;
 	};
-	// a.md carries type + secret only: the curated view is exactly {type},
-	// the shape the pre-rung-3 UI consumed (title docs unchanged).
-	expect(a.frontmatter).toEqual({ type: "concept" });
+	// a.md carries type + secret only: the curated view is {type} plus the
+	// passed-through scalar `secret` (operator round C) – title docs unchanged.
+	expect(a.frontmatter).toEqual({ type: "concept", secret: "keep" });
 });
 
 // --- PATCH {meta}: the metadata editor's one-commit write --------------------
@@ -201,6 +239,61 @@ test("PATCH {meta}: null clears the key (the empty-means-absent rule)", async ()
 	const text = readFileSync(join(root, "a.md"), "utf8");
 	expect(text).not.toContain("description");
 	expect(text).toContain("secret: keep");
+});
+
+test("PATCH {meta} (§4.1): arbitrary extension keys land spliced; managed keys and unsafe names are 400", async () => {
+	writeConfig(true);
+	const res = await api("PATCH", "/api/docs/a.md", {
+		meta: { owner: "ops", "review queue": "daily" },
+	});
+	expect(res.status).toBe(200);
+	const { sha } = (await res.json()) as { sha: string };
+	expect(sha).toBe(gitOut(["rev-parse", "HEAD"])); // one commit for both keys
+	const text = readFileSync(join(root, "a.md"), "utf8");
+	expect(text).toContain('owner: "ops"');
+	expect(text).toContain('review queue: "daily"');
+	expect(text).toContain("secret: keep"); // still byte-preserved
+	// null removes an extension key, the curated rule.
+	const clear = await api("PATCH", "/api/docs/a.md", { meta: { owner: null } });
+	expect(clear.status).toBe(200);
+	expect(readFileSync(join(root, "a.md"), "utf8")).not.toContain("owner:");
+	// Managed keys (derived/owned by other flows) are 400 `managed key`,
+	// never a write.
+	for (const key of [
+		"generated",
+		"verified",
+		"references",
+		"referenced-by",
+		"title",
+		"okf_version",
+	]) {
+		const managed = await api("PATCH", "/api/docs/a.md", {
+			meta: { [key]: "x" },
+		});
+		expect(managed.status, key).toBe(400);
+		expect(((await managed.json()) as { error: string }).error).toContain(
+			"managed key",
+		);
+	}
+	// Unsafe names (injection-shaped or off-grammar) are 400 before the core
+	// seam; non-string values on extension keys are 400 too. Nothing written.
+	const before = readFileSync(join(root, "a.md"), "utf8");
+	const evil = await api("PATCH", "/api/docs/a.md", {
+		meta: { "x: injected": "yes" },
+	});
+	expect(evil.status).toBe(400);
+	const shaped = await api("PATCH", "/api/docs/a.md", {
+		meta: { "\ninjected: yes": "x" },
+	});
+	expect(shaped.status).toBe(400);
+	const typed = await api("PATCH", "/api/docs/a.md", {
+		meta: { owner: 2 },
+	});
+	expect(typed.status).toBe(400);
+	expect(((await typed.json()) as { error: string }).error).toContain(
+		"must be a string or null",
+	);
+	expect(readFileSync(join(root, "a.md"), "utf8")).toBe(before);
 });
 
 // --- POST /api/docs/:doc/verify ----------------------------------------------

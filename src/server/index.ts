@@ -29,6 +29,7 @@ import {
 	GitIdentityError,
 	gitAllowList,
 	inMerge,
+	isFrontmatterKey,
 	listBranches,
 	listTree,
 	MergeUnresolvedError,
@@ -332,10 +333,11 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		}
 		try {
 			const doc = readDoc(ctx.repoRoot, ctx.docsRoot, docPath);
-			// Raw YAML bytes stay withheld (v1) and unknown keys never leave
-			// the server either (#33): the payload carries the curated keys –
-			// the metadata editor's fields, the trust family, and the derived
-			// graph lists the References pane reads.
+			// Raw YAML bytes stay withheld (v1) and everything arrives PARSED,
+			// never verbatim (#33 + operator round C): the curated keys – the
+			// metadata editor's fields, the trust family, and the derived graph
+			// lists the References pane reads – plus scalar/string-array §4.1
+			// extension keys (curateFrontmatter's pass-through).
 			return c.json({
 				path: doc.path,
 				frontmatter: curateFrontmatter(doc.frontmatter),
@@ -438,22 +440,24 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 				400,
 			);
 		if (picked[0] === "meta") {
-			// #33 (D2): the metadata editor's one-commit field write. Only the
-			// five editor keys pass (a stray key is a 400, never a write);
-			// values are string | null | string[] (tags), and null/empty
-			// REMOVES the key (setFrontmatterKeys' rule). `status` is
-			// enum-only (A2) – OkfFieldError from the core seam maps to 400
-			// below, before any byte is touched.
+			// #33 (D2): the metadata editor's one-commit field write. The
+			// allowlist is the five curated editor keys PLUS any additional
+			// §4.1 extension key matching the core seam's grammar (operator
+			// round C – producers may carry any frontmatter keys); values are
+			// string | null | string[] (tags), and null/empty REMOVES the key
+			// (setFrontmatterKeys' rule). Managed keys (derived/owned by other
+			// flows) are a 400, never a write; `status` is enum-only (A2) and
+			// unsafe key names die here or at the core seam – OkfFieldError
+			// maps to 400 below, before any byte is touched.
 			const meta = body.meta;
 			if (typeof meta !== "object" || meta === null || Array.isArray(meta))
 				return c.json({ error: "meta must be an object" }, 400);
 			const edits: FrontmatterEdit[] = [];
 			for (const [key, value] of Object.entries(meta)) {
-				if (
-					!["type", "description", "tags", "status", "stale_after"].includes(
-						key,
-					)
-				)
+				if (MANAGED_META_KEYS.has(key))
+					return c.json({ error: `${key} is a managed key` }, 400);
+				const curated = META_EDITOR_KEYS.includes(key);
+				if (!curated && !isFrontmatterKey(key))
 					return c.json({ error: `unknown meta key: ${key}` }, 400);
 				if (value === null) {
 					edits.push({ key, value: null });
@@ -937,12 +941,38 @@ function tailPath(c: Context<AppEnv>, prefix: string): string | undefined {
 	}
 }
 
-/** The doc payload's `frontmatter` (#33): the curated keys only – `title`
- *  (the display-name model) plus the OKF editor/trust fields. Unknown keys
- *  never leave the server; the list fields normalize through their core
- *  readers (refsList, verifiedEvents – hand-mangled shapes read as empty,
- *  never throw) and are omitted when empty, the updateRefsField rule – so a
- *  doc carrying only `title` serializes exactly as it did before rung 3. */
+/** The metadata editor's five curated keys (#33, D2). */
+const META_EDITOR_KEYS = [
+	"type",
+	"description",
+	"tags",
+	"status",
+	"stale_after",
+];
+/** Keys a {meta} write may never touch (operator round C): derived
+ *  (references/referenced-by = the graph), append-only (verified), stamped
+ *  (generated), owned by the rename flow (title), or the bundle's own
+ *  (okf_version, §12). A write to one is a 400 `managed key`, never a
+ *  splice. */
+const MANAGED_META_KEYS = new Set([
+	"generated",
+	"verified",
+	"references",
+	"referenced-by",
+	"title",
+	"okf_version",
+]);
+
+/** The doc payload's `frontmatter` (#33 + operator round C): the curated
+ *  keys – `title` (the display-name model) plus the OKF editor/trust
+ *  fields, normalized through their core readers (refsList,
+ *  verifiedEvents – hand-mangled shapes read as empty, never throw) and
+ *  omitted when empty, the updateRefsField rule – and, beyond them, every
+ *  OTHER §4.1 extension key with a scalar or string-array value, passed
+ *  through PARSED (still never the raw YAML bytes; objects and mixed
+ *  arrays stay home). The managed set keeps its curated treatment above –
+ *  those keys never arrive as editable extensions – so a doc carrying only
+ *  `title` serializes exactly as it did before rung 3. */
 function curateFrontmatter(
 	fm: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -964,6 +994,22 @@ function curateFrontmatter(
 	for (const key of ["references", "referenced-by"] as const) {
 		const list = refsList(fm[key]);
 		if (list.length > 0) out[key] = list;
+	}
+	for (const [key, value] of Object.entries(fm)) {
+		if (
+			key in out ||
+			META_EDITOR_KEYS.includes(key) ||
+			MANAGED_META_KEYS.has(key)
+		)
+			continue;
+		if (
+			value === null ||
+			typeof value === "string" ||
+			typeof value === "number" ||
+			typeof value === "boolean" ||
+			(Array.isArray(value) && value.every((v) => typeof v === "string"))
+		)
+			out[key] = value;
 	}
 	return out;
 }

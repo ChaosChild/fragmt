@@ -26,6 +26,18 @@ export const DEFAULT_TYPE = "concept";
  *  unknown values, this key is enum-only (the UI edits it with a select,
  *  the seam rejects anything else before a byte is written). */
 export const STATUS_VALUES = ["draft", "stable", "deprecated"] as const;
+/** §4.1 extension keys: the metadata editor's arbitrary-key grammar – a
+ *  safe YAML key shape (ASCII letters, digits, space, underscore, hyphen;
+ *  alphanumeric first). One grammar for every edit key, curated or
+ *  extension; a single flat char class, so no backtracking on long names. */
+export const FRONTMATTER_KEY = /^[A-Za-z0-9][A-Za-z0-9 _-]*$/;
+
+/** The key half of the seam gate (setFrontmatterKeys): true when the name
+ *  may be spliced into YAML. Injection-shaped names – colons, newlines,
+ *  leading punctuation, non-ASCII – are false before any line is rendered. */
+export function isFrontmatterKey(key: string): boolean {
+	return FRONTMATTER_KEY.test(key);
+}
 
 /** A frontmatter edit failed validation at the seam (a `status` outside the
  *  enum) – the server maps this to 400; nothing is ever spliced. */
@@ -386,11 +398,12 @@ export interface FrontmatterEdit {
  * Rung 3's metadata editor (D2): apply field edits to one doc FILE through
  * the spliceDocFields discipline – line-spliced, never re-serialized,
  * unknown keys byte-preserved, fence-less docs gaining a fence with `type`
- * first. `status` is enum-only (A2): anything outside STATUS_VALUES throws
- * OkfFieldError at this seam, BEFORE any line is rendered – the server maps
- * it to 400. Free-text values ride JSON.stringify'd lines, so colons,
- * quotes, and newlines cannot break the fence. Returns the new text, or
- * null when nothing changed.
+ * first. TWO gates fire before any line is rendered: the KEY gate
+ * (isFrontmatterKey – the §4.1 grammar; an unsafe name is never spliced
+ * into the YAML) and the `status` enum (A2: anything outside STATUS_VALUES
+ * throws OkfFieldError, which the server maps to 400). Free-text values
+ * ride JSON.stringify'd lines, so colons, quotes, and newlines cannot
+ * break the fence. Returns the new text, or null when nothing changed.
  */
 export function setFrontmatterKeys(
 	text: string,
@@ -398,6 +411,10 @@ export function setFrontmatterKeys(
 ): string | null {
 	const fields: FieldUpdate[] = [];
 	for (const e of edits) {
+		if (!isFrontmatterKey(e.key))
+			throw new OkfFieldError(
+				`invalid frontmatter key: ${JSON.stringify(e.key)}`,
+			);
 		if (e.list !== undefined) {
 			if (e.key === "status")
 				throw new OkfFieldError("status is enum-only, not a list");

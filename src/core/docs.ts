@@ -284,11 +284,12 @@ export async function verifyDoc(
  * through setFrontmatterKeys – the setTitle line-splice discipline (YAML
  * never re-serialized, unknown keys byte-preserved, a fence-less doc gains
  * a fence carrying `type` first) – in ONE commit, `Update metadata for
- * <docPath>`. The A2 enum gate fires inside the splice, BEFORE the
- * identity read and any write (a bad `status` costs no spawn and no
- * byte); a no-op edit (null splice) commits nothing and returns the empty
- * sha (the fixOkf rule). `user` (serve --auth) overrides the commit
- * author; omitted → localUser().
+ * <docPath>`. The A2 enum gate AND the §4.1 key-grammar gate
+ * (isFrontmatterKey – an unsafe name is never spliced) fire inside the
+ * splice, BEFORE the identity read and any write (a bad edit costs no
+ * spawn and no byte); a no-op edit (null splice) commits nothing and
+ * returns the empty sha (the fixOkf rule). `user` (serve --auth) overrides
+ * the commit author; omitted → localUser().
  * ponytail: no stale-check (no baseHash – the editor sends field diffs,
  * not the buffer), so concurrent metadata edits are last-write-wins; add
  * one only if that ever bites a two-editor repo.

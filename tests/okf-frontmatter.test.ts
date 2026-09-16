@@ -82,6 +82,35 @@ test("status is enum-only: valid values pass, anything else throws at the seam",
 	);
 });
 
+test("the key gate (§4.1 grammar): safe names write, unsafe names throw before any splice", () => {
+	// Safe: ASCII letters, digits, space, underscore, hyphen – alnum first.
+	for (const key of ["owner", "My Key", "under_score-d 2"]) {
+		const next = edit(DOC, { key, value: "v" });
+		expect(next, key).toContain(`${key}: "v"`);
+		expect(matter(next ?? "", {}).data[key]).toBe("v");
+	}
+	// Unsafe: injection-shaped names (colons, newlines, leading punctuation,
+	// non-ASCII) throw OkfFieldError at the seam – the key can never be
+	// spliced into the YAML. A colon or newline in the name is a fence-break
+	// attempt; the alnum-first rule closes the leading underscore/hyphen
+	// opens a hand-writer might reach for.
+	for (const key of [
+		"",
+		"x: injected",
+		"x\ninjected: yes",
+		"x #comment",
+		"- lead",
+		"_under",
+		"café",
+	]) {
+		expect(() => edit(DOC, { key, value: "v" }), JSON.stringify(key)).toThrow(
+			OkfFieldError,
+		);
+	}
+	// The curated keys all pass the same gate (one grammar, no exceptions).
+	expect(edit(DOC, { key: "description", value: null })).not.toBeNull();
+});
+
 test("free-text values with colons, newlines, and quotes round-trip intact", () => {
 	const gnarly = 'line1\nline2: colon "q" #hash \\ back';
 	const next = edit(DOC, { key: "description", value: gnarly });
