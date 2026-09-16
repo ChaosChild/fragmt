@@ -136,14 +136,33 @@ and `validate --fix` finishes adoption in a single pass. It composes with
 
 In OKF mode fragmt maintains:
 
-- **Conformant defaults** – new docs are born with a `type: concept`
-  frontmatter block; any non-empty type is conformant.
+- **Conformant defaults** – new docs are born with a `type: concept` and
+  `status: draft` frontmatter block; any non-empty type is conformant.
 - **Generated `index.md`** – per directory holding docs: concepts grouped
   under `# <Type>` sections with absolute links, regenerated on membership
   changes (create, move, rename, delete, merge) – never on content saves.
 - **`references` / `referenced-by`** – frontmatter fields derived from body
   links, recomputed on every save. Body links stay canonical; the fields are
   a cache.
+- **Trust stamping** – every save rewrites `generated: { by, at }`: `by` is
+  the committing identity as `human:<email-local-part>`, or an agent's
+  self-declared `--as-actor` string (default `fragmt-agent/unspecified` –
+  a machine never claims a human's review). `verified` is an append-only
+  event log with three affordances, each appending `{ by, at }` in the same
+  commit as its act: resolving a comment thread, the doc head's Verify
+  button, and Save as Verified beside Save.
+- **Trust badges** – derived, never stored: doc cards and the doc head show
+  the §5.3 tier (unverified / machine-confirmed / human-reviewed) from the
+  `verified` actors, and a stale chip once `now >= stale_after`. An absent
+  status renders nothing – stable is silence, never implied.
+- **Metadata editor** – the doc head edits `type`, `description`, `tags`,
+  `status`, and `stale_after` as fields, never raw YAML: one commit per
+  save, existing YAML spliced line-wise (unknown keys byte-preserved).
+  `status` is enum-only – `draft` / `stable` / `deprecated`, enforced at
+  the API seam; the UI's select is convenience.
+- **References pane** – the right pane's References mode lists the open
+  doc's outgoing and incoming references; rows navigate the main pane while
+  the pane stays open beside it.
 - **Reserved names** – `index.md` and `log.md` never hold concepts; creates
   and renames targeting them are refused.
 
@@ -159,8 +178,8 @@ fragmt init [--root <path>] [--folder <name>] [--new] [--okf]
 fragmt serve [--port <n>] [--auth]
 fragmt validate [--fix]
 fragmt agent [status]
-fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--full]
-fragmt agent draft <doc> [--merge]
+fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor "<producer>/<version>"] [--full]
+fragmt agent draft <doc> [--merge] [--as-actor "<producer>/<version>"]
 fragmt --help
 ```
 
@@ -189,6 +208,11 @@ Doc bodies are plain markdown, so agents read and diff them directly; the CLI
 matters for drafts, comments and merge state. Mutations accept `--author`
 (`Name <address>`) so an agent's commits carry its own identity – list the name
 under `agents` in `.fragmt.json` and the UI marks its comments with a chip.
+In OKF mode, agents also self-declare the `generated` stamp's actor with
+`--as-actor "<producer>/<version>"` (default `fragmt-agent/unspecified`) –
+verbatim, never a false `human:` claim. `draft --merge` stamps the doc on
+the draft branch before merging; `comment --resolve` appends the actor's
+`verified` event beside the sidecar write.
 
 `fragmt init` also writes a delimited `<!-- fragmt:begin -->…<!-- fragmt:end -->`
 block into `AGENTS.md`, teaching any agent the drafting rules. Nothing outside
