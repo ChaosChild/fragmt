@@ -6,6 +6,7 @@
 import { describe, expect, test } from "vitest";
 import {
 	avatarUser,
+	extensionRows,
 	isoToLocal,
 	isReservedDoc,
 	isStaleIso,
@@ -72,4 +73,38 @@ test("isReservedDoc: basename match, path-aware, case-insensitive (§3.1)", () =
 	expect(isReservedDoc("log.md")).toBe(true);
 	expect(isReservedDoc("docs/logs.md")).toBe(false);
 	expect(isReservedDoc("my-index.md")).toBe(false);
+});
+
+// Operator round C: the metadata editor's §4.1 extension rows – the
+// partitioning the form renders from (scalars editable, everything else
+// read-only, the mirror's named keys never rows).
+describe("extensionRows (the §4.1 extension-row partitioning)", () => {
+	test("scalars become editable rows (stringified), named keys never do", () => {
+		const rows = extensionRows({
+			type: "concept",
+			title: "Named",
+			verified: [{ by: "human:x" }],
+			references: [],
+			owner: "ops",
+			priority: 2,
+			published: true,
+		});
+		expect(rows.editable).toEqual([
+			{ key: "owner", value: "ops" },
+			{ key: "priority", value: "2" },
+			{ key: "published", value: "true" },
+		]);
+		expect(rows.readOnly).toEqual([]);
+	});
+
+	test("string arrays (and anything else) render read-only, JSON-stringified; null edits as empty", () => {
+		const rows = extensionRows({
+			"reviewed-by": ["alice", "bob"],
+			missing: null,
+		});
+		expect(rows.editable).toEqual([{ key: "missing", value: "" }]);
+		expect(rows.readOnly).toEqual([
+			{ key: "reviewed-by", value: '["alice","bob"]' },
+		]);
+	});
 });

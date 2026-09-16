@@ -87,3 +87,55 @@ export function isReservedDoc(path: string): boolean {
 	const base = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
 	return base === "index.md" || base === "log.md";
 }
+
+/** The mirror type's named keys – everything else in a doc payload is a
+ *  §4.1 extension key (operator round C). */
+const KNOWN_FRONTMATTER = new Set([
+	"title",
+	"type",
+	"description",
+	"tags",
+	"status",
+	"generated",
+	"verified",
+	"stale_after",
+	"references",
+	"referenced-by",
+]);
+
+export interface ExtensionRows {
+	/** Editable scalar keys, payload order – `value` is the input's string
+	 *  form (number/boolean via String, null as ""). */
+	editable: { key: string; value: string }[];
+	/** String-array (and, defensively, any other) values – read-only rows,
+	 *  JSON.stringify'd for display. */
+	readOnly: { key: string; value: string }[];
+}
+
+/**
+ * Partition a doc payload's §4.1 extension keys (operator round C) for the
+ * metadata editor's rows: scalars (string | number | boolean | null)
+ * become editable `name: value` rows; string arrays and anything else the
+ * server might pass render READ-ONLY – hand-editing complex YAML is
+ * raw-file territory.
+ * ponytail: no structured list editor for array-valued extension keys –
+ * they display read-only; a chip editor can ride these rows if ever
+ * wanted.
+ */
+export function extensionRows(fm: Record<string, unknown>): ExtensionRows {
+	const rows: ExtensionRows = { editable: [], readOnly: [] };
+	for (const [key, value] of Object.entries(fm)) {
+		if (KNOWN_FRONTMATTER.has(key)) continue;
+		if (
+			value === null ||
+			typeof value === "string" ||
+			typeof value === "number" ||
+			typeof value === "boolean"
+		) {
+			rows.editable.push({ key, value: value === null ? "" : String(value) });
+		} else {
+			rows.readOnly.push({ key, value: JSON.stringify(value) ?? "" });
+		}
+	}
+	return rows;
+}

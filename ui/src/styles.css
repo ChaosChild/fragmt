@@ -791,6 +791,31 @@ body {
 	color: var(--muted);
 	white-space: nowrap;
 }
+/* §4.1 extension rows (operator round C): string-array values render
+   read-only, stringified and ellipsized (the row title carries the full
+   text); the add-key row's two inputs share one cell. */
+.meta-row.readonly {
+	color: var(--muted);
+}
+.meta-readonly-value {
+	font-size: 11px;
+	color: var(--muted);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.meta-note {
+	margin: 0;
+	font-size: 10px;
+	color: var(--muted);
+}
+.meta-add {
+	display: grid;
+	grid-template-columns: minmax(72px, 1fr) minmax(0, 2fr);
+	gap: var(--space-2);
+	min-width: 0;
+}
 .meta-form input,
 .meta-form select {
 	font-family: var(--font-mono);

@@ -25,6 +25,7 @@ import {
 import {
 	avatarUser,
 	displayTitle,
+	extensionRows,
 	isoToLocal,
 	isReservedDoc,
 	isStaleIso,
@@ -295,6 +296,15 @@ export function DocView({
 	});
 	const [metaSeed, setMetaSeed] = useState<MetaForm | null>(null);
 	const [pendingMeta, setPendingMeta] = useState(false);
+	// Operator round C: the §4.1 extension rows – arbitrary scalar keys the
+	// payload passed through, edited as text beside the curated five; the
+	// seed record rides the same diff (only changed rows PATCH, a cleared
+	// value removes the key). The add-key row's two inputs start empty each
+	// open; a filled name joins the edits as one more extension write.
+	const [metaExt, setMetaExt] = useState<Record<string, string>>({});
+	const [metaExtSeed, setMetaExtSeed] = useState<Record<string, string>>({});
+	const [metaAddKey, setMetaAddKey] = useState("");
+	const [metaAddValue, setMetaAddValue] = useState("");
 	// #33 (A1): the read-mode Verify button's in-flight state.
 	const [verifying, setVerifying] = useState(false);
 	// M4-3 b6: the dead-link note's payload – a relative .md link that matched
@@ -379,6 +389,10 @@ export function DocView({
 	// §3.1: reserved files (index.md/log.md) hold no concept frontmatter –
 	// the OKF affordances and badges never apply to them.
 	const reserved = isReservedDoc(selected);
+	// The §4.1 extension rows for the open doc (operator round C) – the
+	// metadata form reads them; read-only values (string arrays and friends)
+	// render, never edit.
+	const extRows = doc ? extensionRows(doc.frontmatter) : null;
 
 	// --- header file actions (M4-3 b4) --------------------------------------
 	// Rename gates in the spec's order: a dirty buffer raises the
@@ -446,8 +460,17 @@ export function DocView({
 	async function proceedMeta() {
 		if (!doc || !(await onBeforeMetaEdit())) return;
 		const form = metaFormOf(doc);
+		// The extension rows seed beside the curated five (operator round C)
+		// – string arrays and other non-scalars stay out (read-only rows).
+		const ext: Record<string, string> = {};
+		for (const row of extensionRows(doc.frontmatter).editable)
+			ext[row.key] = row.value;
 		setMetaSeed(form);
 		setMetaForm(form);
+		setMetaExtSeed(ext);
+		setMetaExt(ext);
+		setMetaAddKey("");
+		setMetaAddValue("");
 		setMetaError(null);
 		setMetaEditing(true);
 	}
@@ -481,6 +504,15 @@ export function DocView({
 		// only on send, so a round-trip through toIsoUtc never reads as a change.
 		if (metaForm.stale !== metaSeed.stale)
 			edits.stale_after = metaForm.stale ? toIsoUtc(metaForm.stale) : null;
+		// Extension rows (§4.1, operator round C): the same seed diff – only
+		// changed rows ride the PATCH, a cleared value removes the key. The
+		// add-key row joins as one more write when its name is filled.
+		for (const [key, value] of Object.entries(metaExt)) {
+			if (value === (metaExtSeed[key] ?? "")) continue;
+			edits[key] = value.trim() || null;
+		}
+		const addKey = metaAddKey.trim();
+		if (addKey !== "") edits[addKey] = metaAddValue.trim() || null;
 		if (Object.keys(edits).length === 0) {
 			closeMeta(); // nothing changed – closing is saving
 			return;
@@ -1134,6 +1166,61 @@ export function DocView({
 								disabled={metaBusy}
 							/>
 						</label>
+						{/* §4.1 extension rows (operator round C): arbitrary scalar
+						    keys, editable like the curated five (a cleared value
+						    removes the key on save); string-array values and
+						    anything else render READ-ONLY – hand-editing complex
+						    YAML is raw-file territory.
+						    ponytail: no structured editor for array-valued keys –
+						    they display only; a chip editor can ride these rows
+						    if ever wanted. */}
+						{extRows?.editable.map((r) => (
+							<label className="meta-row" key={r.key}>
+								<span className="meta-key">{r.key}:</span>
+								<input
+									value={metaExt[r.key] ?? ""}
+									onChange={(e) =>
+										setMetaExt({ ...metaExt, [r.key]: e.target.value })
+									}
+									disabled={metaBusy}
+								/>
+							</label>
+						))}
+						{extRows?.readOnly.map((r) => (
+							<div className="meta-row readonly" key={r.key} title={r.value}>
+								<span className="meta-key">{r.key}:</span>
+								<span className="meta-readonly-value">{r.value}</span>
+							</div>
+						))}
+						{extRows !== null && extRows.readOnly.length > 0 && (
+							<p className="meta-note">
+								list-valued keys are read-only here – edit the raw file for
+								complex YAML
+							</p>
+						)}
+						{/* The add-key row: two inputs; a filled name becomes a normal
+						    extension row's write on save (the server's grammar gate
+						    answers a bad name with an inline error, the form stays
+						    open). */}
+						<div className="meta-row add">
+							<span className="meta-key">add key:</span>
+							<span className="meta-add">
+								<input
+									value={metaAddKey}
+									placeholder="name"
+									aria-label="New key name"
+									onChange={(e) => setMetaAddKey(e.target.value)}
+									disabled={metaBusy}
+								/>
+								<input
+									value={metaAddValue}
+									placeholder="value"
+									aria-label="New key value"
+									onChange={(e) => setMetaAddValue(e.target.value)}
+									disabled={metaBusy}
+								/>
+							</span>
+						</div>
 					</div>
 					{metaError && (
 						<span className="rename-error" role="alert">

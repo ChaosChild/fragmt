@@ -12,9 +12,11 @@ export interface VerifiedEvent {
 	at?: string;
 }
 
-/** Mirror of the doc payload's curated frontmatter (#33): the server sends
- *  these keys ONLY (unknown frontmatter never leaves it), and omits the
- *  list fields when empty (the updateRefsField rule) – read them as []. */
+/** Mirror of the doc payload's curated frontmatter (#33 + operator round
+ *  C): the named keys arrive ONLY as the server curates them (the list
+ *  fields are omitted when empty – read them as []), and any OTHER key is
+ *  a §4.1 extension the server passed through parsed – a scalar (string |
+ *  number | boolean | null) or a string array; never raw YAML bytes. */
 export interface DocFrontmatter {
 	title?: string;
 	type?: string;
@@ -29,6 +31,8 @@ export interface DocFrontmatter {
 	stale_after?: string;
 	references?: string[];
 	"referenced-by"?: string[];
+	/** §4.1 extension keys – scalar or string-array, never the managed set. */
+	[key: string]: unknown;
 }
 
 export interface DocResponse {
@@ -157,9 +161,11 @@ export const setTitle = (path: string, title: string) =>
  *  select (a convenience, never the guard; the API seam is). */
 export const STATUS_VALUES = ["draft", "stable", "deprecated"] as const;
 
-/** #33 (D2): the metadata editor's one-commit field write. Only the five
- *  editor keys; null (or an empty tags list) REMOVES the key; send only
- *  the fields that changed – untouched lines keep their bytes. */
+/** #33 (D2) + operator round C: the metadata editor's one-commit field
+ *  write. The five curated keys plus any §4.1 extension key (the server
+ *  allowlists the name's grammar); null (or an empty tags list) REMOVES
+ *  the key; send only the fields that changed – untouched lines keep
+ *  their bytes. */
 export interface DocMetaEdit {
 	type?: string | null;
 	description?: string | null;
@@ -167,6 +173,8 @@ export interface DocMetaEdit {
 	status?: string | null;
 	/** ISO UTC (toIsoUtc converts the datetime-local value). */
 	stale_after?: string | null;
+	/** §4.1 extension keys – string | null only (null removes). */
+	[key: string]: string | string[] | null | undefined;
 }
 
 export const patchDocMeta = (path: string, meta: DocMetaEdit) =>
