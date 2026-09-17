@@ -694,10 +694,14 @@ function hasDocsDeep(node: TreeNode): boolean {
  * Regenerate every `index.md` whose directory holds concept docs (§8, D2):
  * `# <Type>` sections of `* [Title](/bundle/abs.md) - description` entries
  * (the description omitted when absent), concept-holding subdirectories
- * under a final `# Subdirectories` section, and – on the bundle root alone –
- * `okf_version: "0.2"` frontmatter (§12). Only changed files are written; a
- * hand-edited index is deliberately overwritten (consumers may synthesize
- * indexes anyway). Returns the repo-relative paths written.
+ * under a final `# Subdirectories` section whose entries link each
+ * subdirectory's own `/bundle/sub/index.md` (an ordinary doc link, operator
+ * round 4B), and – on the bundle root alone – `okf_version: "0.2"`
+ * frontmatter (§12). Only changed files are written; a hand-edited index is
+ * deliberately overwritten (consumers may synthesize indexes anyway), so
+ * `validate --fix` (fixOkf) re-linking an adopted bundle's old directory
+ * shape is just this pass running again. Returns the repo-relative paths
+ * written.
  * ponytail: full regeneration per membership change, and an index.md
  * orphaned by its last doc moving away is left in place (broken links are
  * spec-tolerated) – prune on demand if it ever bites.
@@ -781,7 +785,13 @@ function writeIndex(
 		sections.push([
 			"# Subdirectories",
 			"",
-			...subs.map((s) => `* [${s.name}](/${s.path}/)`),
+			// Operator round 4B: each entry links the subdirectory's OWN
+			// index.md (bundle-absolute, the doc-entry shape) – an ordinary doc
+			// link, so a UI click navigates the main pane and Shift opens the
+			// slideout preview like any other. Every listed subdirectory holds
+			// docs deep, so its index always exists (generateIndexes wrote it
+			// in the same pass). A directory href was a dead end in the UI.
+			...subs.map((s) => `* [${s.name}](/${s.path}/index.md)`),
 		]);
 	}
 	if (sections.length === 0) return []; // nothing to list, no index

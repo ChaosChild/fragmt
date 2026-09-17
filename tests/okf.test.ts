@@ -182,7 +182,7 @@ test("generateIndexes: D2 shape – sections, descriptions, Subdirectories last,
 			"",
 			"# Subdirectories",
 			"",
-			"* [sub](/sub/)",
+			"* [sub](/sub/index.md)",
 			"",
 		].join("\n"),
 	);
@@ -305,6 +305,35 @@ test("fixOkf: prepends the block, forces type in place, materializes absent stat
 	);
 	expect(sha).toBe(gitOut(r, ["rev-parse", "HEAD"]));
 	expect(gitOut(r, ["rev-list", "--count", "HEAD"])).toBe("2");
+	const check = await validateOkf(r, ".");
+	expect(check.conformant).toBe(true);
+});
+
+test("fixOkf: an adopted bundle's directory links self-heal to the index.md shape (4B)", async () => {
+	const r = gitRepo();
+	const put = (rel: string, text: string) => {
+		mkdirSync(dirname(join(r, rel)), { recursive: true });
+		writeFileSync(join(r, rel), text);
+	};
+	// Conformant already (type + status present) – the ONLY drift is the
+	// root index's pre-4B `* [sub](/sub/)` subdirectory entry.
+	put("sub/d.md", '---\ntype: Playbook\nstatus: "stable"\n---\n# D\n');
+	put(
+		"index.md",
+		'---\nokf_version: "0.2"\n---\n\n# Playbook\n\n* [D](/sub/d.md)\n\n# Subdirectories\n\n* [sub](/sub/)\n',
+	);
+	gitOut(r, ["add", "-A"]);
+	gitOut(r, ["commit", "-q", "-m", "seed"]);
+
+	const { files } = await fixOkf(r, ".");
+
+	// generateIndexes rides the fix's commit (the populateOkf precedent):
+	// the root index re-links to sub's own index.md, and sub/index.md is
+	// born in the same pass – the UI reads both as ordinary doc links.
+	expect(files.sort()).toEqual(["index.md", "sub/index.md"].sort());
+	expect(readFileSync(join(r, "index.md"), "utf8")).toContain(
+		"* [sub](/sub/index.md)",
+	);
 	const check = await validateOkf(r, ".");
 	expect(check.conformant).toBe(true);
 });

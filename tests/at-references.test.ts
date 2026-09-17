@@ -223,6 +223,25 @@ describe("resolveLinkTarget dispatch (M4-3 b6)", () => {
 		});
 	});
 
+	test("the generated index's subdirectory entry is an ordinary doc link (operator round 4B)", () => {
+		// generateIndexes writes `* [name](/sub/index.md)` – bundle-absolute
+		// like every entry, and a doc target like any other: a plain read-mode
+		// click navigates the main pane, Shift (or edit-mode Ctrl/Cmd) opens
+		// the slideout preview – the same "doc" branch, nothing special-cased.
+		const docs = new Set(["index.md", "sub/index.md", "sub/d.md"]);
+		const subs = new Set(["sub"]);
+		expect(resolveLinkTarget("/sub/index.md", "index.md", docs, subs)).toEqual({
+			kind: "doc",
+			path: "sub/index.md",
+		});
+		// The pre-4B directory shape still reads as a folder link – an
+		// adopted bundle keeps working until its `validate --fix` heals it.
+		expect(resolveLinkTarget("/sub/", "index.md", docs, subs)).toEqual({
+			kind: "folder",
+			path: "sub",
+		});
+	});
+
 	test("non-md relative hrefs → raw with the markdown-relative path", () => {
 		expect(resolveLinkTarget("image.png", "dir/a.md", known, folders)).toEqual({
 			kind: "raw",
