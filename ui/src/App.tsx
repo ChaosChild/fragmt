@@ -863,7 +863,8 @@ export function App() {
 		setExpandFolder((f) => ({ path, n: (f?.n ?? 0) + 1 }));
 		const dir = tree ? findDir(tree, path) : null;
 		const first = dir ? firstDoc(dir) : null;
-		if (first) setSelected(first);
+		// Guarded like every selection change (operator round E2).
+		if (first) guardAction(`Open ${first}`, () => setSelected(first));
 	}
 
 	// --- #15: the pane's open/close seams + the collapse chrome ----------------
@@ -1239,7 +1240,13 @@ export function App() {
 						<Sidebar
 							tree={tree}
 							selected={selected}
-							onSelect={setSelected}
+							// The card click is a navigation like any other
+							// (operator round E2): the dirty guard parks it
+							// behind the save-or-discard banner – the one
+							// entry point that silently dropped edits.
+							onSelect={(path) =>
+								guardAction(`Open ${path}`, () => setSelected(path))
+							}
 							meta={meta}
 							okfFindings={okfFindings}
 							expandFolder={expandFolder}

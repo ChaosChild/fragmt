@@ -331,6 +331,14 @@ export function DocView({
 	useEffect(() => {
 		setLinkNotFound(null);
 	}, [selected]);
+	// Operator round E1: a doc switch ends the edit session – the next doc
+	// opens in read mode, never carrying the previous doc's editor state.
+	// Dirty switches never arrive (App's guard parks them behind the
+	// save-or-discard banner); this handles the clean-buffer case.
+	useEffect(() => {
+		setEditing(false);
+		setConfirmingCancel(false);
+	}, [selected]);
 	// The draft gutter (#18): the main pane marks the blocks the draft's
 	// commits touched. Refires on doc/branch changes, skips off-draft, and a
 	// failed fetch is just no marking – a decoration never becomes an error.
