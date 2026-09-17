@@ -487,7 +487,7 @@ test("GET verifiedByYou: your event stands on a doc with no generated stamp", as
 		[
 			"---",
 			"type: concept",
-			'verified: [{ by: human:okf, at: 2026-09-17T00:00:00Z }]',
+			"verified: [{ by: human:okf, at: 2026-09-17T00:00:00Z }]",
 			"---",
 			"# fixed",
 			"",
