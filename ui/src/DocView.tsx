@@ -458,7 +458,14 @@ export function DocView({
 	}
 
 	async function proceedMeta() {
-		if (!doc || !(await onBeforeMetaEdit())) return;
+		if (!doc) return;
+		// A reserved file opens read-only: no gate (nothing will be written,
+		// so no draft starts) and no seed – the form renders the §3.1 note.
+		if (reserved) {
+			setMetaEditing(true);
+			return;
+		}
+		if (!(await onBeforeMetaEdit())) return;
 		const form = metaFormOf(doc);
 		// The extension rows seed beside the curated five (operator round C)
 		// – string arrays and other non-scalars stay out (read-only rows).
@@ -946,11 +953,10 @@ export function DocView({
 										aria-label="Edit metadata"
 										title={
 											reserved
-												? "Reserved file – index.md and log.md hold no concept frontmatter (OKF §3.1)"
+												? "Reserved file – view why it holds no frontmatter (OKF §3.1)"
 												: "Edit metadata"
 										}
 										onClick={requestMeta}
-										disabled={reserved}
 									>
 										<Tags aria-hidden="true" />
 									</button>
@@ -960,12 +966,11 @@ export function DocView({
 										aria-label="References"
 										title={
 											reserved
-												? "Reserved file – index.md and log.md hold no concept frontmatter (OKF §3.1)"
+												? "References (reserved file – §3.1 note)"
 												: "References"
 										}
 										aria-pressed={referencesOpen}
 										onClick={onOpenReferences}
-										disabled={reserved}
 									>
 										<Link2 aria-hidden="true" />
 									</button>
@@ -1084,14 +1089,16 @@ export function DocView({
 					<div className="meta-head">
 						<span className="meta-title">metadata</span>
 						<div className="meta-actions">
-							<button
-								type="submit"
-								className="iconbtn primary"
-								disabled={metaBusy}
-							>
-								<Check aria-hidden="true" />
-								<span className="label">{metaBusy ? "Saving…" : "Save"}</span>
-							</button>
+							{!reserved && (
+								<button
+									type="submit"
+									className="iconbtn primary"
+									disabled={metaBusy}
+								>
+									<Check aria-hidden="true" />
+									<span className="label">{metaBusy ? "Saving…" : "Save"}</span>
+								</button>
+							)}
 							<button
 								type="button"
 								className="iconbtn subtle"
@@ -1103,70 +1110,71 @@ export function DocView({
 							</button>
 						</div>
 					</div>
-					<div className="meta-rows">
-						<label className="meta-row">
-							<span className="meta-key">type:</span>
-							<input
-								value={metaForm.type}
-								onChange={(e) =>
-									setMetaForm({ ...metaForm, type: e.target.value })
-								}
-								disabled={metaBusy}
-							/>
-						</label>
-						<label className="meta-row">
-							<span className="meta-key">description:</span>
-							<input
-								value={metaForm.description}
-								onChange={(e) =>
-									setMetaForm({ ...metaForm, description: e.target.value })
-								}
-								disabled={metaBusy}
-							/>
-						</label>
-						<label className="meta-row">
-							<span className="meta-key">tags:</span>
-							<input
-								value={metaForm.tags}
-								placeholder="comma-separated"
-								onChange={(e) =>
-									setMetaForm({ ...metaForm, tags: e.target.value })
-								}
-								disabled={metaBusy}
-							/>
-						</label>
-						<label className="meta-row">
-							<span className="meta-key">status:</span>
-							{/* Enum-only (A2): the select is the convenience, the API
+					{!reserved && (
+						<div className="meta-rows">
+							<label className="meta-row">
+								<span className="meta-key">type:</span>
+								<input
+									value={metaForm.type}
+									onChange={(e) =>
+										setMetaForm({ ...metaForm, type: e.target.value })
+									}
+									disabled={metaBusy}
+								/>
+							</label>
+							<label className="meta-row">
+								<span className="meta-key">description:</span>
+								<input
+									value={metaForm.description}
+									onChange={(e) =>
+										setMetaForm({ ...metaForm, description: e.target.value })
+									}
+									disabled={metaBusy}
+								/>
+							</label>
+							<label className="meta-row">
+								<span className="meta-key">tags:</span>
+								<input
+									value={metaForm.tags}
+									placeholder="comma-separated"
+									onChange={(e) =>
+										setMetaForm({ ...metaForm, tags: e.target.value })
+									}
+									disabled={metaBusy}
+								/>
+							</label>
+							<label className="meta-row">
+								<span className="meta-key">status:</span>
+								{/* Enum-only (A2): the select is the convenience, the API
 								    seam is the guard; a stored out-of-enum value stays
 								    visible as its own option. */}
-							<select
-								value={metaForm.status}
-								onChange={(e) =>
-									setMetaForm({ ...metaForm, status: e.target.value })
-								}
-								disabled={metaBusy}
-							>
-								<option value="">unset</option>
-								{statusOptions(metaForm.status).map((s) => (
-									<option key={s} value={s}>
-										{s}
-									</option>
-								))}
-							</select>
-						</label>
-						<label className="meta-row">
-							<span className="meta-key">stale_after:</span>
-							<input
-								type="datetime-local"
-								value={metaForm.stale}
-								onChange={(e) =>
-									setMetaForm({ ...metaForm, stale: e.target.value })
-								}
-								disabled={metaBusy}
-							/>
-						</label>
-						{/* §4.1 extension rows (operator round C): arbitrary scalar
+								<select
+									value={metaForm.status}
+									onChange={(e) =>
+										setMetaForm({ ...metaForm, status: e.target.value })
+									}
+									disabled={metaBusy}
+								>
+									<option value="">unset</option>
+									{statusOptions(metaForm.status).map((s) => (
+										<option key={s} value={s}>
+											{s}
+										</option>
+									))}
+								</select>
+							</label>
+							<label className="meta-row">
+								<span className="meta-key">stale_after:</span>
+								<input
+									type="datetime-local"
+									value={metaForm.stale}
+									onChange={(e) =>
+										setMetaForm({ ...metaForm, stale: e.target.value })
+									}
+									disabled={metaBusy}
+								/>
+							</label>
+							{/* §4.1 extension rows (operator round C): arbitrary scalar
 						    keys, editable like the curated five (a cleared value
 						    removes the key on save); string-array values and
 						    anything else render READ-ONLY – hand-editing complex
@@ -1174,54 +1182,63 @@ export function DocView({
 						    ponytail: no structured editor for array-valued keys –
 						    they display only; a chip editor can ride these rows
 						    if ever wanted. */}
-						{extRows?.editable.map((r) => (
-							<label className="meta-row" key={r.key}>
-								<span className="meta-key">{r.key}:</span>
-								<input
-									value={metaExt[r.key] ?? ""}
-									onChange={(e) =>
-										setMetaExt({ ...metaExt, [r.key]: e.target.value })
-									}
-									disabled={metaBusy}
-								/>
-							</label>
-						))}
-						{extRows?.readOnly.map((r) => (
-							<div className="meta-row readonly" key={r.key} title={r.value}>
-								<span className="meta-key">{r.key}:</span>
-								<span className="meta-readonly-value">{r.value}</span>
-							</div>
-						))}
-						{extRows !== null && extRows.readOnly.length > 0 && (
-							<p className="meta-note">
-								list-valued keys are read-only here – edit the raw file for
-								complex YAML
-							</p>
-						)}
-						{/* The add-key row: two inputs; a filled name becomes a normal
+							{extRows?.editable.map((r) => (
+								<label className="meta-row" key={r.key}>
+									<span className="meta-key">{r.key}:</span>
+									<input
+										value={metaExt[r.key] ?? ""}
+										onChange={(e) =>
+											setMetaExt({ ...metaExt, [r.key]: e.target.value })
+										}
+										disabled={metaBusy}
+									/>
+								</label>
+							))}
+							{extRows?.readOnly.map((r) => (
+								<div className="meta-row readonly" key={r.key} title={r.value}>
+									<span className="meta-key">{r.key}:</span>
+									<span className="meta-readonly-value">{r.value}</span>
+								</div>
+							))}
+							{extRows !== null && extRows.readOnly.length > 0 && (
+								<p className="meta-note">
+									list-valued keys are read-only here – edit the raw file for
+									complex YAML
+								</p>
+							)}
+							{/* The add-key row: two inputs; a filled name becomes a normal
 						    extension row's write on save (the server's grammar gate
 						    answers a bad name with an inline error, the form stays
 						    open). */}
-						<div className="meta-row add">
-							<span className="meta-key">add key:</span>
-							<span className="meta-add">
-								<input
-									value={metaAddKey}
-									placeholder="name"
-									aria-label="New key name"
-									onChange={(e) => setMetaAddKey(e.target.value)}
-									disabled={metaBusy}
-								/>
-								<input
-									value={metaAddValue}
-									placeholder="value"
-									aria-label="New key value"
-									onChange={(e) => setMetaAddValue(e.target.value)}
-									disabled={metaBusy}
-								/>
-							</span>
+							<div className="meta-row add">
+								<span className="meta-key">add key:</span>
+								<span className="meta-add">
+									<input
+										value={metaAddKey}
+										placeholder="name"
+										aria-label="New key name"
+										onChange={(e) => setMetaAddKey(e.target.value)}
+										disabled={metaBusy}
+									/>
+									<input
+										value={metaAddValue}
+										placeholder="value"
+										aria-label="New key value"
+										onChange={(e) => setMetaAddValue(e.target.value)}
+										disabled={metaBusy}
+									/>
+								</span>
+							</div>
 						</div>
-					</div>
+					)}
+					{reserved && (
+						<p className="meta-note">
+							This is a reserved OKF file – index.md and log.md hold no concept
+							frontmatter (type, status, trust, references; §3.1), so there is
+							nothing to edit. A directory index is generated by fragmt and
+							regenerated whenever its folder's docs change.
+						</p>
+					)}
 					{metaError && (
 						<span className="rename-error" role="alert">
 							{metaError}

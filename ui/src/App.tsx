@@ -44,7 +44,7 @@ import { CommentsRail } from "./CommentsRail";
 import { commentSpanTitle } from "./comment-summary";
 import { DocPreview } from "./DocPreview";
 import { DocView } from "./DocView";
-import { displayTitle } from "./display";
+import { displayTitle, isReservedDoc } from "./display";
 import {
 	basename,
 	type DragItem,
@@ -1407,6 +1407,7 @@ export function App() {
 										referencedBy={doc?.frontmatter["referenced-by"] ?? []}
 										docs={docs}
 										onPreview={openPreviewDoc}
+										reserved={doc ? isReservedDoc(doc.path) : false}
 									/>
 								) : (
 									<CommentsRail

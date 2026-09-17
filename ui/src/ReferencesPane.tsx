@@ -23,6 +23,7 @@ export function ReferencesPane({
 	referencedBy,
 	docs,
 	onPreview,
+	reserved = false,
 }: {
 	references: string[];
 	referencedBy: string[];
@@ -30,7 +31,13 @@ export function ReferencesPane({
 	docs: AtDoc[];
 	/** Open the path in the slideout's preview split (App's openPreviewDoc). */
 	onPreview: (path: string) => void;
+	/** The open doc is a reserved file (§3.1): no reference fields exist and
+	 * none ever will – the empty states say so instead of the generic
+	 * "links land here on save" line, which is false for an index. */
+	reserved?: boolean;
 }) {
+	const reservedNote =
+		"Reserved file – index.md and log.md carry no reference fields (OKF §3.1). An index's links are its generated content.";
 	const section = (heading: string, paths: string[], empty: string) => (
 		<section className="refs-section">
 			<h3 className="refs-heading">{heading}</h3>
@@ -59,9 +66,15 @@ export function ReferencesPane({
 			{section(
 				"References",
 				references,
-				"No outgoing references yet – body links land here on save.",
+				reserved
+					? reservedNote
+					: "No outgoing references yet – body links land here on save.",
 			)}
-			{section("Referenced by", referencedBy, "Nothing links here yet.")}
+			{section(
+				"Referenced by",
+				referencedBy,
+				reserved ? reservedNote : "Nothing links here yet.",
+			)}
 		</div>
 	);
 }
