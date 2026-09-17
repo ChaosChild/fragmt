@@ -744,14 +744,17 @@ body {
    doc-actions Save/Cancel own the session). One `name: value` row per key
    (the tag-editor look – key inline-left, value/input right); the row grid
    keeps the value on minmax(0,1fr) so long values wrap inside the row,
-   never overflow the pane. */
+   never overflow the pane. Operator round 4A: the outer spacing halved
+   (margin 32→16, bottom padding 20→8) and SYMMETRIC – the gap the doc
+   head's rule leaves above the block equals the one the block's rule
+   leaves above the content; the inner row spacing is untouched. */
 .meta-block {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
-	padding-bottom: var(--space-5);
+	padding-bottom: var(--space-2);
 	border-bottom: 1px solid var(--border);
-	margin-bottom: var(--space-8);
+	margin-bottom: var(--space-4);
 	font-family: var(--font-mono);
 	min-width: 0;
 }
@@ -936,14 +939,16 @@ body {
    thread list the column holds. */
 
 /* Document header – the email parallel: who, which version, when,
-   sync state, and the draft escape hatch. */
+   sync state, and the draft escape hatch. Operator round 4A: the rule's
+   margin-bottom halves to space-4 – the gap above the metadata block must
+   equal the block's own margin below it (symmetry around the block). */
 .doc-head {
 	display: flex;
 	align-items: center;
 	gap: var(--space-3);
 	padding-bottom: var(--space-5);
 	border-bottom: 1px solid var(--border);
-	margin-bottom: var(--space-8);
+	margin-bottom: var(--space-4);
 	flex-wrap: wrap;
 }
 .avatar {
@@ -2498,10 +2503,13 @@ button.comment-quote:hover {
 .side-head-branch .iconbtn {
 	flex-shrink: 0;
 }
+/* Operator rounds A (tool-btn) and 4E (the reserved-doc Edit refusal): a
+   disabled action keeps its pointer events so its explaining tooltip can
+   hover (a pointer-events:none here would swallow the hover); the click
+   itself is already dead. */
 .iconbtn:disabled {
 	opacity: 0.5;
 	cursor: default;
-	pointer-events: none;
 }
 /* Recycle bin (item 9) – pinned below the doc list; every Restore sits on
    the same right edge, Restore all right-aligned beneath them. */
