@@ -148,9 +148,10 @@ In OKF mode fragmt maintains:
   the committing identity as `human:<email-local-part>`, or an agent's
   self-declared `--as-actor` string (default `fragmt-agent/unspecified` –
   a machine never claims a human's review). `verified` is an append-only
-  event log with three affordances, each appending `{ by, at }` in the same
+  event log with four affordances, each appending `{ by, at }` in the same
   commit as its act: resolving a comment thread, the doc head's Verify
-  button, and Save as Verified beside Save.
+  button, Save as Verified beside Save, and `fragmt agent verify <doc>`
+  (its `--as-actor` defaulting to the same self-declared string).
 - **Trust badges** – derived, never stored: doc cards and the doc head show
   the §5.3 tier (unverified / machine-confirmed / human-reviewed) from the
   `verified` actors, and a stale chip once `now >= stale_after`. An absent
@@ -180,6 +181,7 @@ fragmt validate [--fix]
 fragmt agent [status]
 fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor "<producer>/<version>"] [--full]
 fragmt agent draft <doc> [--merge] [--as-actor "<producer>/<version>"]
+fragmt agent verify <doc> [--as-actor "<producer>/<version>"] [--author <who>]
 fragmt --help
 ```
 
@@ -203,6 +205,7 @@ no interactive prompts.
 | `fragmt agent comment docs/x.md --thread <id> --resolve` | Resolve a thread |
 | `fragmt agent draft docs/x.md` | Start or reuse the doc's draft branch |
 | `fragmt agent draft docs/x.md --merge` | Merge the draft into main |
+| `fragmt agent verify docs/x.md` | Append a `verified` event to the doc in its own commit |
 
 Doc bodies are plain markdown, so agents read and diff them directly; the CLI
 matters for drafts, comments and merge state. Mutations accept `--author`
@@ -212,7 +215,8 @@ In OKF mode, agents also self-declare the `generated` stamp's actor with
 `--as-actor "<producer>/<version>"` (default `fragmt-agent/unspecified`) –
 verbatim, never a false `human:` claim. `draft --merge` stamps the doc on
 the draft branch before merging; `comment --resolve` appends the actor's
-`verified` event beside the sidecar write.
+`verified` event beside the sidecar write; `verify` appends it standalone –
+the UI's Verify button without the HTTP detour.
 
 `fragmt init` also writes a delimited `<!-- fragmt:begin -->…<!-- fragmt:end -->`
 block into `AGENTS.md`, teaching any agent the drafting rules. Nothing outside

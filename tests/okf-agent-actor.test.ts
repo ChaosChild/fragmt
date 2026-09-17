@@ -1,10 +1,12 @@
 // OKF rungs 3–4 e2e (#33): the commit-wrapped trust flows on real git repos –
 // a UI-shaped writeDoc save stamps `generated` (and a `verified` event when
 // flagged, actor verbatim) into the same commit as the refs propagation,
-// verifyDoc's standalone event, comment-resolve's sidecar+doc single commit
-// (with the non-OKF repo staying sidecar-only), the agent CLI's draft
-// --merge stamp riding the merge with the post-merge populateOkf regen, the
-// D4 default actor, and --fix/createDoc materializing status: draft (A3).
+// verifyDoc's standalone event (its own actor override included), comment-
+// resolve's sidecar+doc single commit (with the non-OKF repo staying
+// sidecar-only), the agent CLI's draft --merge stamp riding the merge with
+// the post-merge populateOkf regen, the agent-first `verify` verb (operator
+// round 4C: default actor, verbatim --as-actor, unknown doc), the D4
+// default actor, and --fix/createDoc materializing status: draft (A3).
 import { execFileSync } from "node:child_process";
 import {
 	mkdirSync,
@@ -270,6 +272,20 @@ test("verifyDoc appends the identity's event in one Verify commit", async () => 
 	expect(readDoc(root, ".", "a.md").frontmatter.generated).toBeUndefined();
 });
 
+test("verifyDoc's actor override rides verbatim; the commit stays the identity's", async () => {
+	const root = repo();
+	seed(root, "a.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	await verifyDoc(root, ".", "a.md", undefined, "zai/glum-5.3");
+
+	expect(readDoc(root, ".", "a.md").frontmatter.verified).toEqual([
+		expect.objectContaining({ by: "zai/glum-5.3" }),
+	]);
+	expect(run(root, ["log", "-1", "--format=%an"])).toBe("Actor Test");
+});
+
 // --- comment-resolve's rider ------------------------------------------------------
 
 test("comment-resolve appends the resolver's event beside the sidecar in one commit", async () => {
@@ -396,6 +412,60 @@ test("comment --resolve --as-actor rides the declared actor on the sidecar's com
 	expect(commitFiles(root).sort()).toEqual(
 		[".docs/comments/a.md.json", "a.md"].sort(),
 	);
+});
+
+// --- the agent CLI's verify (operator round 4C – the agent-first A1) ----------
+
+test("agent verify appends the D4 default actor's event in its own commit", async () => {
+	const root = repo();
+	seed(root, "a.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	const r = await agent(root, ["verify", "a.md"]);
+
+	expect(r.code).toBe(0);
+	expect(r.out[0]).toBe(`ok: verified a.md as ${AGENT_DEFAULT} · 1 commit`);
+	expect(readDoc(root, ".", "a.md").frontmatter.verified).toEqual([
+		expect.objectContaining({ by: AGENT_DEFAULT }),
+	]);
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe("Verify a.md");
+	expect(commitFiles(root)).toEqual(["a.md"]);
+});
+
+test("agent verify --as-actor is verbatim beside --author's commit identity", async () => {
+	const root = repo();
+	seed(root, "a.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	const r = await agent(root, [
+		"verify",
+		"a.md",
+		"--as-actor",
+		"claude/4.5",
+		"--author",
+		"Zed Agent",
+	]);
+
+	expect(r.code).toBe(0);
+	expect(r.out[0]).toBe("ok: verified a.md as claude/4.5 · 1 commit");
+	expect(readDoc(root, ".", "a.md").frontmatter.verified).toEqual([
+		expect.objectContaining({ by: "claude/4.5" }),
+	]);
+	expect(run(root, ["log", "-1", "--format=%an"])).toBe("Zed Agent");
+});
+
+test("agent verify on an unknown doc is exit 1 with the definitive line", async () => {
+	const root = repo();
+	seed(root, "a.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	const r = await agent(root, ["verify", "missing.md"]);
+
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe("error: no doc missing.md");
 });
 
 // --- status always explicit (A3) ----------------------------------------------------

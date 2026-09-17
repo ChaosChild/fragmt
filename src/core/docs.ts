@@ -282,12 +282,16 @@ export async function writeDoc(
  * (the spec keeps them independent: content may change without
  * re-confirmation and vice versa). `user` (serve --auth) overrides the
  * commit author AND the event's `human:` actor; omitted → localUser().
+ * `actor` (the agent CLI's --as-actor) overrides the event's actor
+ * verbatim, the setResolved rule – never a false `human:` claim by
+ * construction (the caller self-declares); omitted → actorOf(user).
  */
 export async function verifyDoc(
 	repoRoot: string,
 	docsRoot: string,
 	docPath: string,
 	user?: { name: string; email: string },
+	actor?: string,
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
 	// §3.1: reserved files hold no concept frontmatter – nothing to verify.
@@ -298,7 +302,7 @@ export async function verifyDoc(
 		throw new DocNotFoundError(docPath);
 	}
 	const who = user ?? (await localUser(repoRoot));
-	const next = appendVerified(readFileSync(abs, "utf8"), actorOf(who));
+	const next = appendVerified(readFileSync(abs, "utf8"), actor ?? actorOf(who));
 	if (next !== null) writeFileSync(abs, next);
 	const sha = await commitAs(
 		who,

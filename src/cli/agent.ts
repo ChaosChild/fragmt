@@ -21,6 +21,7 @@ import {
 	setResolved,
 	stampGenerated,
 	startDraft,
+	verifyDoc,
 } from "../core/index.js";
 import { nestedDocsRedirect } from "./index.js";
 
@@ -172,7 +173,7 @@ type AgentValues = {
 };
 
 function parseVerb(
-	verb: "status" | "comment" | "draft",
+	verb: "status" | "comment" | "draft" | "verify",
 	args: string[],
 ): { values: AgentValues; positionals: string[] } {
 	const asActor = { "as-actor": { type: "string" } } as const;
@@ -188,7 +189,9 @@ function parseVerb(
 				}
 			: verb === "draft"
 				? { merge: { type: "boolean", default: false }, ...asActor }
-				: {};
+				: verb === "verify"
+					? { author: { type: "string" }, ...asActor }
+					: {};
 	const { values, positionals } = parseArgs({
 		args,
 		options,
@@ -377,7 +380,56 @@ async function runDraft(
 }
 
 /**
- * `fragmt agent [status] | comment <doc> […] | draft <doc> [--merge]`.
+ * `fragmt agent verify <doc> [--as-actor <string>] [--author <who>]` – the
+ * agent-first A1 affordance (operator round 4C): the standalone verified
+ * event through the same core verifyDoc the UI's Verify button rides, no
+ * HTTP surface needed. The actor rule is comment --resolve's: the agent's
+ * self-declaration verbatim, default AGENT_DEFAULT – never a false human:
+ * off the git identity. One commit; the ok line names the actor it landed
+ * as, so a mis-declared producer is visible at the point of use.
+ */
+async function runVerify(
+	repoRoot: string,
+	docsRoot: string,
+	parsed: { values: AgentValues; positionals: string[] },
+	out: (s: string) => void,
+): Promise<number> {
+	const { values, positionals } = parsed;
+	const doc = positionals[0];
+	if (doc === undefined) {
+		out("error: verify needs a doc path (docsRoot-relative .md)");
+		return 1;
+	}
+	if (inMerge(repoRoot)) {
+		out(IN_MERGE);
+		return 1;
+	}
+	// The definitive one-liner for a missing doc (verifyDoc's
+	// DocNotFoundError carries only the bare path); a traversal shape keeps
+	// DocPathError's own text via the outer catch.
+	const abs = resolveDocPath(repoRoot, docsRoot, doc);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		out(`error: no doc ${doc}`);
+		return 1;
+	}
+	const user =
+		values.author !== undefined
+			? parseAuthor(values.author)
+			: await localUser(repoRoot);
+	if (!user.name || !user.email) {
+		out("error: --author needs a display name and an address");
+		return 1;
+	}
+	const actor = values["as-actor"] ?? AGENT_DEFAULT;
+	await verifyDoc(repoRoot, docsRoot, doc, user, actor);
+	out(`ok: verified ${doc} as ${actor} · 1 commit`);
+	helpBlock(out, ["fragmt agent status"]);
+	return 0;
+}
+
+/**
+ * `fragmt agent [status] | comment <doc> […] | draft <doc> [--merge] |
+ * verify <doc> [--as-actor <string>] [--author <who>]`.
  * Returns the exit code: 0 ok, 1 runtime error (`error: …` on stdout, one
  * line), 2 unknown flag/verb. `write` is injectable for tests; stdout live.
  */
@@ -390,7 +442,12 @@ export async function runAgent(
 ): Promise<number> {
 	const out = (s: string) => write(`${s}\n`);
 	const verb = argv[0] ?? "status";
-	if (verb !== "status" && verb !== "comment" && verb !== "draft") {
+	if (
+		verb !== "status" &&
+		verb !== "comment" &&
+		verb !== "draft" &&
+		verb !== "verify"
+	) {
 		out("error: unknown flag or verb");
 		return 2;
 	}
@@ -405,6 +462,8 @@ export async function runAgent(
 		const docsRoot = loadConfig(repoRoot).docsRoot;
 		if (verb === "status") return await runStatus(repoRoot, docsRoot, out);
 		if (verb === "comment") return await runComment(repoRoot, parsed, out);
+		if (verb === "verify")
+			return await runVerify(repoRoot, docsRoot, parsed, out);
 		return await runDraft(repoRoot, docsRoot, parsed, out);
 	} catch (e) {
 		// #16: run from the outer repo of a nested setup – the shared redirect
