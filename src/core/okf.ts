@@ -39,6 +39,21 @@ export function isFrontmatterKey(key: string): boolean {
 	return FRONTMATTER_KEY.test(key);
 }
 
+/** Keys no USER metadata edit may touch (operator rounds C/D): derived
+ *  (references/referenced-by = the graph), append-only (verified), stamped
+ *  (generated), owned by the rename flow (title), or the bundle's own
+ *  (okf_version, §12). The server validates {meta} bodies against this set;
+ *  writeDoc's `metaEdits` enforce it again at the core seam, so no caller
+ *  below the HTTP layer can splice a managed line. */
+export const MANAGED_FRONTMATTER_KEYS = new Set([
+	"generated",
+	"verified",
+	"references",
+	"referenced-by",
+	"title",
+	"okf_version",
+]);
+
 /** A frontmatter edit failed validation at the seam (a `status` outside the
  *  enum) – the server maps this to 400; nothing is ever spliced. */
 export class OkfFieldError extends Error {}

@@ -350,6 +350,134 @@ test("PUT verified:true: the event rides the save's commit (stamp + event, one c
 	expect(commits()).toBe(2);
 });
 
+// --- PUT {meta}: the unified editor's riding write (operator round D) ---------
+
+test("PUT {meta}: content and metadata land in one commit, stamp included", async () => {
+	writeConfig(true);
+	const doc = (await (await api("GET", "/api/docs/a.md")).json()) as {
+		hash: string;
+	};
+	const res = await api("PUT", "/api/docs/a.md", {
+		markdown: "# a v2\n",
+		baseHash: doc.hash,
+		meta: { description: "why", owner: "ops" },
+	});
+	expect(res.status).toBe(200);
+	const { sha } = (await res.json()) as { sha: string };
+	expect(sha).toBe(gitOut(["rev-parse", "HEAD"]));
+	expect(commits()).toBe(2); // the save commit alone carries body + metadata
+	const head = gitOut(["show", "HEAD:a.md"]);
+	expect(head).toContain("# a v2");
+	expect(head).toContain('description: "why"');
+	expect(head).toContain('owner: "ops"');
+	expect(head).toContain("secret: keep"); // byte-preserved
+	expect(head).toContain('generated: { by: "human:okf"'); // the stamp rode too
+});
+
+test("PUT {meta}: enum violations and managed keys are 400, nothing written", async () => {
+	writeConfig(true);
+	const doc = (await (await api("GET", "/api/docs/a.md")).json()) as {
+		hash: string;
+	};
+	const before = readFileSync(join(root, "a.md"), "utf8");
+	const enumRes = await api("PUT", "/api/docs/a.md", {
+		markdown: "# x\n",
+		baseHash: doc.hash,
+		meta: { status: "bogus" },
+	});
+	expect(enumRes.status).toBe(400);
+	expect(((await enumRes.json()) as { error: string }).error).toContain(
+		"status must be one of",
+	);
+	const managedRes = await api("PUT", "/api/docs/a.md", {
+		markdown: "# x\n",
+		baseHash: doc.hash,
+		meta: { verified: "x" },
+	});
+	expect(managedRes.status).toBe(400);
+	expect(((await managedRes.json()) as { error: string }).error).toContain(
+		"managed key",
+	);
+	const badShape = await api("PUT", "/api/docs/a.md", {
+		markdown: "# x\n",
+		baseHash: doc.hash,
+		meta: "nope",
+	});
+	expect(badShape.status).toBe(400);
+	expect(readFileSync(join(root, "a.md"), "utf8")).toBe(before);
+	expect(commits()).toBe(1);
+});
+
+test("PUT {meta} (non-OKF): the field is ignored entirely", async () => {
+	const doc = (await (await api("GET", "/api/docs/a.md")).json()) as {
+		hash: string;
+	};
+	const res = await api("PUT", "/api/docs/a.md", {
+		markdown: "# a v2\n",
+		baseHash: doc.hash,
+		meta: { description: "why" },
+	});
+	expect(res.status).toBe(200);
+	const head = gitOut(["show", "HEAD:a.md"]);
+	expect(head).toContain("# a v2");
+	expect(head).not.toContain("description");
+});
+
+// --- GET verifiedByYou (operator round D) --------------------------------------
+
+test("GET verifiedByYou: true after your verify, false once content moves on", async () => {
+	writeConfig(true);
+	const seedDoc = (await (await api("GET", "/api/docs/a.md")).json()) as {
+		hash: string;
+		verifiedByYou: boolean;
+	};
+	expect(seedDoc.verifiedByYou).toBe(false); // no events yet
+	// A save stamps generated (T1); the verify appends an event (T2 ≥ T1).
+	await api("PUT", "/api/docs/a.md", {
+		markdown: "# a v2\n",
+		baseHash: seedDoc.hash,
+	});
+	await api("POST", "/api/docs/a.md/verify");
+	const mine = (await (await api("GET", "/api/docs/a.md")).json()) as {
+		hash: string;
+		verifiedByYou: boolean;
+	};
+	expect(mine.verifiedByYou).toBe(true);
+	// Another save re-stamps generated (T3 > T2): your verification no longer
+	// covers the content.
+	await api("PUT", "/api/docs/a.md", {
+		markdown: "# a v3\n",
+		baseHash: mine.hash,
+	});
+	const moved = (await (await api("GET", "/api/docs/a.md")).json()) as {
+		verifiedByYou: boolean;
+	};
+	expect(moved.verifiedByYou).toBe(false);
+});
+
+test("GET verifiedByYou: someone else's dated event is never yours", async () => {
+	writeConfig(true);
+	writeFileSyncLF(
+		"other.md",
+		[
+			"---",
+			"type: concept",
+			"generated: { by: human:x, at: 2026-09-16T00:00:00Z }",
+			"verified: [{ by: human:someone, at: 2026-09-16T01:00:00Z }]",
+			"---",
+			"# other",
+			"",
+		].join("\n"),
+	);
+	commitFiles("add other");
+	const body = (await (await api("GET", "/api/docs/other.md")).json()) as {
+		verifiedByYou: boolean;
+	};
+	// The repo identity is okf@example.com (human:okf) – the event's actor
+	// is someone else, so the button never claims it.
+	expect(body.verifiedByYou).toBe(false);
+});
+
 // --- /api/meta: the badge fields ---------------------------------------------
 
 test("GET /api/meta (OKF): per-doc type/status/tier/staleAfter derived", async () => {

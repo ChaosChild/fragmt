@@ -6,6 +6,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono } from "hono";
 import {
 	abortMerge,
+	actorOf,
 	addReply,
 	addThread,
 	addThreadWithDoc,
@@ -32,6 +33,8 @@ import {
 	isFrontmatterKey,
 	listBranches,
 	listTree,
+	localUser,
+	MANAGED_FRONTMATTER_KEYS,
 	MergeUnresolvedError,
 	mergeState,
 	mergeToMain,
@@ -324,7 +327,7 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		return next();
 	});
 
-	app.get("/api/docs/*", (c) => {
+	app.get("/api/docs/*", async (c) => {
 		let docPath: string;
 		try {
 			docPath = decodeURIComponent(c.req.path.slice(DOCS_PREFIX.length));
@@ -337,12 +340,14 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 			// never verbatim (#33 + operator round C): the curated keys – the
 			// metadata editor's fields, the trust family, and the derived graph
 			// lists the References pane reads – plus scalar/string-array §4.1
-			// extension keys (curateFrontmatter's pass-through).
+			// extension keys (curateFrontmatter's pass-through). Operator round
+			// D adds verifiedByYou, the Verify button's already-mine state.
 			return c.json({
 				path: doc.path,
 				frontmatter: curateFrontmatter(doc.frontmatter),
 				markdown: doc.markdown,
 				hash: docHash(doc.markdown),
+				verifiedByYou: await verifiedByYou(ctx, c, doc.frontmatter),
 			});
 		} catch (e) {
 			if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
@@ -359,7 +364,12 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		} catch {
 			return c.json({ error: "invalid doc path" }, 400);
 		}
-		let payload: { markdown?: unknown; baseHash?: unknown; verified?: unknown };
+		let payload: {
+			markdown?: unknown;
+			baseHash?: unknown;
+			verified?: unknown;
+			meta?: unknown;
+		};
 		try {
 			payload = (await c.req.json()) as typeof payload;
 		} catch {
@@ -376,6 +386,17 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		// stamp). Non-OKF repos ignore the flag entirely.
 		if (payload.verified !== undefined && typeof payload.verified !== "boolean")
 			return c.json({ error: "verified must be a boolean" }, 400);
+		// Operator round D: the unified editor's metadata rides the SAME save –
+		// {meta} is changed keys only (the seed-diff rule), validated here
+		// with the PATCH branch's own gates (parseMetaEdits), applied inside
+		// the save's single commit by writeDoc's metaEdits. Non-OKF repos
+		// ignore the field entirely (writeDoc's non-OKF path drops it).
+		let metaEdits: FrontmatterEdit[] | undefined;
+		if (payload.meta !== undefined) {
+			const edits = parseMetaEdits(payload.meta);
+			if (edits instanceof Response) return edits;
+			metaEdits = edits;
+		}
 		try {
 			const { sha, hash } = await writeDoc(
 				ctx.repoRoot,
@@ -384,10 +405,14 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 				payload.markdown,
 				payload.baseHash,
 				commitAuthor(c),
-				payload.verified ? { verified: true } : {},
+				{
+					...(payload.verified ? { verified: true } : {}),
+					...(metaEdits === undefined ? {} : { metaEdits }),
+				},
 			);
 			return c.json({ sha, hash });
 		} catch (e) {
+			if (e instanceof OkfFieldError) return c.json({ error: e.message }, 400);
 			if (e instanceof DocPathError) return c.json({ error: e.message }, 400);
 			if (e instanceof DocNotFoundError)
 				return c.json({ error: "doc not found" }, 404);
@@ -440,39 +465,18 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 				400,
 			);
 		if (picked[0] === "meta") {
-			// #33 (D2): the metadata editor's one-commit field write. The
-			// allowlist is the five curated editor keys PLUS any additional
-			// §4.1 extension key matching the core seam's grammar (operator
-			// round C – producers may carry any frontmatter keys); values are
-			// string | null | string[] (tags), and null/empty REMOVES the key
+			// #33 (D2): the metadata editor's one-commit field write – and,
+			// via the same validator, the PUT's riding {meta} (operator round
+			// D). parseMetaEdits holds the gates: the five curated editor keys
+			// PLUS any §4.1 extension key matching the core seam's grammar
+			// (producers may carry any frontmatter keys); values are string |
+			// null | string[] (tags), and null/empty REMOVES the key
 			// (setFrontmatterKeys' rule). Managed keys (derived/owned by other
 			// flows) are a 400, never a write; `status` is enum-only (A2) and
 			// unsafe key names die here or at the core seam – OkfFieldError
 			// maps to 400 below, before any byte is touched.
-			const meta = body.meta;
-			if (typeof meta !== "object" || meta === null || Array.isArray(meta))
-				return c.json({ error: "meta must be an object" }, 400);
-			const edits: FrontmatterEdit[] = [];
-			for (const [key, value] of Object.entries(meta)) {
-				if (MANAGED_META_KEYS.has(key))
-					return c.json({ error: `${key} is a managed key` }, 400);
-				const curated = META_EDITOR_KEYS.includes(key);
-				if (!curated && !isFrontmatterKey(key))
-					return c.json({ error: `unknown meta key: ${key}` }, 400);
-				if (value === null) {
-					edits.push({ key, value: null });
-					continue;
-				}
-				if (key === "tags") {
-					if (!Array.isArray(value) || value.some((v) => typeof v !== "string"))
-						return c.json({ error: "tags must be an array of strings" }, 400);
-					edits.push({ key, list: value });
-					continue;
-				}
-				if (typeof value !== "string")
-					return c.json({ error: `${key} must be a string or null` }, 400);
-				edits.push({ key, value });
-			}
+			const edits = parseMetaEdits(body.meta);
+			if (edits instanceof Response) return edits;
 			try {
 				const { sha } = await setDocMeta(
 					ctx.repoRoot,
@@ -949,19 +953,88 @@ const META_EDITOR_KEYS = [
 	"status",
 	"stale_after",
 ];
-/** Keys a {meta} write may never touch (operator round C): derived
- *  (references/referenced-by = the graph), append-only (verified), stamped
- *  (generated), owned by the rename flow (title), or the bundle's own
- *  (okf_version, §12). A write to one is a 400 `managed key`, never a
- *  splice. */
-const MANAGED_META_KEYS = new Set([
-	"generated",
-	"verified",
-	"references",
-	"referenced-by",
-	"title",
-	"okf_version",
-]);
+
+/** The {meta} body validator shared by the PATCH dispatch and the PUT's
+ *  riding field (operator round D): the allowlist is the curated editor keys
+ *  plus any §4.1 extension key matching the core seam's grammar; values are
+ *  string | null | string[] (tags only), null (or an empty list) REMOVES the
+ *  key. Managed keys (MANAGED_FRONTMATTER_KEYS – the core seam's own set)
+ *  and unsafe names are rejected here, before any core call. Returns the
+ *  FrontmatterEdit list, or the 400 Response on rejection. */
+function parseMetaEdits(meta: unknown): FrontmatterEdit[] | Response {
+	if (typeof meta !== "object" || meta === null || Array.isArray(meta))
+		return Response.json({ error: "meta must be an object" }, { status: 400 });
+	const edits: FrontmatterEdit[] = [];
+	for (const [key, value] of Object.entries(meta as Record<string, unknown>)) {
+		if (MANAGED_FRONTMATTER_KEYS.has(key))
+			return Response.json(
+				{ error: `${key} is a managed key` },
+				{ status: 400 },
+			);
+		const curated = META_EDITOR_KEYS.includes(key);
+		if (!curated && !isFrontmatterKey(key))
+			return Response.json(
+				{ error: `unknown meta key: ${key}` },
+				{ status: 400 },
+			);
+		if (value === null) {
+			edits.push({ key, value: null });
+			continue;
+		}
+		if (key === "tags") {
+			if (!Array.isArray(value) || value.some((v) => typeof v !== "string"))
+				return Response.json(
+					{ error: "tags must be an array of strings" },
+					{ status: 400 },
+				);
+			edits.push({ key, list: value });
+			continue;
+		}
+		if (typeof value !== "string")
+			return Response.json(
+				{ error: `${key} must be a string or null` },
+				{ status: 400 },
+			);
+		edits.push({ key, value });
+	}
+	return edits;
+}
+
+/** Operator round D: "you already verified this" for the doc GET payload –
+ *  true when the LATEST verified event's actor is the requesting identity
+ *  AND its time is ≥ the generated stamp's (content unchanged since your
+ *  verification; events are append-only, so a true button stays clickable –
+ *  re-verify is legal). The identity resolves exactly like the write
+ *  routes' (commitAuthor, else the repo's git identity); the spawn happens
+ *  only when a dated event could match, and a repo with no configured
+ *  identity answers false (no claim to make). Non-OKF repos and docs with
+ *  no events – or an undated event / unparseable generated stamp, neither
+ *  of which can outrun a stamp – answer false without the spawn. */
+async function verifiedByYou(
+	ctx: ServerContext,
+	c: Context<AppEnv>,
+	fm: Record<string, unknown>,
+): Promise<boolean> {
+	const events = verifiedEvents(fm.verified);
+	if (events.length === 0) return false;
+	const latest = events[events.length - 1];
+	if (typeof latest.at !== "string") return false;
+	const gen = fm.generated;
+	const genAt =
+		typeof gen === "object" &&
+		gen !== null &&
+		typeof (gen as { at?: unknown }).at === "string"
+			? Date.parse((gen as { at: string }).at)
+			: Number.NaN;
+	if (Number.isNaN(genAt) || Date.parse(latest.at) < genAt) return false;
+	if (!okfEnabled(ctx.repoRoot)) return false;
+	try {
+		const who = commitAuthor(c) ?? (await localUser(ctx.repoRoot));
+		return latest.by === actorOf(who);
+	} catch {
+		return false;
+	}
+}
 
 /** The doc payload's `frontmatter` (#33 + operator round C): the curated
  *  keys – `title` (the display-name model) plus the OKF editor/trust
@@ -999,7 +1072,7 @@ function curateFrontmatter(
 		if (
 			key in out ||
 			META_EDITOR_KEYS.includes(key) ||
-			MANAGED_META_KEYS.has(key)
+			MANAGED_FRONTMATTER_KEYS.has(key)
 		)
 			continue;
 		if (

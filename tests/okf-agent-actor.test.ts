@@ -23,7 +23,9 @@ import {
 	createDoc,
 	DocPathError,
 	docHash,
+	type FrontmatterEdit,
 	fixOkf,
+	OkfFieldError,
 	readComments,
 	readDoc,
 	setDocMeta,
@@ -70,7 +72,11 @@ async function save(
 	root: string,
 	rel: string,
 	body: string,
-	opts: { verified?: boolean; actor?: string } = {},
+	opts: {
+		verified?: boolean;
+		actor?: string;
+		metaEdits?: FrontmatterEdit[];
+	} = {},
 ) {
 	return writeDoc(
 		root,
@@ -147,6 +153,102 @@ test("saving a fence-less doc in OKF mode gains the fence and the stamp", async 
 	const a = readDoc(root, ".", "a.md");
 	expect(a.frontmatter.type).toBe("concept");
 	expect(byOf(a.frontmatter)).toBe("human:actor");
+});
+
+// --- writeDoc's metaEdits (operator round D – the unified save) ------------
+
+test("a save with metaEdits lands content and metadata in one commit", async () => {
+	const root = repo();
+	seed(root, "a.md", "---\ntype: concept\nsecret: keep\n---\n\n# X\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	await save(root, "a.md", "# X v2\n", {
+		metaEdits: [
+			{ key: "description", value: "why" },
+			{ key: "owner", value: "ops" },
+		],
+	});
+
+	const a = readDoc(root, ".", "a.md");
+	expect(a.markdown).toBe("# X v2\n");
+	expect(a.frontmatter.description).toBe("why");
+	expect(a.frontmatter.owner).toBe("ops");
+	expect(byOf(a.frontmatter)).toBe("human:actor"); // the stamp rode the same commit
+	expect(commitFiles(root)).toEqual(["a.md"]); // ONE commit for content + meta
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe("Update a.md");
+});
+
+test("metaEdits' enum gate fires before any byte – propagation targets untouched", async () => {
+	const root = repo();
+	seed(root, "a.md", "---\ntype: concept\n---\n\n# A\n\nSee [B](/b.md).\n");
+	seed(root, "b.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	const aBefore = readFileSync(join(root, "a.md"), "utf8");
+	const bBefore = readFileSync(join(root, "b.md"), "utf8");
+
+	// The new body drops the link, so the refs propagation would rewrite
+	// b.md's referenced-by – the enum throw must beat it.
+	await expect(
+		save(root, "a.md", "# A v2\n", {
+			metaEdits: [{ key: "status", value: "bogus" }],
+		}),
+	).rejects.toThrow(OkfFieldError);
+
+	expect(readFileSync(join(root, "a.md"), "utf8")).toBe(aBefore);
+	expect(readFileSync(join(root, "b.md"), "utf8")).toBe(bBefore);
+	expect(run(root, ["rev-list", "--count", "HEAD"])).toBe("1");
+});
+
+test("metaEdits on a managed key refuse before any write", async () => {
+	const root = repo();
+	seed(root, "a.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	const before = readFileSync(join(root, "a.md"), "utf8");
+
+	await expect(
+		save(root, "a.md", "# X v2\n", {
+			metaEdits: [{ key: "verified", value: "x" }],
+		}),
+	).rejects.toThrow("managed key");
+
+	expect(readFileSync(join(root, "a.md"), "utf8")).toBe(before);
+	expect(run(root, ["rev-list", "--count", "HEAD"])).toBe("1");
+});
+
+test("metaEdits on a reserved filename are a DocPathError (§3.1)", async () => {
+	const root = repo();
+	seed(root, "index.md", "# Index\n\n* [a](/a.md)\n");
+	seed(root, "a.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	const before = readFileSync(join(root, "index.md"), "utf8");
+
+	await expect(
+		save(root, "index.md", "# Index v2\n", {
+			metaEdits: [{ key: "status", value: "stable" }],
+		}),
+	).rejects.toThrow(DocPathError);
+
+	expect(readFileSync(join(root, "index.md"), "utf8")).toBe(before);
+});
+
+test("non-OKF repos ignore metaEdits entirely", async () => {
+	const root = repo(false);
+	seed(root, "a.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	await save(root, "a.md", "# X v2\n", {
+		metaEdits: [{ key: "description", value: "why" }],
+	});
+
+	const text = readFileSync(join(root, "a.md"), "utf8");
+	expect(text).toContain("# X v2"); // the body write happened
+	expect(text).not.toContain("description"); // the metadata never did
+	expect(run(root, ["rev-list", "--count", "HEAD"])).toBe("2");
 });
 
 // --- verifyDoc ------------------------------------------------------------------
