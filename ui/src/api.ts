@@ -41,6 +41,10 @@ export interface DocResponse {
 	markdown: string;
 	/** sha256 of `markdown` – sent back as `baseHash` on save. */
 	hash: string;
+	/** Operator round D: the LATEST verified event is yours AND postdates the
+	 *  generated stamp (content unchanged since your verification) – the
+	 *  Verify button's already-mine state; still clickable (append-only). */
+	verifiedByYou?: boolean;
 }
 
 export interface SaveResponse {
@@ -72,18 +76,26 @@ export class SaveError extends Error {
 	}
 }
 
-/** #33 (A1): verified=true rides the PUT – the verified event lands in the
- *  save's own commit (OKF mode; ignored elsewhere). */
+/** #33 (A1) + operator round D: verified=true rides the PUT with the
+ *  verified event landing in the save's own commit, and `meta` carries the
+ *  unified editor's changed keys (the seed-diff rule – untouched lines keep
+ *  their bytes). Both are OKF-mode fields, ignored elsewhere. */
 export async function saveDoc(
 	path: string,
 	markdown: string,
 	baseHash: string,
 	verified = false,
+	meta?: DocMetaEdit,
 ): Promise<SaveResponse> {
 	const res = await fetch(`/api/docs/${encodeURI(path)}`, {
 		method: "PUT",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ markdown, baseHash, verified }),
+		body: JSON.stringify({
+			markdown,
+			baseHash,
+			verified,
+			...(meta === undefined ? {} : { meta }),
+		}),
 	});
 	if (!res.ok) {
 		let message = `save failed (${res.status})`;
@@ -161,11 +173,11 @@ export const setTitle = (path: string, title: string) =>
  *  select (a convenience, never the guard; the API seam is). */
 export const STATUS_VALUES = ["draft", "stable", "deprecated"] as const;
 
-/** #33 (D2) + operator round C: the metadata editor's one-commit field
- *  write. The five curated keys plus any §4.1 extension key (the server
- *  allowlists the name's grammar); null (or an empty tags list) REMOVES
- *  the key; send only the fields that changed – untouched lines keep
- *  their bytes. */
+/** #33 (D2) + operator round C: the unified editor's changed-key payload –
+ *  the five curated keys plus any §4.1 extension key (the server allowlists
+ *  the name's grammar); null (or an empty tags list) REMOVES the key; only
+ *  changed fields ride a save – untouched lines keep their bytes. The agent/
+ *  API surface PATCH {meta} accepts the same shape. */
 export interface DocMetaEdit {
 	type?: string | null;
 	description?: string | null;
@@ -176,13 +188,6 @@ export interface DocMetaEdit {
 	/** §4.1 extension keys – string | null only (null removes). */
 	[key: string]: string | string[] | null | undefined;
 }
-
-export const patchDocMeta = (path: string, meta: DocMetaEdit) =>
-	request<{ sha: string }>(`/api/docs/${encodeURI(path)}`, {
-		method: "PATCH",
-		headers: JSON_HEADERS,
-		body: JSON.stringify({ meta }),
-	});
 
 /** #33 (A1): the doc head's Verify – the verified event in its own commit. */
 export const verifyDoc = (path: string) =>

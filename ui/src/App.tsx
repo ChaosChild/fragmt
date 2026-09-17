@@ -574,14 +574,9 @@ export function App() {
 	// on main the draft starts (and checks out) first – the doc path never
 	// changes, so the flow continues on the draft branch. DocView handles
 	// the dirty half with its own banner (the box opens after the choice).
+	// (The metadata editor's old twin gate is gone – operator round D: the
+	// one Edit button's gate covers content AND metadata together.)
 	async function beforeRename(): Promise<boolean> {
-		if (!onMain) return true;
-		return draftFirst();
-	}
-
-	// The metadata editor's gate (#33, D2) – the rename gate's twin: a field
-	// write is a doc write, so on main the draft starts first.
-	async function beforeMetaEdit(): Promise<boolean> {
 		if (!onMain) return true;
 		return draftFirst();
 	}
@@ -1366,7 +1361,6 @@ export function App() {
 								folders={moveDest.folders}
 								rootMoveValid={moveDest.rootValid}
 								onBeforeRename={beforeRename}
-								onBeforeMetaEdit={beforeMetaEdit}
 								onMoveDoc={requestMoveDoc}
 								onDeleteDoc={requestDeleteDoc}
 								onRenamed={onRenamed}

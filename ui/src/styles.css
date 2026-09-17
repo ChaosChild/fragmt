@@ -738,12 +738,14 @@ body {
 	font-size: 11px;
 	color: var(--danger);
 }
-/* #33 (D2): the metadata editor – operator round B: one `name: value` row
-   per field (the tag-editor look – key inline-left, input right) and a
-   single Save/Cancel pair owning the form's top-right corner. The row grid
-   keeps the input on minmax(0,1fr) so long values wrap inside the row,
+/* #33 (D2, operator round D): the unified metadata block – a native
+   details/summary between the doc head and the content, collapsed by
+   default; edit mode auto-expands it and its rows become inputs (the
+   doc-actions Save/Cancel own the session). One `name: value` row per key
+   (the tag-editor look – key inline-left, value/input right); the row grid
+   keeps the value on minmax(0,1fr) so long values wrap inside the row,
    never overflow the pane. */
-.meta-form {
+.meta-block {
 	display: flex;
 	flex-direction: column;
 	gap: var(--space-3);
@@ -753,23 +755,27 @@ body {
 	font-family: var(--font-mono);
 	min-width: 0;
 }
-.meta-head {
+.meta-block summary {
 	display: flex;
 	align-items: center;
-	gap: var(--space-2);
+	min-height: 24px;
+	cursor: pointer;
+	list-style: none;
+	user-select: none;
+}
+.meta-block summary::-webkit-details-marker {
+	display: none;
+}
+.meta-block summary:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
 }
 .meta-title {
 	font-size: 9px;
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
 	color: var(--muted);
-}
-.meta-head .meta-actions {
-	margin-left: auto;
-}
-.meta-actions {
-	display: flex;
-	gap: var(--space-2);
+	white-space: nowrap;
 }
 .meta-rows {
 	display: flex;
@@ -791,9 +797,9 @@ body {
 	color: var(--muted);
 	white-space: nowrap;
 }
-/* §4.1 extension rows (operator round C): string-array values render
-   read-only, stringified and ellipsized (the row title carries the full
-   text); the add-key row's two inputs share one cell. */
+/* §4.1 extension rows (operator round C) + the managed/derived rows
+   (operator round D): values render read-only, stringified and ellipsized
+   (the row title carries the full text). */
 .meta-row.readonly {
 	color: var(--muted);
 }
@@ -810,14 +816,37 @@ body {
 	font-size: 10px;
 	color: var(--muted);
 }
+/* The pending add-key rows (operator round D): name + value inputs and the
+   row's remove button share one cell. */
 .meta-add {
 	display: grid;
-	grid-template-columns: minmax(72px, 1fr) minmax(0, 2fr);
+	grid-template-columns: minmax(72px, 1fr) minmax(0, 2fr) max-content;
 	gap: var(--space-2);
 	min-width: 0;
 }
-.meta-form input,
-.meta-form select {
+/* The "+ add key" affordance – a quiet dashed ghost button, the meta-note's
+   size and voice. */
+.meta-add-key {
+	align-self: flex-start;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	color: var(--muted);
+	background: transparent;
+	border: 1px dashed var(--border);
+	border-radius: var(--radius);
+	padding: 3px 8px;
+	cursor: pointer;
+	transition: color var(--motion-fast) var(--ease-standard);
+}
+.meta-add-key:hover {
+	color: var(--accent);
+}
+.meta-add-key:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.meta-block input,
+.meta-block select {
 	font-family: var(--font-mono);
 	font-size: 11px;
 	color: var(--fg);
@@ -827,8 +856,8 @@ body {
 	padding: 6px 8px;
 	min-width: 0;
 }
-.meta-form input:focus-visible,
-.meta-form select:focus-visible {
+.meta-block input:focus-visible,
+.meta-block select:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);
 }
@@ -887,6 +916,18 @@ body {
 .iconbtn.subtle:hover {
 	color: var(--accent);
 	border-color: transparent;
+}
+/* #33 operator round D: the Verify button's already-mine state – the LATEST
+   verified event is yours and postdates the generated stamp. The accent
+   holds (the references toggle's pressed family), saying "done" while the
+   button stays clickable (events are append-only; re-verify is legal). */
+.iconbtn.verified {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+.iconbtn.verified:hover {
+	color: var(--accent);
+	border-color: var(--accent);
 }
 
 /* ═══ COMMENTS – the pane's default state (#15, dogfooded 2026-08-26) ═

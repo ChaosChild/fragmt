@@ -10,6 +10,7 @@ import {
 	isoToLocal,
 	isReservedDoc,
 	isStaleIso,
+	metaViewRows,
 	toIsoUtc,
 } from "../ui/src/display.js";
 
@@ -105,6 +106,67 @@ describe("extensionRows (the §4.1 extension-row partitioning)", () => {
 		expect(rows.editable).toEqual([{ key: "missing", value: "" }]);
 		expect(rows.readOnly).toEqual([
 			{ key: "reviewed-by", value: '["alice","bob"]' },
+		]);
+	});
+});
+
+// Operator round D: the metadata view block's rows – curated + §4.1
+// extension + the managed/derived family, friendly-formatted. `fmt` is
+// injected so the date words are fixture-stable.
+describe("metaViewRows (the metadata view block)", () => {
+	const fmt = (iso: string) => `«${iso}»`;
+
+	test("one row per key, curated first, then extensions, then managed", () => {
+		const rows = metaViewRows(
+			{
+				type: "decision",
+				description: "why",
+				tags: ["x", "y"],
+				status: "draft",
+				stale_after: "2027-06-01T00:00:00Z",
+				owner: "ops",
+				"reviewed-by": ["alice"],
+				generated: { by: "human:a", at: "2026-09-16T00:00:00Z" },
+				verified: [
+					{ by: "human:b", at: "2026-09-16T01:00:00Z" },
+					{ by: "human:a", at: "2026-09-16T02:00:00Z" },
+				],
+				references: ["b.md"],
+				"referenced-by": ["c.md", "d.md"],
+			},
+			fmt,
+		);
+		expect(rows).toEqual([
+			{ key: "type", value: "decision" },
+			{ key: "description", value: "why" },
+			{ key: "tags", value: "x, y" },
+			{ key: "status", value: "draft" },
+			{ key: "stale_after", value: "«2027-06-01T00:00:00Z»" },
+			{ key: "owner", value: "ops" },
+			{ key: "reviewed-by", value: '["alice"]' },
+			{ key: "generated", value: "human:a · «2026-09-16T00:00:00Z»" },
+			{
+				key: "verified",
+				value: "2 events · latest by human:a «2026-09-16T02:00:00Z»",
+			},
+			{ key: "references", value: "b.md" },
+			{ key: "referenced-by", value: "c.md, d.md" },
+		]);
+	});
+
+	test("absent keys render no row; undated stamps and events degrade", () => {
+		const rows = metaViewRows(
+			{
+				type: "concept",
+				generated: { by: "fragmt-agent/x" },
+				verified: [{ by: "human:b" }],
+			},
+			fmt,
+		);
+		expect(rows).toEqual([
+			{ key: "type", value: "concept" },
+			{ key: "generated", value: "fragmt-agent/x" },
+			{ key: "verified", value: "1 event · latest by human:b" },
 		]);
 	});
 });

@@ -139,3 +139,76 @@ export function extensionRows(fm: Record<string, unknown>): ExtensionRows {
 	}
 	return rows;
 }
+
+/** One rendered `key: value` row of the metadata view block (operator
+ *  round D). */
+export interface MetaRow {
+	key: string;
+	value: string;
+}
+
+/** The metadata view block's rows (operator round D), one per key: the
+ *  curated five (present keys only), the §4.1 extension keys
+ *  (extensionRows' partition, values stringified), and the managed/derived
+ *  family read-only with friendly formatting – generated → "actor · date",
+ *  verified → "N events · latest by <actor> <date>",
+ *  references/referenced-by → the path list. `fmt` renders the dates
+ *  (tests inject a fixed one); absent keys render no row, the payload's
+ *  omit-when-empty rule. */
+export function metaViewRows(
+	fm: Record<string, unknown>,
+	fmt: (iso: string) => string = (iso) => new Date(iso).toLocaleString(),
+): MetaRow[] {
+	const rows: MetaRow[] = [];
+	const scalar = (key: string) => {
+		const v = fm[key];
+		if (typeof v === "string" && v.trim() !== "") rows.push({ key, value: v });
+	};
+	scalar("type");
+	scalar("description");
+	const tags = Array.isArray(fm.tags)
+		? fm.tags.filter((t): t is string => typeof t === "string" && t !== "")
+		: [];
+	if (tags.length > 0) rows.push({ key: "tags", value: tags.join(", ") });
+	scalar("status");
+	if (typeof fm.stale_after === "string" && fm.stale_after !== "")
+		rows.push({ key: "stale_after", value: fmt(fm.stale_after) });
+	const ext = extensionRows(fm);
+	for (const r of [...ext.editable, ...ext.readOnly]) rows.push(r);
+	const gen = fm.generated;
+	if (typeof gen === "object" && gen !== null) {
+		const by = (gen as { by?: unknown }).by;
+		const at = (gen as { at?: unknown }).at;
+		if (typeof by === "string")
+			rows.push({
+				key: "generated",
+				value: typeof at === "string" && at !== "" ? `${by} · ${fmt(at)}` : by,
+			});
+	}
+	const events = Array.isArray(fm.verified)
+		? fm.verified.filter(
+				(e): e is { by: string; at?: string } =>
+					typeof e === "object" &&
+					e !== null &&
+					typeof (e as { by?: unknown }).by === "string",
+			)
+		: [];
+	if (events.length > 0) {
+		const latest = events[events.length - 1];
+		const when =
+			typeof latest.at === "string" && latest.at !== ""
+				? ` ${fmt(latest.at)}`
+				: "";
+		rows.push({
+			key: "verified",
+			value: `${events.length} event${events.length === 1 ? "" : "s"} · latest by ${latest.by}${when}`,
+		});
+	}
+	for (const key of ["references", "referenced-by"] as const) {
+		const list = Array.isArray(fm[key])
+			? fm[key].filter((p): p is string => typeof p === "string" && p !== "")
+			: [];
+		if (list.length > 0) rows.push({ key, value: list.join(", ") });
+	}
+	return rows;
+}
