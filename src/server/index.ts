@@ -1004,12 +1004,14 @@ function parseMetaEdits(meta: unknown): FrontmatterEdit[] | Response {
  *  true when the LATEST verified event's actor is the requesting identity
  *  AND its time is ≥ the generated stamp's (content unchanged since your
  *  verification; events are append-only, so a true button stays clickable –
- *  re-verify is legal). The identity resolves exactly like the write
- *  routes' (commitAuthor, else the repo's git identity); the spawn happens
- *  only when a dated event could match, and a repo with no configured
- *  identity answers false (no claim to make). Non-OKF repos and docs with
- *  no events – or an undated event / unparseable generated stamp, neither
- *  of which can outrun a stamp – answer false without the spawn. */
+ *  re-verify is legal). A doc with NO generated stamp (adopted/--fix-repaired,
+ *  never saved in OKF mode) claims no post-verification change – the event
+ *  stands. The identity resolves exactly like the write routes' (commitAuthor,
+ *  else the repo's git identity); the spawn happens only when a dated event
+ *  could match, and a repo with no configured identity answers false (no
+ *  claim to make). Non-OKF repos and docs with no events – or an undated
+ *  event / present-but-unparseable generated stamp, neither of which can
+ *  outrun a stamp – answer false without the spawn. */
 async function verifiedByYou(
 	ctx: ServerContext,
 	c: Context<AppEnv>,
@@ -1019,14 +1021,20 @@ async function verifiedByYou(
 	if (events.length === 0) return false;
 	const latest = events[events.length - 1];
 	if (typeof latest.at !== "string") return false;
-	const gen = fm.generated;
-	const genAt =
-		typeof gen === "object" &&
-		gen !== null &&
-		typeof (gen as { at?: unknown }).at === "string"
-			? Date.parse((gen as { at: string }).at)
-			: Number.NaN;
-	if (Number.isNaN(genAt) || Date.parse(latest.at) < genAt) return false;
+	// No generated stamp at all (an adopted/--fix-repaired doc never saved
+	// in OKF mode) = nothing claims a content change after the event –
+	// the verification stands. A present-but-unparseable stamp cannot be
+	// outrun and stays conservative-false.
+	if (fm.generated !== undefined) {
+		const gen = fm.generated;
+		const genAt =
+			typeof gen === "object" &&
+			gen !== null &&
+			typeof (gen as { at?: unknown }).at === "string"
+				? Date.parse((gen as { at: string }).at)
+				: Number.NaN;
+		if (Number.isNaN(genAt) || Date.parse(latest.at) < genAt) return false;
+	}
 	if (!okfEnabled(ctx.repoRoot)) return false;
 	try {
 		const who = commitAuthor(c) ?? (await localUser(ctx.repoRoot));

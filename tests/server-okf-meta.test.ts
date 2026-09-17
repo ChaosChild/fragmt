@@ -478,6 +478,28 @@ test("GET verifiedByYou: someone else's dated event is never yours", async () =>
 	expect(body.verifiedByYou).toBe(false);
 });
 
+test("GET verifiedByYou: your event stands on a doc with no generated stamp", async () => {
+	writeConfig(true);
+	// The adopted/--fix shape: verified present, generated absent – nothing
+	// claims a content change after the event, so the verification holds.
+	writeFileSyncLF(
+		"fixed.md",
+		[
+			"---",
+			"type: concept",
+			'verified: [{ by: human:okf, at: 2026-09-17T00:00:00Z }]',
+			"---",
+			"# fixed",
+			"",
+		].join("\n"),
+	);
+	commitFiles("add fixed");
+	const body = (await (await api("GET", "/api/docs/fixed.md")).json()) as {
+		verifiedByYou: boolean;
+	};
+	expect(body.verifiedByYou).toBe(true);
+});
+
 // --- /api/meta: the badge fields ---------------------------------------------
 
 test("GET /api/meta (OKF): per-doc type/status/tier/staleAfter derived", async () => {
