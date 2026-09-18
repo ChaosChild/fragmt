@@ -1,4 +1,4 @@
-import { ChevronRight, Waypoints } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import {
 	type DragEvent as ReactDragEvent,
 	type ReactNode,
@@ -481,7 +481,6 @@ export function Sidebar({
 	onRestore,
 	onDropItem,
 	onDropBin,
-	onOpenGraph,
 }: {
 	tree: TreeNode | null;
 	selected: string | null;
@@ -503,8 +502,6 @@ export function Sidebar({
 	onDropItem: (item: DragItem, folder: string) => void;
 	/** A drop on the bin – App confirms and deletes (doc or folder). */
 	onDropBin: (item: DragItem, name: string) => void;
-	/** OKF rung 5: open the reference graph (App guards + toggles). */
-	onOpenGraph: () => void;
 }) {
 	const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
 	const toggle = (path: string) =>
@@ -577,22 +574,6 @@ export function Sidebar({
 	if (!tree) return null;
 	return (
 		<>
-			{/* The graph view's entry (rung 5): gated by the same flag as the
-			    banner below – okfFindings is non-null exactly while the repo's
-			    OKF information says okf is on. */}
-			{okfFindings !== null && (
-				<div className="side-graph">
-					<button
-						type="button"
-						className="tool-btn"
-						title="Reference graph"
-						aria-label="Reference graph"
-						onClick={onOpenGraph}
-					>
-						<Waypoints aria-hidden="true" />
-					</button>
-				</div>
-			)}
 			{/* The OKF banner (#21): findings only – a conformant repo stays
 			    quiet. Sits above the list, outside its scroll. */}
 			{okfFindings !== null && okfFindings.length > 0 && (

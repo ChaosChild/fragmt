@@ -30,7 +30,6 @@ import type {
 } from "../ui/src/api.js";
 import { DocView } from "../ui/src/DocView.js";
 import { GraphView } from "../ui/src/GraphView.js";
-import { Sidebar } from "../ui/src/Sidebar.js";
 
 // RTL wraps render/fireEvent/waitFor in act; React 19 requires the flag.
 (
@@ -140,6 +139,10 @@ async function mockFetch(input: RequestInfo | URL): Promise<Response> {
 	if (url.pathname === "/api/meta") return jsonResponse(META);
 	if (url.pathname === "/api/validate") return jsonResponse(VALIDATE);
 	if (url.pathname === "/api/sync") return jsonResponse({ conflict: false });
+	// The graph lens fetches on open; the body carries the okf flag beside
+	// the graph itself (fetchGraph drops non-OKF answers to null).
+	if (url.pathname === "/api/graph")
+		return jsonResponse({ okf: true, ...GRAPH });
 	const comments = url.pathname.match(/^\/api\/docs\/(.+)\/comments$/);
 	if (comments) return jsonResponse({ comments: {} });
 	const doc = url.pathname.match(/^\/api\/docs\/(.+)$/);
@@ -148,6 +151,19 @@ async function mockFetch(input: RequestInfo | URL): Promise<Response> {
 		return payload ? jsonResponse(payload) : notFound(url.pathname);
 	}
 	return notFound(url.pathname);
+}
+
+/** mockFetch with the OKF gate's two inputs overridden independently – the
+ *  entry button reads meta.okf AND validate.okf, each alone off must hide it. */
+function fetchWith(opts: { metaOkf?: boolean; validateOkf?: boolean }) {
+	const meta = { ...META, okf: opts.metaOkf ?? true };
+	const validate = { ...VALIDATE, okf: opts.validateOkf ?? true };
+	return async (input: RequestInfo | URL): Promise<Response> => {
+		const url = new URL(String(input), "http://localhost");
+		if (url.pathname === "/api/meta") return jsonResponse(meta);
+		if (url.pathname === "/api/validate") return jsonResponse(validate);
+		return mockFetch(input);
+	};
 }
 
 beforeEach(() => {
@@ -409,7 +425,13 @@ describe("GraphView: the fixture mount (component harness)", () => {
 	});
 
 	test("mounts from a fixture DocGraph: the count line, every node, every label", () => {
-		render(createElement(GraphView, { graph: GRAPH, onOpenDoc: () => {} }));
+		render(
+			createElement(GraphView, {
+				graph: GRAPH,
+				onOpenDoc: () => {},
+				onClose: () => {},
+			}),
+		);
 		expect(screen.getByText("3 docs · 1 links")).toBeTruthy();
 		expect(document.querySelectorAll(".gv-node")).toHaveLength(3);
 		expect(screen.getByText("A")).toBeTruthy();
@@ -419,50 +441,79 @@ describe("GraphView: the fixture mount (component harness)", () => {
 
 	test("clicking a node invokes onOpenDoc with that path", () => {
 		const onOpenDoc = vi.fn();
-		render(createElement(GraphView, { graph: GRAPH, onOpenDoc }));
+		render(
+			createElement(GraphView, { graph: GRAPH, onOpenDoc, onClose: () => {} }),
+		);
 		const node = document.querySelectorAll(".gv-node")[0];
 		if (!node) throw new Error("no graph nodes rendered");
 		fireEvent.click(node);
 		expect(onOpenDoc).toHaveBeenCalledTimes(1);
 		expect(onOpenDoc).toHaveBeenCalledWith("a.md");
 	});
+
+	// The regression the early return fixes: the svg's pointerdown used to
+	// capture the pointer unconditionally, so the browser's derived click
+	// never reached the circle's onClick. Documents the guard's path: the
+	// press bubbles to the svg handler, the click still opens the doc.
+	test("a press that bubbles to the svg never eats the node's click (pointerDown then click)", () => {
+		const onOpenDoc = vi.fn();
+		render(
+			createElement(GraphView, { graph: GRAPH, onOpenDoc, onClose: () => {} }),
+		);
+		const node = document.querySelectorAll(".gv-node")[0];
+		if (!node) throw new Error("no graph nodes rendered");
+		fireEvent.pointerDown(node);
+		fireEvent.click(node);
+		expect(onOpenDoc).toHaveBeenCalledTimes(1);
+		expect(onOpenDoc).toHaveBeenCalledWith("a.md");
+	});
 });
 
-describe("Sidebar: the OKF-gated graph entry (rung 5)", () => {
-	type SidebarProps = ComponentProps<typeof Sidebar>;
+describe("App: the graph entry + lens (rung 5)", () => {
+	beforeEach(() => {
+		// GraphView's force loop runs in rAF; a no-op stub keeps the
+		// deterministic seed layout on screen and React's act environment
+		// quiet while the lens is mounted inside App.
+		vi.stubGlobal(
+			"requestAnimationFrame",
+			vi.fn(() => 0),
+		);
+		vi.stubGlobal("cancelAnimationFrame", vi.fn());
+	});
 
-	function sidebarProps(over: Partial<SidebarProps> = {}): SidebarProps {
-		return {
-			tree: TREE,
-			selected: null,
-			onSelect: () => {},
-			meta: null,
-			okfFindings: null,
-			expandFolder: null,
-			onOpenGhost: () => {},
-			onRestore: () => {},
-			onDropItem: () => {},
-			onDropBin: () => {},
-			onOpenGraph: () => {},
-			...over,
-		};
-	}
+	test("the head-row entry is present with okf on (findings []), opens the lens, and Close graph unmounts it", async () => {
+		await renderAppReady();
+		// The stubs answer okf (findings []): an OKF repo with nothing to
+		// flag – the entry shows in the head row, the banner stays hidden.
+		expect(screen.queryByText(/non-conformant/)).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "Reference graph" }));
 
-	test("absent while the OKF information is off (okfFindings null), present and wired when on", () => {
-		const onOpenGraph = vi.fn();
-		const view = render(createElement(Sidebar, sidebarProps()));
+		expect(await screen.findByText("3 docs · 1 links")).toBeTruthy();
+		expect(document.querySelector(".gv-pane")).toBeTruthy();
+
+		// Exiting is always safe – no guard on close.
+		fireEvent.click(screen.getByRole("button", { name: "Close graph" }));
+		await waitFor(() => {
+			expect(document.querySelector(".gv-pane")).toBeNull();
+		});
+	});
+
+	test("the entry is absent when meta okf is off, and when validate answers not-okf", async () => {
+		// meta okf false: App fetches no validate at all – the gate reads off.
+		vi.stubGlobal("fetch", vi.fn(fetchWith({ metaOkf: false })));
+		let view = render(createElement(App));
+		await view.findByRole("button", { name: "Edit" });
 		expect(
 			screen.queryByRole("button", { name: "Reference graph" }),
 		).toBeNull();
+		cleanup();
 
-		// [] = an OKF repo (the banner's flag source is non-null) that simply
-		// has no findings – the entry shows, the banner stays hidden.
-		view.rerender(
-			createElement(Sidebar, sidebarProps({ okfFindings: [], onOpenGraph })),
-		);
-		const entry = screen.getByRole("button", { name: "Reference graph" });
-		expect(screen.queryByText(/non-conformant/)).toBeNull();
-		fireEvent.click(entry);
-		expect(onOpenGraph).toHaveBeenCalledTimes(1);
+		// validate {okf:false}: the fetch answers, the gate still reads off.
+		vi.stubGlobal("fetch", vi.fn(fetchWith({ validateOkf: false })));
+		view = render(createElement(App));
+		await view.findByRole("button", { name: "Edit" });
+		expect(
+			screen.queryByRole("button", { name: "Reference graph" }),
+		).toBeNull();
 	});
 });

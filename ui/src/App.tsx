@@ -1,4 +1,4 @@
-import { ChevronsLeft, ChevronsRight, Search } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, Search, Waypoints } from "lucide-react";
 import {
 	type CSSProperties,
 	useCallback,
@@ -1209,6 +1209,21 @@ export function App() {
 			? (okfValidate.findings ?? [])
 			: null;
 
+	// The graph entry (rung 5) sits in the head-control rows, gated by the
+	// same flag the OKF banner read before it: okfFindings is non-null
+	// exactly while the repo's OKF information says okf is on.
+	const graphBtn = okfFindings !== null && (
+		<button
+			type="button"
+			className="tool-btn"
+			title="Reference graph"
+			aria-label="Reference graph"
+			onClick={requestGraph}
+		>
+			<Waypoints aria-hidden="true" />
+		</button>
+	);
+
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
@@ -1233,12 +1248,13 @@ export function App() {
 						{branchMenu}
 						{mergeBtn}
 						{/* The head-control order everywhere (owner, testing
-						    round): search, add, theme – collapse pairs with it
-						    in the sidebar head, expand leads the topbar. The
-						    sync LED lives in the rail head alone (redundant
+						    round): search, add, graph, theme – collapse pairs
+						    with it in the sidebar head, expand leads the topbar.
+						    The sync LED lives in the rail head alone (redundant
 						    here). */}
 						{searchBtn}
 						{newDocBtn}
+						{graphBtn}
 						<ThemeToggle />
 						<span className="topbar-spacer" />
 					</header>
@@ -1274,9 +1290,10 @@ export function App() {
 								<div className="side-head-spacer" />
 								{searchBtn}
 								{newDocBtn}
+								{graphBtn}
 								{/* Moved from the rail head (#15) – the sidebar head is
 							    always reachable, slideout or not. Order per the
-							    testing round: search, add, theme, collapse. */}
+							    testing round: search, add, graph, theme, collapse. */}
 								<ThemeToggle />
 								{/* « collapses the sidebar (#15) – the topbar takes
 								    over while it's away. */}
@@ -1328,7 +1345,6 @@ export function App() {
 									? deleteDocAt(item.path, name)
 									: requestDeleteFolder(item.path, name)
 							}
-							onOpenGraph={requestGraph}
 						/>
 						<SidebarResizeHandle onWidth={applySidebarW} />
 					</aside>
@@ -1386,6 +1402,8 @@ export function App() {
 										setGraphOpen(false);
 										setSelected(path);
 									}}
+									// Exiting is always safe – no guard on close.
+									onClose={() => setGraphOpen(false)}
 								/>
 							) : (
 								<div className="doc-pane">

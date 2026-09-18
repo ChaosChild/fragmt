@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import {
 	type PointerEvent as ReactPointerEvent,
 	useCallback,
@@ -123,9 +124,11 @@ const truncate = (t: string) => (t.length > 20 ? `${t.slice(0, 20)}…` : t);
 export function GraphView({
 	graph,
 	onOpenDoc,
+	onClose,
 }: {
 	graph: DocGraph;
 	onOpenDoc: (path: string) => void;
+	onClose: () => void;
 }) {
 	const ring = graph.nodes.length > RING_CAP;
 	const [pts, setPts] = useState<Pt[]>(() => seedLayout(graph));
@@ -311,6 +314,17 @@ export function GraphView({
 				<a className="iconbtn" href="/api/export/bundle" download="bundle.zip">
 					Bundle .zip
 				</a>
+				{/* Far right, Slideout's close idiom – exiting the lens is
+				    always safe, no guard on close. */}
+				<button
+					type="button"
+					className="slideout-close"
+					title="Close graph"
+					aria-label="Close graph"
+					onClick={onClose}
+				>
+					<X aria-hidden="true" />
+				</button>
 			</div>
 			{ring && (
 				<div className="gv-note">
@@ -323,6 +337,10 @@ export function GraphView({
 					role="img"
 					aria-label="Reference graph"
 					onPointerDown={(e: ReactPointerEvent<SVGSVGElement>) => {
+						// A press on a node must stay the node's click: pointer
+						// capture would retarget the browser's derived click to
+						// the svg, so a pan simply never starts from a node.
+						if ((e.target as Element).closest?.(".gv-node")) return;
 						pan.current = {
 							x: e.clientX,
 							y: e.clientY,
@@ -341,6 +359,9 @@ export function GraphView({
 						}));
 					}}
 					onPointerUp={(e: ReactPointerEvent<SVGSVGElement>) => {
+						// Release only when a pan actually took the capture – an
+						// unconditional release lies about a capture we never set.
+						if (!pan.current) return;
 						pan.current = null;
 						e.currentTarget.releasePointerCapture?.(e.pointerId);
 					}}
@@ -410,6 +431,32 @@ export function GraphView({
 						</span>
 					</div>
 				)}
+				{/* The legend: exactly the encodings the view draws, swatches
+				    mirroring the node/edge classes with the same tokens. Read-
+				    only – pointer-events none keeps the pan alive underneath. */}
+				<div className="gv-legend">
+					<span className="gv-legend-item">
+						<span className="gv-sw gv-sw-unverified" /> unverified
+					</span>
+					<span className="gv-legend-item">
+						<span className="gv-sw gv-sw-machine-confirmed" /> machine-confirmed
+					</span>
+					<span className="gv-legend-item">
+						<span className="gv-sw gv-sw-human-reviewed" /> human-reviewed
+					</span>
+					<span className="gv-legend-item">
+						<span className="gv-sw gv-sw-stale" /> stale
+					</span>
+					<span className="gv-legend-item">
+						<span className="gv-sw gv-sw-isolated" /> isolated — no links
+					</span>
+					<span className="gv-legend-item">
+						<svg className="gv-sw-edge" aria-hidden="true">
+							<line x1="0" y1="5" x2="16" y2="5" />
+						</svg>
+						edge = body link
+					</span>
+				</div>
 			</div>
 		</div>
 	);

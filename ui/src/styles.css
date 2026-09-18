@@ -2480,10 +2480,12 @@ button.comment-quote:hover {
 	align-items: stretch;
 	gap: var(--space-2);
 }
+/* space-2, not 3 – five controls (search, add, graph, theme, collapse)
+   share this row at the sidebar's minimum width. */
 .side-head-row {
 	display: flex;
 	align-items: center;
-	gap: var(--space-3);
+	gap: var(--space-2);
 }
 /* Row 2 (branch + Merge): the branch menu stretches full width – the name
    ellipsizes, the button's title carries the whole branch. */
@@ -3034,11 +3036,6 @@ button.comment-quote:hover {
 
 /* ── OKF rung 5 (#21): the reference graph – the fourth main-pane state ── */
 /* A full-pane lens: quiet chrome, tier color the only strong hue on a node. */
-.side-graph {
-	display: flex;
-	justify-content: flex-end;
-	padding: var(--space-2) var(--space-3) 0;
-}
 .gv-pane {
 	position: relative;
 	display: flex;
@@ -3166,4 +3163,64 @@ button.comment-quote:hover {
 /* Download anchors wear the iconbtn chrome – no underline. */
 .gv-toolbar a.iconbtn {
 	text-decoration: none;
+}
+/* The legend (operator round): bottom-left overlay over the svg; the
+   container never takes pointer events – it's read-only and must not eat
+   pan gestures underneath. */
+.gv-legend {
+	position: absolute;
+	left: var(--space-3);
+	bottom: var(--space-3);
+	z-index: 1;
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-1) var(--space-3);
+	max-width: calc(100% - 2 * var(--space-3));
+	padding: var(--space-2);
+	border: 1px solid var(--glass-border);
+	border-radius: var(--radius);
+	background: var(--glass-bg-strong);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	color: var(--muted);
+	pointer-events: none;
+}
+.gv-legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--space-2);
+	white-space: nowrap;
+}
+.gv-sw {
+	width: 10px;
+	height: 10px;
+	flex-shrink: 0;
+	border-radius: 50%;
+}
+/* Swatch variants mirror the node classes above, same tokens. */
+.gv-sw-unverified {
+	background: var(--muted);
+}
+.gv-sw-machine-confirmed {
+	background: var(--accent);
+}
+.gv-sw-human-reviewed {
+	background: var(--success);
+}
+.gv-sw-stale {
+	width: 13px;
+	height: 13px;
+	border: 1.5px dashed var(--warn);
+}
+.gv-sw-isolated {
+	border: 1.5px dashed var(--muted);
+}
+.gv-sw-edge {
+	width: 16px;
+	height: 10px;
+	flex-shrink: 0;
+}
+.gv-sw-edge line {
+	stroke: var(--border);
+	stroke-width: 1;
 }
