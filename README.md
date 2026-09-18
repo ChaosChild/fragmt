@@ -139,7 +139,8 @@ In OKF mode fragmt maintains:
 - **Conformant defaults** – new docs are born with a `type: concept` and
   `status: draft` frontmatter block; any non-empty type is conformant.
 - **Generated `index.md`** – per directory holding docs: concepts grouped
-  under `# <Type>` sections with absolute links, regenerated on membership
+  under `# <Type>` sections with absolute links, subdirectory entries
+  linking the subdirectory's own `index.md`; regenerated on membership
   changes (create, move, rename, delete, merge) – never on content saves.
 - **`references` / `referenced-by`** – frontmatter fields derived from body
   links, recomputed on every save. Body links stay canonical; the fields are
@@ -155,22 +156,31 @@ In OKF mode fragmt maintains:
 - **Trust badges** – derived, never stored: doc cards and the doc head show
   the §5.3 tier (unverified / machine-confirmed / human-reviewed) from the
   `verified` actors, and a stale chip once `now >= stale_after`. An absent
-  status renders nothing – stable is silence, never implied.
-- **Metadata editor** – the doc head edits `type`, `description`, `tags`,
-  `status`, and `stale_after` as fields, never raw YAML: one commit per
-  save, existing YAML spliced line-wise (unknown keys byte-preserved).
+  status renders nothing – stable is silence, never implied. The Verify
+  button shows its already-mine state (`Verified`, from the server-derived
+  `verifiedByYou`) while staying clickable – events are append-only.
+- **Unified metadata editing** – a collapsible metadata block between the
+  doc head and the content shows every `key: value` (collapsed by default).
+  The one Edit button edits content AND metadata together; the one Save
+  commits both in a single commit through field splices (never re-serialized
+  YAML, unknown keys byte-preserved). Beyond the curated fields
+  (`type`, `description`, `tags`, `status`, `stale_after`) any §4.1
+  extension key is editable and new keys can be added – several per save.
   `status` is enum-only – `draft` / `stable` / `deprecated`, enforced at
   the API seam; the UI's select is convenience.
 - **References pane** – the right pane's References mode lists the open
-  doc's outgoing and incoming references; rows navigate the main pane while
-  the pane stays open beside it.
+  doc's outgoing and incoming references; a row opens the target in the
+  pane's preview split beside the current doc (the side-by-side default),
+  with open-in-main one click away in the preview head.
 - **Reserved names** – `index.md` and `log.md` never hold concepts; creates
-  and renames targeting them are refused.
+  and renames targeting them are refused, and the UI keeps them read-only
+  (their metadata area explains why, per §3.1).
 
-`validate --fix` prepends missing frontmatter, adds missing types, and
-repopulates the derived fields in one commit – existing YAML is never
-re-serialized. While non-conformant docs remain, the sidebar shows a banner
-listing them by path and clause.
+`validate --fix` prepends missing frontmatter, adds missing types and
+`status: draft`, repopulates the derived fields, and regenerates the
+`index.md` set (adopted bundles self-heal their link shapes) – all in one
+commit, existing YAML never re-serialized. While non-conformant docs
+remain, the sidebar shows a banner listing them by path and clause.
 
 ## CLI
 
@@ -219,8 +229,10 @@ the draft branch before merging; `comment --resolve` appends the actor's
 the UI's Verify button without the HTTP detour.
 
 `fragmt init` also writes a delimited `<!-- fragmt:begin -->…<!-- fragmt:end -->`
-block into `AGENTS.md`, teaching any agent the drafting rules. Nothing outside
-the markers is touched.
+block into `AGENTS.md`, teaching any agent the drafting rules; with
+`--okf` the block additionally teaches the OKF rules – the conformance
+contract, the reserved and generated files, which fields fragmt owns, and
+the `verify`/`validate` loop. Nothing outside the markers is touched.
 
 ## Configuration
 

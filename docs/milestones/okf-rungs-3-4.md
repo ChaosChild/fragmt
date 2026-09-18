@@ -29,6 +29,18 @@ Backlog round 5, 2026-09-16. Issue: [#33](https://github.com/ChaosChild/fragmt/i
 - Managed `type` vocabulary — stays free text (spec-mandated tolerance of unknown types; revisit if wanted).
 - `log.md`, non-OKF surfaces, multi-user trust (#20/#27 own the agent-user story beyond `--as-actor`).
 
+## Operator revisions (2026-09-16/17, post-review)
+
+Four operator review passes reshaped the shipped surfaces after this spec was written; the commits on the round PR are the exact record. The deltas vs the spec above:
+
+- The separate Edit-metadata button is gone: a collapsible `key: value` metadata block sits between the doc head and the content (collapsed by default), and the ONE Edit button edits content and metadata together — one Save, one commit (`writeDoc` carries the meta edits; the PATCH `{meta}` route remains as the agent/API surface). Metadata dirt rides the editor's dirty-guard chain; every navigation entry point (including the sidebar card click and folder links) is guarded, and a doc switch exits edit mode.
+- §4.1 extension keys are viewable and editable in the block (scalars; arrays read-only), several new keys per save.
+- The Verify button shows its already-mine state (`verifiedByYou`, server-derived; a missing `generated` stamp lets the event stand).
+- References rows open the slideout's preview split (the #15 machinery) beside the current doc — the side-by-side default — with open-in-main in the preview head.
+- `index.md` subdirectory entries link the subdirectory's own `index.md` (click navigates, shift+click previews); `validate --fix` regenerates the index set.
+- `fragmt agent verify <doc> [--as-actor]` — the agent-first verify, no HTTP needed; the managed AGENTS.md block teaches the OKF rules in OKF repos.
+- Reserved files (`index.md`/`log.md`) are read-only in the UI: Edit disabled, the metadata area explains §3.1, References shows the reserved note.
+
 ## Tests
 
 ~30. `tests/okf-frontmatter.test.ts`: setFrontmatterKeys scalar/list/append/fenceless, status enum rejection, unknown-key byte preservation round-trip. `tests/okf-trust.test.ts`: stampGenerated shape/idempotence, appendVerified empty→list / bare→migrate / list→append, actorOf mappings, trustTier + staleness boundaries (§5.3/§5.5). E2E (`tests/okf-agent-actor.test.ts`, tmp repos): save → generated + refs one commit; Save-as-Verified → event in the save commit; comment-resolve → event + sidecar one commit; `draft --merge --as-actor` → stamped doc rides the merge + post-merge regen; `--fix` materializes status. `tests/server-okf-meta.test.ts`: payload frontmatter shape, PATCH {meta} + enum 400, verify route, PUT flag, meta badge fields, references pane data source.
