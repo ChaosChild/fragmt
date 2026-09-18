@@ -1,18 +1,27 @@
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { relative, sep } from "node:path";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
 import {
+	AGENT_DEFAULT,
 	addReply,
 	type CommentThread,
+	commitAs,
 	currentBranch,
 	GitIdentityError,
 	inMerge,
 	loadConfig,
 	localUser,
 	mergeToMain,
+	okfEnabled,
+	populateOkf,
 	type RepoMeta,
 	readComments,
 	repoMeta,
+	resolveDocPath,
 	setResolved,
+	stampGenerated,
 	startDraft,
+	verifyDoc,
 } from "../core/index.js";
 import { nestedDocsRedirect } from "./index.js";
 
@@ -157,14 +166,17 @@ type AgentValues = {
 	body?: string;
 	resolve?: boolean;
 	author?: string;
+	/** D4: the agent's self-declared OKF actor, verbatim. */
+	"as-actor"?: string;
 	full?: boolean;
 	merge?: boolean;
 };
 
 function parseVerb(
-	verb: "status" | "comment" | "draft",
+	verb: "status" | "comment" | "draft" | "verify",
 	args: string[],
 ): { values: AgentValues; positionals: string[] } {
+	const asActor = { "as-actor": { type: "string" } } as const;
 	const options: ParseArgsOptionsConfig =
 		verb === "comment"
 			? {
@@ -173,10 +185,13 @@ function parseVerb(
 					resolve: { type: "boolean", default: false },
 					author: { type: "string" },
 					full: { type: "boolean", default: false },
+					...asActor,
 				}
 			: verb === "draft"
-				? { merge: { type: "boolean", default: false } }
-				: {};
+				? { merge: { type: "boolean", default: false }, ...asActor }
+				: verb === "verify"
+					? { author: { type: "string" }, ...asActor }
+					: {};
 	const { values, positionals } = parseArgs({
 		args,
 		options,
@@ -267,7 +282,16 @@ async function runComment(
 		if (values.resolve === true) {
 			if (thread.resolved) out(`ok: thread ${id} already resolved`);
 			else {
-				await setResolved(repoRoot, doc, id, true, user);
+				// D4: the event's actor is the agent's self-declaration, default
+				// AGENT_DEFAULT – never a false human: off the git identity.
+				await setResolved(
+					repoRoot,
+					doc,
+					id,
+					true,
+					user,
+					values["as-actor"] ?? AGENT_DEFAULT,
+				);
 				out(`ok: thread ${id} resolved · author: ${user.name} · 1 commit`);
 			}
 		}
@@ -306,8 +330,39 @@ async function runDraft(
 		return 0;
 	}
 	const branch = await currentBranch(repoRoot);
+	// D4: OKF mode stamps the draft's doc on the DRAFT branch pre-merge – a
+	// tiny commit that rides into main with the merge. A doc path that does
+	// not resolve (or a doc deleted in the draft) skips the stamp; the merge
+	// itself proceeds exactly as before.
+	if (okfEnabled(repoRoot)) {
+		const actor = values["as-actor"] ?? AGENT_DEFAULT;
+		let abs: string | null = null;
+		try {
+			const a = resolveDocPath(repoRoot, docsRoot, doc);
+			abs = existsSync(a) && statSync(a).isFile() ? a : null;
+		} catch {
+			abs = null;
+		}
+		if (abs !== null) {
+			const next = stampGenerated(readFileSync(abs, "utf8"), actor);
+			if (next !== null) {
+				writeFileSync(abs, next);
+				await commitAs(
+					await localUser(repoRoot),
+					{
+						files: [relative(repoRoot, abs).split(sep).join("/")],
+						message: `OKF: stamp ${doc} as ${actor}`,
+					},
+					repoRoot,
+				);
+			}
+		}
+	}
 	const result = await mergeToMain(repoRoot, docsRoot);
 	if (result.merged) {
+		// The server's conclude seam's twin: a clean merge regenerates the
+		// references graph and indexes on main.
+		if (okfEnabled(repoRoot)) await populateOkf(repoRoot, docsRoot);
 		out(`ok: merged to main · branch ${branch} deleted`);
 		helpBlock(out, ["fragmt agent status"]);
 		return 0;
@@ -325,7 +380,56 @@ async function runDraft(
 }
 
 /**
- * `fragmt agent [status] | comment <doc> […] | draft <doc> [--merge]`.
+ * `fragmt agent verify <doc> [--as-actor <string>] [--author <who>]` – the
+ * agent-first A1 affordance (operator round 4C): the standalone verified
+ * event through the same core verifyDoc the UI's Verify button rides, no
+ * HTTP surface needed. The actor rule is comment --resolve's: the agent's
+ * self-declaration verbatim, default AGENT_DEFAULT – never a false human:
+ * off the git identity. One commit; the ok line names the actor it landed
+ * as, so a mis-declared producer is visible at the point of use.
+ */
+async function runVerify(
+	repoRoot: string,
+	docsRoot: string,
+	parsed: { values: AgentValues; positionals: string[] },
+	out: (s: string) => void,
+): Promise<number> {
+	const { values, positionals } = parsed;
+	const doc = positionals[0];
+	if (doc === undefined) {
+		out("error: verify needs a doc path (docsRoot-relative .md)");
+		return 1;
+	}
+	if (inMerge(repoRoot)) {
+		out(IN_MERGE);
+		return 1;
+	}
+	// The definitive one-liner for a missing doc (verifyDoc's
+	// DocNotFoundError carries only the bare path); a traversal shape keeps
+	// DocPathError's own text via the outer catch.
+	const abs = resolveDocPath(repoRoot, docsRoot, doc);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		out(`error: no doc ${doc}`);
+		return 1;
+	}
+	const user =
+		values.author !== undefined
+			? parseAuthor(values.author)
+			: await localUser(repoRoot);
+	if (!user.name || !user.email) {
+		out("error: --author needs a display name and an address");
+		return 1;
+	}
+	const actor = values["as-actor"] ?? AGENT_DEFAULT;
+	await verifyDoc(repoRoot, docsRoot, doc, user, actor);
+	out(`ok: verified ${doc} as ${actor} · 1 commit`);
+	helpBlock(out, ["fragmt agent status"]);
+	return 0;
+}
+
+/**
+ * `fragmt agent [status] | comment <doc> […] | draft <doc> [--merge] |
+ * verify <doc> [--as-actor <string>] [--author <who>]`.
  * Returns the exit code: 0 ok, 1 runtime error (`error: …` on stdout, one
  * line), 2 unknown flag/verb. `write` is injectable for tests; stdout live.
  */
@@ -338,7 +442,12 @@ export async function runAgent(
 ): Promise<number> {
 	const out = (s: string) => write(`${s}\n`);
 	const verb = argv[0] ?? "status";
-	if (verb !== "status" && verb !== "comment" && verb !== "draft") {
+	if (
+		verb !== "status" &&
+		verb !== "comment" &&
+		verb !== "draft" &&
+		verb !== "verify"
+	) {
 		out("error: unknown flag or verb");
 		return 2;
 	}
@@ -353,6 +462,8 @@ export async function runAgent(
 		const docsRoot = loadConfig(repoRoot).docsRoot;
 		if (verb === "status") return await runStatus(repoRoot, docsRoot, out);
 		if (verb === "comment") return await runComment(repoRoot, parsed, out);
+		if (verb === "verify")
+			return await runVerify(repoRoot, docsRoot, parsed, out);
 		return await runDraft(repoRoot, docsRoot, parsed, out);
 	} catch (e) {
 		// #16: run from the outer repo of a nested setup – the shared redirect

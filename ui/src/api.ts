@@ -6,12 +6,45 @@ export interface TreeNode {
 	children?: TreeNode[];
 }
 
+/** One §5.2 verification event – `at` absent on a hand-written one. */
+export interface VerifiedEvent {
+	by: string;
+	at?: string;
+}
+
+/** Mirror of the doc payload's curated frontmatter (#33 + operator round
+ *  C): the named keys arrive ONLY as the server curates them (the list
+ *  fields are omitted when empty – read them as []), and any OTHER key is
+ *  a §4.1 extension the server passed through parsed – a scalar (string |
+ *  number | boolean | null) or a string array; never raw YAML bytes. */
+export interface DocFrontmatter {
+	title?: string;
+	type?: string;
+	description?: string;
+	tags?: string[];
+	status?: string;
+	/** §5.2 stamp – guarded server-side to `{ by: string }`; `at` is ISO. */
+	generated?: { by: string; at?: string };
+	/** §5.2 events, list form (a bare mapping migrates on first append). */
+	verified?: VerifiedEvent[];
+	/** ISO, as written; the chips derive staleness client-side. */
+	stale_after?: string;
+	references?: string[];
+	"referenced-by"?: string[];
+	/** §4.1 extension keys – scalar or string-array, never the managed set. */
+	[key: string]: unknown;
+}
+
 export interface DocResponse {
 	path: string;
-	frontmatter: Record<string, unknown>;
+	frontmatter: DocFrontmatter;
 	markdown: string;
 	/** sha256 of `markdown` – sent back as `baseHash` on save. */
 	hash: string;
+	/** Operator round D: the LATEST verified event is yours AND postdates the
+	 *  generated stamp (content unchanged since your verification) – the
+	 *  Verify button's already-mine state; still clickable (append-only). */
+	verifiedByYou?: boolean;
 }
 
 export interface SaveResponse {
@@ -43,15 +76,26 @@ export class SaveError extends Error {
 	}
 }
 
+/** #33 (A1) + operator round D: verified=true rides the PUT with the
+ *  verified event landing in the save's own commit, and `meta` carries the
+ *  unified editor's changed keys (the seed-diff rule – untouched lines keep
+ *  their bytes). Both are OKF-mode fields, ignored elsewhere. */
 export async function saveDoc(
 	path: string,
 	markdown: string,
 	baseHash: string,
+	verified = false,
+	meta?: DocMetaEdit,
 ): Promise<SaveResponse> {
 	const res = await fetch(`/api/docs/${encodeURI(path)}`, {
 		method: "PUT",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ markdown, baseHash }),
+		body: JSON.stringify({
+			markdown,
+			baseHash,
+			verified,
+			...(meta === undefined ? {} : { meta }),
+		}),
 	});
 	if (!res.ok) {
 		let message = `save failed (${res.status})`;
@@ -123,6 +167,32 @@ export const setTitle = (path: string, title: string) =>
 		method: "PATCH",
 		headers: JSON_HEADERS,
 		body: JSON.stringify({ title }),
+	});
+
+/** A2: `status` is OKF's one closed vocabulary – mirrored for the editor's
+ *  select (a convenience, never the guard; the API seam is). */
+export const STATUS_VALUES = ["draft", "stable", "deprecated"] as const;
+
+/** #33 (D2) + operator round C: the unified editor's changed-key payload –
+ *  the five curated keys plus any §4.1 extension key (the server allowlists
+ *  the name's grammar); null (or an empty tags list) REMOVES the key; only
+ *  changed fields ride a save – untouched lines keep their bytes. The agent/
+ *  API surface PATCH {meta} accepts the same shape. */
+export interface DocMetaEdit {
+	type?: string | null;
+	description?: string | null;
+	tags?: string[] | null;
+	status?: string | null;
+	/** ISO UTC (toIsoUtc converts the datetime-local value). */
+	stale_after?: string | null;
+	/** §4.1 extension keys – string | null only (null removes). */
+	[key: string]: string | string[] | null | undefined;
+}
+
+/** #33 (A1): the doc head's Verify – the verified event in its own commit. */
+export const verifyDoc = (path: string) =>
+	request<{ sha: string }>(`/api/docs/${encodeURI(path)}/verify`, {
+		method: "POST",
 	});
 
 export const deleteDoc = (path: string) =>
@@ -205,6 +275,15 @@ export interface DocMeta {
 	snippet: string;
 	/** Frontmatter title – the display name; null = file name sans .md. */
 	title: string | null;
+	/** OKF badge fields (#33) – present only in OKF mode: the curated type,
+	 *  the status verbatim (absent = no chip, A3), the derived §5.3 tier,
+	 *  and stale_after as written (chips read it stale when now ≥ it). */
+	okf?: {
+		type: string | null;
+		status: string | null;
+		tier: "unverified" | "machine-confirmed" | "human-reviewed";
+		staleAfter: string | null;
+	};
 }
 export interface DraftEntry {
 	branch: string;

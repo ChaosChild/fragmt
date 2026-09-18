@@ -2,6 +2,7 @@ import { loadConfig } from "./config.js";
 import { readDoc } from "./docs.js";
 import { mergeState } from "./drafts.js";
 import { currentBranch, git, listBranches, logCommits } from "./git.js";
+import { isReservedBase, trustTier } from "./okf.js";
 
 export interface DocMeta {
 	author: string;
@@ -13,6 +14,17 @@ export interface DocMeta {
 	/** Frontmatter `title` (the display-name model, M4-3 b4); null when the
 	 *  doc has none – the file name sans .md is the fallback. */
 	title: string | null;
+	/** OKF badge fields (#33) – present ONLY in OKF mode, and only for docs
+	 *  that exist on this branch's worktree: the curated `type`, the status
+	 *  verbatim (absent renders no chip, A3 – never implied-stable), the
+	 *  derived §5.3 trust tier, and `stale_after` as written (the chips read
+	 *  it stale when now >= it). Derived, never stored. */
+	okf?: {
+		type: string | null;
+		status: string | null;
+		tier: "unverified" | "machine-confirmed" | "human-reviewed";
+		staleAfter: string | null;
+	};
 }
 
 export interface DraftEntry {
@@ -97,12 +109,15 @@ function toDocPath(repoRel: string, prefix: string): string | null {
 
 /** The per-doc fs read's card extras (one read for both): the snippet (first
  *  non-heading, non-empty, non-table body line) and the frontmatter title.
- *  Missing file → empty snippet and no title (not on this branch's worktree). */
+ *  Missing file → empty snippet and no title (not on this branch's worktree).
+ *  In OKF mode the same read also derives the badge fields (the title walk
+ *  extended, #33). */
 function docExtras(
 	repoRoot: string,
 	docsRoot: string,
 	docPath: string,
-): { snippet: string; title: string | null } {
+	okf: boolean,
+): { snippet: string; title: string | null; okf?: DocMeta["okf"] } {
 	let frontmatter: Record<string, unknown>;
 	let body: string;
 	try {
@@ -121,7 +136,24 @@ function docExtras(
 		snippet = t.slice(0, 110);
 		break;
 	}
-	return { snippet, title };
+	if (!okf || isReservedBase(docPath)) return { snippet, title };
+	const stale = frontmatter.stale_after;
+	return {
+		snippet,
+		title,
+		okf: {
+			type: typeof frontmatter.type === "string" ? frontmatter.type : null,
+			status:
+				typeof frontmatter.status === "string" ? frontmatter.status : null,
+			tier: trustTier(frontmatter),
+			staleAfter:
+				stale instanceof Date
+					? stale.toISOString()
+					: typeof stale === "string"
+						? stale
+						: null,
+		},
+	};
 }
 
 /**
@@ -166,10 +198,29 @@ export async function repoMeta(
 				};
 		}
 	}
-	// One fs read per doc (snippet + frontmatter title) – the walk above is
-	// git-only.
+	// The authors map (avatar resolution), the agents list (the agent
+	// chip), and the OKF mode flag (the banner's gate): the config verbatim.
+	// Read BEFORE the fs pass – docExtras' badge fields gate on the flag.
+	// RepoMeta has only repoRoot/docsRoot – the config is read here, the same
+	// loader the CLI uses for docsRoot; any config problem just means none of
+	// the features ({} / [] / false) – never a failed meta walk over a
+	// cosmetic feature.
+	let authors: Record<string, string> = {};
+	let agents: string[] = [];
+	let okf = false;
+	try {
+		const config = loadConfig(repoRoot);
+		authors = config.authors ?? {};
+		agents = config.agents ?? [];
+		okf = config.okf === true;
+	} catch {
+		// no config / malformed – no authors map, no agents, no OKF mode
+	}
+
+	// One fs read per doc (snippet + frontmatter title, + the OKF badge
+	// fields in OKF mode) – the walk above is git-only.
 	for (const docPath of Object.keys(docs)) {
-		Object.assign(docs[docPath], docExtras(repoRoot, docsRoot, docPath));
+		Object.assign(docs[docPath], docExtras(repoRoot, docsRoot, docPath, okf));
 	}
 
 	// Walk 2 – per non-main branch, which docsRoot docs differ from main:
@@ -228,24 +279,6 @@ export async function repoMeta(
 			gone.add(docPath);
 			deleted.push({ path: docPath, sha: fields[0], date: fields[1] });
 		}
-	}
-
-	// The authors map (avatar resolution), the agents list (the agent
-	// chip), and the OKF mode flag (the banner's gate): the config verbatim.
-	// RepoMeta has only repoRoot/docsRoot – the config is read here, the same
-	// loader the CLI uses for docsRoot; any config problem just means none of
-	// the features ({} / [] / false) – never a failed meta walk over a
-	// cosmetic feature.
-	let authors: Record<string, string> = {};
-	let agents: string[] = [];
-	let okf = false;
-	try {
-		const config = loadConfig(repoRoot);
-		authors = config.authors ?? {};
-		agents = config.agents ?? [];
-		okf = config.okf === true;
-	} catch {
-		// no config / malformed – no authors map, no agents, no OKF mode
 	}
 
 	// The merge summary (resolution mode's on-switch, b3): mergeState is one

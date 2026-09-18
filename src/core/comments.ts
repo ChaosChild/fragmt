@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, sep } from "node:path";
 import { commitAs } from "./commit.js";
+import { loadConfig } from "./config.js";
 import { canonicalBody, prepareDocWrite, resolveDocPath } from "./docs.js";
 import { localUser } from "./identity.js";
+import { actorOf, appendVerified, okfEnabled } from "./okf.js";
 
 /** No such comment thread in the sidecar – the server maps this to 404. */
 export class ThreadNotFoundError extends Error {}
@@ -146,18 +148,56 @@ export async function addReply(
 	return writeComments(repoRoot, docPath, file, user);
 }
 
-/** Set a thread's resolved flag in one commit (the span stays – resolve ≠ delete). */
+/**
+ * Set a thread's resolved flag in one commit (the span stays – resolve ≠
+ * delete). OKF mode (A1) rides the resolver's verified event (§5.2) on the
+ * SAME commit when resolving: sidecar + doc through one commitAs, the
+ * sidecar bytes identical to writeComments'. Reopening never touches
+ * `verified` (append-only history). `actor` overrides the event's actor
+ * (the agent CLI's --as-actor); omitted → the committing identity as
+ * `human:<local-part>`. A doc that is missing or whose YAML will not parse
+ * resolves sidecar-only – validate owns that report, comment moderation
+ * must not be blocked on a mangled fence.
+ */
 export async function setResolved(
 	repoRoot: string,
 	docPath: string,
 	id: string,
 	resolved: boolean,
 	who?: { name: string; email: string },
+	actor?: string,
 ): Promise<{ sha: string }> {
 	const file = await readComments(repoRoot, docPath);
 	const thread = file.comments[id];
 	if (!thread) throw new ThreadNotFoundError(id);
 	thread.resolved = resolved;
+	if (resolved && okfEnabled(repoRoot)) {
+		const user = who ?? (await localUser(repoRoot));
+		const files = [repoRel(repoRoot, writeSidecar(repoRoot, docPath, file))];
+		try {
+			const docAbs = resolveDocPath(
+				repoRoot,
+				loadConfig(repoRoot).docsRoot,
+				docPath,
+			);
+			const next = appendVerified(
+				readFileSync(docAbs, "utf8"),
+				actor ?? actorOf(user),
+			);
+			if (next !== null) {
+				writeFileSync(docAbs, next);
+				files.unshift(repoRel(repoRoot, docAbs));
+			}
+		} catch {
+			// doc unreadable or unparseable – the sidecar resolves alone
+		}
+		const sha = await commitAs(
+			user,
+			{ files, message: `Update comments for ${docPath}` },
+			repoRoot,
+		);
+		return { sha };
+	}
 	return writeComments(repoRoot, docPath, file, who);
 }
 

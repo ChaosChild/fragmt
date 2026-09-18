@@ -53,14 +53,18 @@ function SlideoutDivider({
  * restored as the default – a permanent 316px margin column with the open
  * doc's threads – that widens into the draggable split only while a preview
  * is open (the head row, with the previewed title, open-in-main, and close,
- * exists in that state alone). No mode tabs: the two states are previewPath's
- * presence, nothing to switch. `open` matters only where the CSS turns the
- * pane into the bottom sheet (≤1180px); the head row in the comments state
+ * exists in that state alone). No mode tabs: the three states are
+ * previewPath's presence and the References toggle (#33) – nothing to
+ * switch beyond those. `open` matters only where the CSS turns the pane
+ * into the bottom sheet (≤1180px); the head row in the comments state
  * is that sheet's affordance – desktop CSS hides it with the whole head.
+ * The References mode (#33, D1) keeps the rail's fixed width and shows its
+ * own close (a dismissible mode, unlike the permanent rail).
  */
 export function Slideout({
 	open,
 	preview,
+	references,
 	commentCount,
 	previewTitle,
 	led,
@@ -74,6 +78,9 @@ export function Slideout({
 	open: boolean;
 	/** A preview is open – the wide split state, with its head row. */
 	preview: boolean;
+	/** The References mode is showing (#33) – the third state; wins over
+	 *  the comments rail, yields to a preview (App renders the content). */
+	references: boolean;
 	/** The comments head's "Comments · N" (the sheet's title line). */
 	commentCount: number;
 	/** The previewed doc's display title – the head's "Preview · <title>"
@@ -98,8 +105,10 @@ export function Slideout({
 		<>
 			{preview && <SlideoutDivider onShare={onShare} />}
 			<aside
-				className={`slideout${open ? " open" : ""}${preview ? " preview" : ""}`}
-				aria-label={preview ? "Preview" : "Comments"}
+				className={`slideout${open ? " open" : ""}${preview ? " preview" : ""}${references && !preview ? " references" : ""}`}
+				aria-label={
+					preview ? "Preview" : references ? "References" : "Comments"
+				}
 			>
 				<div className="slideout-head">
 					{preview ? (
@@ -108,6 +117,8 @@ export function Slideout({
 								Preview · {previewTitle}
 							</span>
 						)
+					) : references ? (
+						<span className="slideout-title">References</span>
 					) : (
 						<span className="slideout-title">Comments · {commentCount}</span>
 					)}
@@ -153,7 +164,13 @@ export function Slideout({
 					<button
 						type="button"
 						className="slideout-close"
-						aria-label={preview ? "Close preview" : "Close comments"}
+						aria-label={
+							preview
+								? "Close preview"
+								: references
+									? "Close references"
+									: "Close comments"
+						}
 						onClick={onClose}
 					>
 						<X aria-hidden="true" />

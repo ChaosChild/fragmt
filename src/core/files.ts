@@ -104,11 +104,11 @@ function keepEmptiedFolder(
 
 /**
  * Create a doc (LF, exactly one trailing newline) in one commit. In OKF mode
- * the file is born conformant: `---\ntype: concept\n---\n` (§4.1) plus the
- * derived `references` when the seed body links existing docs, the linked
- * docs' `referenced-by` lists settle in the same commit, the affected
- * indexes regenerate on it, and a reserved basename is refused (§3.1 –
- * DocPathError, the server's 400).
+ * the file is born conformant: `type: concept` and an explicit
+ * `status: "draft"` (A3) plus the derived `references` when the seed body
+ * links existing docs, the linked docs' `referenced-by` lists settle in the
+ * same commit, the affected indexes regenerate on it, and a reserved
+ * basename is refused (§3.1 – DocPathError, the server's 400).
  */
 export async function createDoc(
 	repoRoot: string,
@@ -135,14 +135,11 @@ export async function createDoc(
 			docPath,
 			await docPaths(repoRoot, docsRoot),
 		);
-		// saveWithRefs over the seed body itself: the type block + references.
-		// Its null (fenceless + nothing to carry) is a save-path contract; a
-		// create still owes the type block, so the fallback is not `normalized`.
-		writeFileSync(
-			abs,
-			saveWithRefs(normalized, targets, normalized) ??
-				`---\ntype: ${DEFAULT_TYPE}\n---\n${normalized}`,
-		);
+		// A3: born with an explicit status (draft) beside the type, then
+		// saveWithRefs rides the refs on top of the fenced seed – its
+		// fence-less null can no longer drop the block it owes (3646d18).
+		const born = `---\ntype: ${DEFAULT_TYPE}\nstatus: ${JSON.stringify("draft")}\n---\n${normalized}`;
+		writeFileSync(abs, saveWithRefs(born, targets, normalized) ?? born);
 		for (const p of await propagateRefs(
 			repoRoot,
 			docsRoot,

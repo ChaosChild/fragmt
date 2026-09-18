@@ -42,8 +42,9 @@ Usage:
   fragmt serve [--port <n>] [--auth]
   fragmt validate [--fix]
   fragmt agent [status]
-  fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--full]
-  fragmt agent draft <doc> [--merge]
+  fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor <who>] [--full]
+  fragmt agent draft <doc> [--merge] [--as-actor <who>]
+  fragmt agent verify <doc> [--as-actor <who>] [--author <who>]
   fragmt --help
 
 Commands:
@@ -51,7 +52,8 @@ Commands:
            --okf enables OKF mode (v0.2): existing repos flip the flag, docs validated, indexes + references committed
   serve    Start the local web server
   validate Check OKF conformance (§11); --fix applies the mechanical repairs in one commit
-  agent    The agent surface: status, comment, draft (AXI-conformant)
+  agent    The agent surface: status, comment, draft, verify (AXI-conformant)
+           --as-actor self-declares the OKF trust actor (default fragmt-agent/unspecified)
 `;
 
 /** Parse argv and dispatch. Exits the process. */

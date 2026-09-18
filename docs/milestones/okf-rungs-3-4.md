@@ -1,0 +1,46 @@
+# OKF rungs 3–4: frontmatter editor, trust stamping, references pane (#33)
+
+Backlog round 5, 2026-09-16. Issue: [#33](https://github.com/ChaosChild/fragmt/issues/33) (split from #21; rungs 1–2 + references core sit in PR #36). Locked by Lavish review same day (`.lavish/okf-rungs-3-4.html`): D1 references pane ships this round; D2 doc-head metadata editor; D3 human actor = `human:<email-local-part>`; D4 agents self-declare via `--as-actor`, verbatim, default `fragmt-agent/unspecified` (never a false `human:` prefix); A1 two verify affordances — Verify beside Edit, Save as Verified beside Save — plus comment-resolve (locked since #21); A2 `status` is enum-only (select in UI, 400 at the API seam); A3 status always explicit — new docs start `draft`, `--fix` materializes `draft` on absent, absent in adopted bundles renders no chip (never implied-stable). Spec source: [open-knowledge-format v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format) §5/§7, re-read 2026-09-16. Branch `feat/okf-rungs-3-4` is stacked on PR #36's branch; both merge together after the combined leg test.
+
+## What ships
+
+- **Rung 3 — metadata editor:** a compact section in the doc head (the rename-form pattern extended): type (free text — OKF's open vocabulary), description (text), tags (comma-separated → YAML list), status (enum select), stale_after (datetime → ISO UTC). Read state renders chips inline; edit opens the form; one `PATCH {meta}` commit per save. Raw frontmatter bytes stay withheld from the UI — the editor edits fields, `setFrontmatterKeys` raw-splices (the `setTitle` mechanic: YAML never re-serialized, unknown keys byte-preserved).
+- **Rung 4 — trust stamping:** every OKF-mode save rewrites `generated: { by, at }` — `by` from the committing identity as `human:<email-local-part>` (UI/server saves) or the agent CLI's `--as-actor` verbatim / `fragmt-agent/unspecified` default; `at` = save time, ISO UTC with offset. `verified` is append-only via three affordances: comment-resolve (resolver's event, appended in the same commit as the sidecar write), the Verify button (read mode, `POST /api/docs/:doc/verify`), and Save as Verified (`PUT` body flag — event lands in the save's commit). A bare existing `verified` mapping migrates to list form on first append (§5.2 shape).
+- **Trust badges (derived, never stored):** doc cards + doc head chips: tier per §5.3 (no `verified` → unverified; non-`human:` only → machine-confirmed; any `human:` → human-reviewed), staleness when `now ≥ stale_after` (§5.5), status chip when present and not stable. Absent status renders nothing.
+- **References pane (D1):** the slideout's third mode — References — listing `references` and `referenced-by` from the doc's frontmatter payload; links navigate the main pane; the slideout stays open (the side-by-side).
+- **Doc payload:** `GET /api/docs/*` gains `frontmatter` — the parsed curated keys (`type, description, tags, status, generated, verified, stale_after, references, referenced-by`). `/api/meta`'s per-doc extras gain `type`, `status`, derived tier, `staleAfter` (the `title` walk extended).
+- **Agent CLI:** `fragmt agent draft <doc> --merge [--as-actor "<producer>/<version>"]` — before merging, the stamp is written to the draft's doc on the draft branch (rides into main via the merge); after a clean merge, `populateOkf` regenerates references/indexes (the seam the server's conclude path already has). `fragmt agent comment <doc> --resolve [--as-actor …]` — resolve appends the actor's verified event.
+- **Status always explicit (A3):** `createDoc` in OKF mode writes `status: draft` beside `type: concept` (a change on top of PR #36's code, landing on this branch); `fixOkf` materializes `status: draft` where the key is absent.
+
+## Pipeline
+
+1. **Core** — `src/core/okf.ts`: `STATUS_VALUES = ["draft", "stable", "deprecated"]`; `setFrontmatterKeys(raw, edits)` — scalar and list keys replaced in place or appended at the fence end (the `saveWithRefs`/`setTitle` raw-splice rules; fence-less docs gain a fence, `type` first); `status` outside the enum throws (server maps 400). `stampGenerated(raw, actor)` — one flow-mapping line, `{ by: <actor>, at: <ISO Z> }`. `appendVerified(raw, actor)` — list append, bare mapping migrates. `actorOf(who)` — `human:<email local-part>`; `AGENT_DEFAULT = "fragmt-agent/unspecified"`. `trustTier(frontmatter)` and staleness derivation for meta. `fixOkf` gains the status materialization. `src/core/files.ts`: `createDoc`'s OKF block gains `status: draft`. `src/core/docs.ts`: `writeDoc` accepts `verified?: boolean` and an actor override; OKF mode stamps `generated` (and appends `verified` when flagged) before the refs propagation — one commit. New `verifyDoc(repoRoot, docsRoot, docPath, who)` — the standalone event append. `src/core/comments.ts`: `setResolved(…, actor?)` — on `resolved: true` in OKF mode, appends the actor's verified event to the doc and commits sidecar + doc together.
+2. **Agent CLI** — `src/cli/agent.ts`: `--as-actor <string>` parsed for `draft` and `comment`; the `draft --merge` path stamps the doc on the draft branch pre-`mergeToMain` (a tiny commit on the draft — "OKF: stamp <doc> as <actor>") then runs `populateOkf` after a clean merge; `comment --resolve` passes the actor to `setResolved`. Non-OKF repos: no behavior change.
+3. **Server** — `src/server/index.ts`: doc GET payload + `frontmatter` (parsed curated keys, mirror types in `ui/src/api.ts`); `PATCH` gains the `{meta}` dispatch (enum violation → 400); `PUT` body gains `verified`; `POST /api/docs/:doc/verify`; `/api/meta` `docExtras` badge fields. `src/core/meta.ts`: the extras walk extended.
+4. **UI** — `ui/src/DocView.tsx`: doc-head metadata section (read chips + edit form, the rename-form interaction), Verify button beside Edit, Save as Verified beside Save; `ui/src/Sidebar.tsx`: badge chips on `DocCard`; `ui/src/Slideout.tsx` (+ its mode wiring in `App.tsx`): References mode; `ui/src/api.ts`: typed wrappers. Plain CSS additions in `ui/src/styles.css` using the existing token set — badges quiet by default (tier chip lowest emphasis; stable/fresh shows nothing beyond it).
+5. **Docs** — README OKF section extended (trust stamping, editor, pane); this spec. BACKLOG graduation rides the merge.
+
+## Excluded
+
+- Rung 5 remainder — graph view, export, `viz.html` (absent from the spec entirely).
+- Attested Computation (§10) — out; revisited after the OKF initial build.
+- `sources` family stamping — producer-side enrichment; editable only as raw YAML by hand, nothing built.
+- validate trust-family checks — optional fields, §11 makes them no clause; preserved bytes.
+- Managed `type` vocabulary — stays free text (spec-mandated tolerance of unknown types; revisit if wanted).
+- `log.md`, non-OKF surfaces, multi-user trust (#20/#27 own the agent-user story beyond `--as-actor`).
+
+## Operator revisions (2026-09-16/17, post-review)
+
+Four operator review passes reshaped the shipped surfaces after this spec was written; the commits on the round PR are the exact record. The deltas vs the spec above:
+
+- The separate Edit-metadata button is gone: a collapsible `key: value` metadata block sits between the doc head and the content (collapsed by default), and the ONE Edit button edits content and metadata together — one Save, one commit (`writeDoc` carries the meta edits; the PATCH `{meta}` route remains as the agent/API surface). Metadata dirt rides the editor's dirty-guard chain; every navigation entry point (including the sidebar card click and folder links) is guarded, and a doc switch exits edit mode.
+- §4.1 extension keys are viewable and editable in the block (scalars; arrays read-only), several new keys per save.
+- The Verify button shows its already-mine state (`verifiedByYou`, server-derived; a missing `generated` stamp lets the event stand).
+- References rows open the slideout's preview split (the #15 machinery) beside the current doc — the side-by-side default — with open-in-main in the preview head.
+- `index.md` subdirectory entries link the subdirectory's own `index.md` (click navigates, shift+click previews); `validate --fix` regenerates the index set.
+- `fragmt agent verify <doc> [--as-actor]` — the agent-first verify, no HTTP needed; the managed AGENTS.md block teaches the OKF rules in OKF repos.
+- Reserved files (`index.md`/`log.md`) are read-only in the UI: Edit disabled, the metadata area explains §3.1, References shows the reserved note.
+
+## Tests
+
+~30. `tests/okf-frontmatter.test.ts`: setFrontmatterKeys scalar/list/append/fenceless, status enum rejection, unknown-key byte preservation round-trip. `tests/okf-trust.test.ts`: stampGenerated shape/idempotence, appendVerified empty→list / bare→migrate / list→append, actorOf mappings, trustTier + staleness boundaries (§5.3/§5.5). E2E (`tests/okf-agent-actor.test.ts`, tmp repos): save → generated + refs one commit; Save-as-Verified → event in the save commit; comment-resolve → event + sidecar one commit; `draft --merge --as-actor` → stamped doc rides the merge + post-merge regen; `--fix` materializes status. `tests/server-okf-meta.test.ts`: payload frontmatter shape, PATCH {meta} + enum 400, verify route, PUT flag, meta badge fields, references pane data source.

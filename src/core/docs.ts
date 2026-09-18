@@ -5,12 +5,20 @@ import matter from "gray-matter";
 import { commitAs } from "./commit.js";
 import { localUser } from "./identity.js";
 import {
+	actorOf,
+	appendVerified,
 	docPaths,
 	extractRefs,
+	type FrontmatterEdit,
+	isReservedBase,
+	MANAGED_FRONTMATTER_KEYS,
+	OkfFieldError,
 	okfEnabled,
 	propagateRefs,
 	refsList,
 	saveWithRefs,
+	setFrontmatterKeys,
+	stampGenerated,
 } from "./okf.js";
 
 export class DocPathError extends Error {}
@@ -165,7 +173,20 @@ export async function prepareDocWrite(
  * symmetric difference into the changed targets' `referenced-by` lists
  * BEFORE any byte hits disk (a stale target aborts the whole batch,
  * StaleDocError → 409): one commit, 1 + |symmetric difference| files.
- * `user` (serve --auth) overrides the commit author; omitted → localUser().
+ * Rung 4 rides on the same commit: the `generated` stamp is rewritten first
+ * (§5.2, `opts.actor` verbatim or the committing identity as
+ * `human:<email-local-part>`), plus a `verified` event when `opts.verified`
+ * – a fence-less doc gains its fence here, or the save would lose the
+ * stamp. `opts.metaEdits` (operator round D – the unified editor rides the
+ * same save) apply third, through setFrontmatterKeys ahead of the refs
+ * propagation, so the full order is stampGenerated → appendVerified → user
+ * metaEdits → refs propagation, all in the ONE commit. The metadata gates
+ * fire before any byte is written (including the targets' bytes):
+ * `metaEdits` on a reserved filename throw DocPathError (§3.1), a managed
+ * key throws OkfFieldError, and setFrontmatterKeys' grammar/enum gates
+ * throw inside the splice. Non-OKF repos ignore `metaEdits` entirely, like
+ * every other OKF-only option. `user` (serve --auth) overrides the commit
+ * author; omitted → localUser().
  */
 export async function writeDoc(
 	repoRoot: string,
@@ -174,7 +195,24 @@ export async function writeDoc(
 	body: string,
 	baseHash: string,
 	user?: { name: string; email: string },
+	opts: {
+		verified?: boolean;
+		actor?: string;
+		/** User frontmatter edits riding this save (changed keys only). */
+		metaEdits?: FrontmatterEdit[];
+	} = {},
 ): Promise<{ sha: string; hash: string }> {
+	const hasMeta = opts.metaEdits !== undefined && opts.metaEdits.length > 0;
+	const okf = okfEnabled(repoRoot);
+	if (hasMeta) {
+		// §3.1: reserved files hold no concept frontmatter – a metadata save
+		// on one is a path-level refusal (the server's 400), never a write.
+		if (okf && isReservedBase(docPath))
+			throw new DocPathError(`reserved filename: ${docPath}`);
+		for (const e of opts.metaEdits ?? [])
+			if (MANAGED_FRONTMATTER_KEYS.has(e.key))
+				throw new OkfFieldError(`${e.key} is a managed key`);
+	}
 	const {
 		abs,
 		user: who,
@@ -182,12 +220,25 @@ export async function writeDoc(
 	} = await prepareDocWrite(repoRoot, docsRoot, docPath, baseHash, user);
 	const normalized = canonicalBody(body);
 	const repoRelative = relative(repoRoot, abs).split(sep).join("/");
-	if (okfEnabled(repoRoot)) {
+	// Reserved files never carry concept frontmatter (§3.1) – no stamp, no
+	// verified event, no derived fields: the plain save path, OKF or not.
+	if (okf && !isReservedBase(docPath)) {
 		// The previous references list comes from the doc's own frontmatter,
 		// read pre-write; the new list derives from the incoming body.
 		const text = readFileSync(abs, "utf8");
+		const actor = opts.actor ?? actorOf(who);
+		const stamped = stampGenerated(text, actor) ?? text;
+		const withEvent = opts.verified
+			? (appendVerified(stamped, actor) ?? stamped)
+			: stamped;
+		// The user's metadata edits splice third (the spec's order) – pure
+		// computation on the string, so the grammar/enum gates inside throw
+		// before propagateRefs writes a single target byte.
+		const withMeta = hasMeta
+			? (setFrontmatterKeys(withEvent, opts.metaEdits ?? []) ?? withEvent)
+			: withEvent;
 		const prev = refsList(
-			(matter(text, {}).data as Record<string, unknown>).references,
+			(matter(withMeta, {}).data as Record<string, unknown>).references,
 		);
 		const next = extractRefs(
 			normalized,
@@ -201,7 +252,10 @@ export async function writeDoc(
 			prev,
 			next,
 		);
-		writeFileSync(abs, saveWithRefs(text, next, normalized) ?? raw(normalized));
+		writeFileSync(
+			abs,
+			saveWithRefs(withMeta, next, normalized) ?? raw(normalized),
+		);
 		const sha = await commitAs(
 			who,
 			{
@@ -219,6 +273,92 @@ export async function writeDoc(
 		repoRoot,
 	);
 	return { sha, hash: docHash(normalized) };
+}
+
+/**
+ * Rung 4's standalone Verify affordance (A1): append the committing
+ * identity's verified event (§5.2) in one commit, `Verify <docPath>` – the
+ * append-only twin of writeDoc's `verified` flag. `generated` is untouched
+ * (the spec keeps them independent: content may change without
+ * re-confirmation and vice versa). `user` (serve --auth) overrides the
+ * commit author AND the event's `human:` actor; omitted → localUser().
+ * `actor` (the agent CLI's --as-actor) overrides the event's actor
+ * verbatim, the setResolved rule – never a false `human:` claim by
+ * construction (the caller self-declares); omitted → actorOf(user).
+ */
+export async function verifyDoc(
+	repoRoot: string,
+	docsRoot: string,
+	docPath: string,
+	user?: { name: string; email: string },
+	actor?: string,
+): Promise<{ sha: string }> {
+	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
+	// §3.1: reserved files hold no concept frontmatter – nothing to verify.
+	if (isReservedBase(docPath)) {
+		throw new DocPathError(`reserved filename: ${docPath}`);
+	}
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		throw new DocNotFoundError(docPath);
+	}
+	const who = user ?? (await localUser(repoRoot));
+	const next = appendVerified(readFileSync(abs, "utf8"), actor ?? actorOf(who));
+	if (next !== null) writeFileSync(abs, next);
+	const sha = await commitAs(
+		who,
+		{
+			files: [relative(repoRoot, abs).split(sep).join("/")],
+			message: `Verify ${docPath}`,
+		},
+		repoRoot,
+	);
+	return { sha };
+}
+
+/**
+ * Rung 3's metadata editor write (D2): apply FrontmatterEdit[] to one doc
+ * through setFrontmatterKeys – the setTitle line-splice discipline (YAML
+ * never re-serialized, unknown keys byte-preserved, a fence-less doc gains
+ * a fence carrying `type` first) – in ONE commit, `Update metadata for
+ * <docPath>`. The A2 enum gate AND the §4.1 key-grammar gate
+ * (isFrontmatterKey – an unsafe name is never spliced) fire inside the
+ * splice, BEFORE the identity read and any write (a bad edit costs no
+ * spawn and no byte); a no-op edit (null splice) commits nothing and
+ * returns the empty sha (the fixOkf rule). `user` (serve --auth) overrides
+ * the commit author; omitted → localUser().
+ * ponytail: no stale-check (no baseHash – the editor sends field diffs,
+ * not the buffer), so concurrent metadata edits are last-write-wins; add
+ * one only if that ever bites a two-editor repo.
+ */
+export async function setDocMeta(
+	repoRoot: string,
+	docsRoot: string,
+	docPath: string,
+	edits: FrontmatterEdit[],
+	user?: { name: string; email: string },
+): Promise<{ sha: string }> {
+	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
+	// §3.1: the metadata editor is for concept docs; reserved files hold
+	// no concept frontmatter, so there is nothing to edit.
+	if (isReservedBase(docPath)) {
+		throw new DocPathError(`reserved filename: ${docPath}`);
+	}
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		throw new DocNotFoundError(docPath);
+	}
+	const next = setFrontmatterKeys(readFileSync(abs, "utf8"), edits);
+	if (next === null) return { sha: "" };
+	const who = user ?? (await localUser(repoRoot));
+	writeFileSync(abs, next);
+	const sha = await commitAs(
+		who,
+		{
+			files: [relative(repoRoot, abs).split(sep).join("/")],
+			message: `Update metadata for ${docPath}`,
+		},
+		repoRoot,
+	);
+	return { sha };
 }
 
 /**
