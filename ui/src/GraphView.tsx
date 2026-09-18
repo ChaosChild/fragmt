@@ -451,7 +451,16 @@ export function GraphView({
 						<span className="gv-sw gv-sw-isolated" /> isolated — no links
 					</span>
 					<span className="gv-legend-item">
-						<svg className="gv-sw-edge" aria-hidden="true">
+						{/* Inline width/height on purpose: this engine ignored the
+						    class-level sizing, inflating the swatch to the svg
+						    default (404x150) and breaking the legend layout. */}
+						<svg
+							className="gv-sw-edge"
+							width={16}
+							height={10}
+							style={{ width: 16, height: 10 }}
+							aria-hidden="true"
+						>
 							<line x1="0" y1="5" x2="16" y2="5" />
 						</svg>
 						edge = body link

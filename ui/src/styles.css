@@ -3168,22 +3168,17 @@ button.comment-quote:hover {
 .gv-toolbar a.iconbtn {
 	text-decoration: none;
 }
-/* The legend (operator round): bottom-left overlay over the svg; the
-   container never takes pointer events – it's read-only and must not eat
-   pan gestures underneath. */
+/* Bare legend pinned to the pane's bottom-left corner — no chrome (the
+   operator rejected the boxed card). pointer-events stay off so it never
+   eats pan gestures underneath. */
 .gv-legend {
 	position: absolute;
 	left: var(--space-3);
-	bottom: var(--space-3);
+	bottom: var(--space-2);
 	z-index: 1;
 	display: flex;
 	flex-wrap: wrap;
-	gap: var(--space-1) var(--space-3);
-	max-width: calc(100% - 2 * var(--space-3));
-	padding: var(--space-2);
-	border: 1px solid var(--glass-border);
-	border-radius: var(--radius);
-	background: var(--glass-bg-strong);
+	gap: var(--space-1) var(--space-4);
 	font-family: var(--font-mono);
 	font-size: 10px;
 	color: var(--muted);
