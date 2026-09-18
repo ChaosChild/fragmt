@@ -3097,6 +3097,10 @@ button.comment-quote:hover {
 	stroke: var(--surface);
 	stroke-width: 2;
 	cursor: pointer;
+	/* Default visiblePainted hit-tests only painted areas, so an unfilled
+	   (isolated) node's interior would be dead; `all` makes the whole disc
+	   the hover/click target whatever the fill. */
+	pointer-events: all;
 }
 /* Tier fills – the badge semantics, quiet by default. */
 .gv-tier-unverified {
