@@ -9,9 +9,11 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import {
 	AGENTS_BEGIN,
 	AGENTS_BODY,
+	AGENTS_BODY_OKF,
 	AGENTS_END,
 	writeAgentsBlock,
 } from "../src/core/agents.js";
+import { writeConfig } from "../src/core/config.js";
 import { isAgent } from "../ui/src/display.js";
 
 let root: string;
@@ -55,6 +57,20 @@ test("a lone end marker counts as unmarked – append, not replace", () => {
 	writeFileSync(join(root, "AGENTS.md"), `${mine}${AGENTS_END}\n`);
 	writeAgentsBlock(root);
 	expect(read()).toBe(`${mine}${AGENTS_END}\n\n${block()}\n`);
+});
+
+test("writeAgentsBlock picks the body from the config's mode – same v1 fences", () => {
+	// No config (or a legacy one) ⇒ the plain body, byte-for-byte.
+	writeAgentsBlock(root);
+	expect(read()).toBe(`${AGENTS_BEGIN}\n${AGENTS_BODY}${AGENTS_END}\n`);
+
+	// OKF mode recorded ⇒ the taught variant, nothing else about the splice
+	// changes: the OKF section rides AGENTS_BODY verbatim inside the fences.
+	writeConfig(root, ".", true);
+	writeAgentsBlock(root);
+	expect(read()).toBe(`${AGENTS_BEGIN}\n${AGENTS_BODY_OKF}${AGENTS_END}\n`);
+	expect(AGENTS_BODY_OKF.startsWith(AGENTS_BODY)).toBe(true);
+	expect(AGENTS_BODY_OKF).toContain("## OKF rules");
 });
 
 test("isAgent: exact-name membership against the config list", () => {

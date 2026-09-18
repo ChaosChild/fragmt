@@ -2,7 +2,9 @@
 // flip (findings printed, adopted files untouched on disk, indexes + refs
 // committed), the unchanged plain re-init refusal, the nested
 // `--folder --new --okf` bundle, and `fragmt validate`'s exit contract with
-// `--fix` reaching a conformant end state. Real git in tmp repos
+// `--fix` reaching a conformant end state. The managed AGENTS block rides
+// the same paths: OKF repos get the taught variant (fresh, flip, nested),
+// plain repos never do, fences stay v1. Real git in tmp repos
 // (nested-init/files patterns); stdout is the injected sink, stdin the ask
 // seam.
 import { execFileSync } from "node:child_process";
@@ -18,6 +20,8 @@ import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { runInit, runValidate } from "../src/cli/index.js";
 import {
+	AGENTS_BEGIN,
+	AGENTS_END,
 	configPath,
 	createDoc,
 	loadConfig,
@@ -158,6 +162,66 @@ test("nested --folder --new --okf: OKF bundle in its own repo, outer redirect in
 	expect(run(nested, ["log", "-1", "--format=%s"])).toBe(
 		"OKF: populate references and indexes",
 	);
+});
+
+test("fresh init --okf teaches the OKF rules in AGENTS.md; plain init does not", async () => {
+	const okf = repo();
+	put(okf, "docs/a.md", "---\ntype: Metric\n---\n\n# A\n");
+	run(okf, ["add", "-A"]);
+	run(okf, ["commit", "-q", "-m", "seed"]);
+	await runInit("docs", okf, sink().write, { okf: true });
+	const taught = readFileSync(join(okf, "AGENTS.md"), "utf8");
+	expect(taught).toContain("## OKF rules – this repo is an OKF v0.2 bundle");
+	expect(taught).toContain("fragmt validate");
+	// The taught variant rides the same v1 fences as every managed block.
+	expect(taught).toContain(AGENTS_BEGIN);
+	expect(taught).toContain(AGENTS_END);
+
+	const plain = repo();
+	put(plain, "docs/a.md", "---\ntype: Metric\n---\n\n# A\n");
+	run(plain, ["add", "-A"]);
+	run(plain, ["commit", "-q", "-m", "seed"]);
+	await runInit("docs", plain, sink().write);
+	const silent = readFileSync(join(plain, "AGENTS.md"), "utf8");
+	expect(silent).toContain(AGENTS_BEGIN);
+	expect(silent).not.toContain("OKF rules");
+});
+
+test("the existing-repo flip refreshes a plain block into the OKF-taught one", async () => {
+	const root = repo();
+	put(root, "docs/only.md", "---\ntype: Metric\n---\n\n# Only\n");
+	await runInit("docs", root, sink().write); // plain first
+	const file = join(root, "AGENTS.md");
+	expect(readFileSync(file, "utf8")).not.toContain("OKF rules");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "docs"]);
+
+	expect(await runInit("docs", root, sink().write, { okf: true })).toBe(0);
+
+	// spliceBlock replaced the plain body between the markers – one block,
+	// same v1 fences, the OKF section gained.
+	const taught = readFileSync(file, "utf8");
+	expect(taught).toContain("## OKF rules");
+	expect(taught.indexOf(AGENTS_BEGIN)).toBe(taught.lastIndexOf(AGENTS_BEGIN));
+	expect(taught).toContain(AGENTS_END);
+});
+
+test("nested --folder --new --okf: nested AGENTS.md teaches OKF, outer redirects", async () => {
+	const outer = repo();
+	put(outer, "docs/guide.md", "# Guide\n");
+	await runInit(undefined, outer, sink().write, {
+		folder: "docs",
+		new: true,
+		okf: true,
+		ask: async () => "",
+	});
+
+	const inner = readFileSync(join(outer, "docs", "AGENTS.md"), "utf8");
+	expect(inner).toContain("## OKF rules");
+	expect(inner).toContain(AGENTS_BEGIN);
+	const redirect = readFileSync(join(outer, "AGENTS.md"), "utf8");
+	expect(redirect).toContain("docs live in the nested repo at docs/");
+	expect(redirect).not.toContain("OKF rules");
 });
 
 test("validate --fix reaches a conformant end state in one commit", async () => {
