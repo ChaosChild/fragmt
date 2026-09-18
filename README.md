@@ -172,6 +172,17 @@ In OKF mode fragmt maintains:
   doc's outgoing and incoming references; a row opens the target in the
   pane's preview split beside the current doc (the side-by-side default),
   with open-in-main one click away in the preview head.
+- **Reference graph** – a full-pane view of the whole bundle's link graph:
+  one node per doc, an edge per body link, node color the §5.3 trust tier,
+  a dashed ring when stale, isolated docs kept visible. Hover shows the
+  detail, click opens the doc through the same unsaved-changes guard as
+  every navigation. Derived fresh from body links on every open – never
+  the frontmatter cache – and nothing about it is stored.
+- **Export** – the graph as Mermaid (renders on GitHub), Graphviz DOT, or
+  JSON, and the docs working tree as a plain zip for sharing outside git:
+  `fragmt export [--format mermaid|dot|json] [--out <file>]`, or
+  `fragmt export --bundle`. The graph view's toolbar carries the same set
+  as copy/download buttons.
 - **Reserved names** – `index.md` and `log.md` never hold concepts; creates
   and renames targeting them are refused, and the UI keeps them read-only
   (their metadata area explains why, per §3.1).
@@ -188,6 +199,7 @@ remain, the sidebar shows a banner listing them by path and clause.
 fragmt init [--root <path>] [--folder <name>] [--new] [--okf]
 fragmt serve [--port <n>] [--auth]
 fragmt validate [--fix]
+fragmt export [--format mermaid|dot|json] [--out <file>] [--bundle]
 fragmt agent [status]
 fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor "<producer>/<version>"] [--full]
 fragmt agent draft <doc> [--merge] [--as-actor "<producer>/<version>"]
