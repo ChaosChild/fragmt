@@ -22,8 +22,15 @@ import {
 import { type ComponentProps, createElement } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { App } from "../ui/src/App.js";
-import type { DocResponse, RepoMeta, TreeNode } from "../ui/src/api.js";
+import type {
+	DocGraph,
+	DocResponse,
+	RepoMeta,
+	TreeNode,
+} from "../ui/src/api.js";
 import { DocView } from "../ui/src/DocView.js";
+import { GraphView } from "../ui/src/GraphView.js";
+import { Sidebar } from "../ui/src/Sidebar.js";
 
 // RTL wraps render/fireEvent/waitFor in act; React 19 requires the flag.
 (
@@ -354,5 +361,108 @@ describe("DocView: the two component contracts", () => {
 			expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
 		});
 		expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+	});
+});
+
+// --- rung 5 (#21): GraphView + the sidebar's graph entry ----------------------
+
+// A small fixture payload in the exact shape /api/graph answers with.
+const GRAPH: DocGraph = {
+	nodes: [
+		{
+			path: "a.md",
+			title: "A",
+			type: "concept",
+			status: "draft",
+			tier: "unverified",
+			stale: false,
+		},
+		{
+			path: "b.md",
+			title: "B",
+			type: null,
+			status: null,
+			tier: "machine-confirmed",
+			stale: true,
+		},
+		{
+			path: "c.md",
+			title: "C",
+			type: "concept",
+			status: "stable",
+			tier: "human-reviewed",
+			stale: false,
+		},
+	],
+	edges: [{ from: "a.md", to: "b.md" }],
+};
+
+describe("GraphView: the fixture mount (component harness)", () => {
+	beforeEach(() => {
+		// The force loop runs in rAF; a no-op stub keeps the deterministic
+		// seed layout on screen and React's act environment quiet.
+		vi.stubGlobal(
+			"requestAnimationFrame",
+			vi.fn(() => 0),
+		);
+		vi.stubGlobal("cancelAnimationFrame", vi.fn());
+	});
+
+	test("mounts from a fixture DocGraph: the count line, every node, every label", () => {
+		render(createElement(GraphView, { graph: GRAPH, onOpenDoc: () => {} }));
+		expect(screen.getByText("3 docs · 1 links")).toBeTruthy();
+		expect(document.querySelectorAll(".gv-node")).toHaveLength(3);
+		expect(screen.getByText("A")).toBeTruthy();
+		expect(screen.getByText("B")).toBeTruthy();
+		expect(screen.getByText("C")).toBeTruthy();
+	});
+
+	test("clicking a node invokes onOpenDoc with that path", () => {
+		const onOpenDoc = vi.fn();
+		render(createElement(GraphView, { graph: GRAPH, onOpenDoc }));
+		const node = document.querySelectorAll(".gv-node")[0];
+		if (!node) throw new Error("no graph nodes rendered");
+		fireEvent.click(node);
+		expect(onOpenDoc).toHaveBeenCalledTimes(1);
+		expect(onOpenDoc).toHaveBeenCalledWith("a.md");
+	});
+});
+
+describe("Sidebar: the OKF-gated graph entry (rung 5)", () => {
+	type SidebarProps = ComponentProps<typeof Sidebar>;
+
+	function sidebarProps(over: Partial<SidebarProps> = {}): SidebarProps {
+		return {
+			tree: TREE,
+			selected: null,
+			onSelect: () => {},
+			meta: null,
+			okfFindings: null,
+			expandFolder: null,
+			onOpenGhost: () => {},
+			onRestore: () => {},
+			onDropItem: () => {},
+			onDropBin: () => {},
+			onOpenGraph: () => {},
+			...over,
+		};
+	}
+
+	test("absent while the OKF information is off (okfFindings null), present and wired when on", () => {
+		const onOpenGraph = vi.fn();
+		const view = render(createElement(Sidebar, sidebarProps()));
+		expect(
+			screen.queryByRole("button", { name: "Reference graph" }),
+		).toBeNull();
+
+		// [] = an OKF repo (the banner's flag source is non-null) that simply
+		// has no findings – the entry shows, the banner stays hidden.
+		view.rerender(
+			createElement(Sidebar, sidebarProps({ okfFindings: [], onOpenGraph })),
+		);
+		const entry = screen.getByRole("button", { name: "Reference graph" });
+		expect(screen.queryByText(/non-conformant/)).toBeNull();
+		fireEvent.click(entry);
+		expect(onOpenGraph).toHaveBeenCalledTimes(1);
 	});
 });

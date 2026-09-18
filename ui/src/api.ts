@@ -334,6 +334,36 @@ export interface OkfValidate {
 /** The §11 findings, server-computed; refreshed on meta's cadence. */
 export const fetchOkfValidate = () => request<OkfValidate>("/api/validate");
 
+// --- OKF rung 5: the reference graph ----------------------------------------
+
+/** Mirror of the core graph types (src/core/graph.ts) – GET /api/graph. */
+export interface GraphNode {
+	/** docsRoot-relative POSIX path – the identity everywhere. */
+	path: string;
+	title: string;
+	type: string | null;
+	status: string | null;
+	tier: "unverified" | "machine-confirmed" | "human-reviewed";
+	stale: boolean;
+}
+export interface GraphEdge {
+	from: string;
+	to: string;
+}
+export interface DocGraph {
+	nodes: GraphNode[];
+	edges: GraphEdge[];
+}
+
+/** The repo's reference graph; null = a non-OKF repo (`{okf:false}`, the
+ *  /api/validate convention – no payload exists to lay out). */
+export async function fetchGraph(): Promise<DocGraph | null> {
+	const res = await fetch("/api/graph");
+	if (!res.ok) throw new Error(`failed to load graph (${res.status})`);
+	const body = (await res.json()) as { okf: boolean } & DocGraph;
+	return body.okf ? body : null;
+}
+
 /** Creates (or reuses) a drafts/<slug> branch for the doc and checks it out. */
 export const startDraft = (docPath: string) =>
 	request<{ current: string; reused: boolean }>("/api/draft", {

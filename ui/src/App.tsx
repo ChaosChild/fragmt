@@ -15,11 +15,13 @@ import {
 	createDoc,
 	createFolder,
 	type DeletedDoc,
+	type DocGraph,
 	type DocResponse,
 	deleteBranch,
 	deleteComment,
 	deleteDoc,
 	deleteFolder,
+	fetchGraph,
 	fetchOkfValidate,
 	getBranches,
 	getComments,
@@ -53,6 +55,7 @@ import {
 	movedPath,
 } from "./dnd";
 import type { AtDoc } from "./editor/at";
+import { GraphView } from "./GraphView";
 import {
 	type BranchAction,
 	BranchMenu,
@@ -443,6 +446,13 @@ export function App() {
 	// main pane swaps to ResolutionView; the sidebar stays for context.
 	const inResolution = Boolean(meta?.merge);
 
+	// OKF rung 5 (#21): the fourth main-pane state – the reference graph.
+	// Entered through the same dirty guard as every navigation (a dirty
+	// buffer parks behind the save-or-discard banner); the graph is fetched
+	// fresh per open (a cheap read), and any doc selection leaves it.
+	const [graphOpen, setGraphOpen] = useState(false);
+	const [graph, setGraph] = useState<DocGraph | null>(null);
+
 	useEffect(() => {
 		// Mid-merge the server's write guard would 409 every sync – no point
 		// spinning (or redding the LED) while the merge is resolved.
@@ -455,6 +465,54 @@ export function App() {
 			window.removeEventListener("focus", onFocus);
 		};
 	}, [runSync, inResolution]);
+
+	// The graph fetch: fresh per open; a non-OKF answer (the flag flipped
+	// since the entry rendered) just closes the view; a failure takes the
+	// app banner like every other failed load.
+	useEffect(() => {
+		if (!graphOpen) {
+			setGraph(null);
+			return;
+		}
+		let cancelled = false;
+		fetchGraph()
+			.then((g) => {
+				if (cancelled) return;
+				if (!g) {
+					setGraphOpen(false);
+					return;
+				}
+				setGraph(g);
+			})
+			.catch((e: unknown) => {
+				if (cancelled) return;
+				setGraphOpen(false);
+				setError(e instanceof Error ? e.message : String(e));
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [graphOpen]);
+
+	// Any doc selection is also a graph exit (the sidebar cards stay live
+	// under the graph; the lens sits over the same selection).
+	// biome-ignore lint/correctness/useExhaustiveDependencies: run-on-change – the selection itself is the trigger, not a value the effect reads.
+	useEffect(() => {
+		setGraphOpen(false);
+	}, [selected]);
+
+	// The graph entry routes through the SAME dirty-guard chain as doc
+	// navigation (locked semantics: the graph opens only over a clean-or-
+	// confirmed editor); the action after the choice is showing the graph.
+	// Clicking the entry again is the way back out – the view registers no
+	// Escape-chain slot, mirroring ResolutionView.
+	function requestGraph() {
+		if (graphOpen) {
+			setGraphOpen(false);
+			return;
+		}
+		guardAction("Open the reference graph", () => setGraphOpen(true));
+	}
 
 	// --- branches: switching reloads tree + open doc from the new branch.
 	async function switchTo(action: BranchAction) {
@@ -1270,6 +1328,7 @@ export function App() {
 									? deleteDocAt(item.path, name)
 									: requestDeleteFolder(item.path, name)
 							}
+							onOpenGraph={requestGraph}
 						/>
 						<SidebarResizeHandle onWidth={applySidebarW} />
 					</aside>
@@ -1318,6 +1377,21 @@ export function App() {
 						)}
 						{inResolution ? (
 							<ResolutionView onDone={mergeDone} />
+						) : graphOpen ? (
+							graph ? (
+								<GraphView
+									graph={graph}
+									// Already clean – the graph opened through the guard.
+									onOpenDoc={(path) => {
+										setGraphOpen(false);
+										setSelected(path);
+									}}
+								/>
+							) : (
+								<div className="doc-pane">
+									<p className="gv-note">Loading the graph…</p>
+								</div>
+							)
 						) : (
 							<DocView
 								doc={doc}
@@ -1380,9 +1454,10 @@ export function App() {
 					{/* The right pane (#15, testing round): the v0.5.0 comments rail
 					    again – permanent, 316px, the open doc's threads – until a
 					    preview opens and widens it into the split. Hidden in
-					    resolution mode: the doc pane is taken over and its comments
-					    are mid-merge anyway. */}
-					{selected && !inResolution && (
+					    resolution mode (the doc pane is taken over, its comments
+					    mid-merge) and while the graph lens is up – it reads the
+					    same selection, not a doc. */}
+					{selected && !inResolution && !graphOpen && (
 						<Slideout
 							open={railOpen}
 							preview={previewPath !== null}
