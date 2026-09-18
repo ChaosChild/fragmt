@@ -10,6 +10,7 @@ export * from "./git.js";
 export * from "./identity.js";
 export * from "./init.js";
 export * from "./meta.js";
+export * from "./okf.js";
 export * from "./search.js";
 export * from "./sync.js";
 export * from "./tree.js";

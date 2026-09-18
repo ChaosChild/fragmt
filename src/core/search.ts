@@ -13,8 +13,9 @@ export interface SearchHit {
 }
 
 /** docsRoot-relative paths in tree order (the sidebar's order): depth-first,
- *  listTree's dirs-then-docs children order as-is. */
-function treeDocPaths(node: TreeNode, out: string[] = []): string[] {
+ *  listTree's dirs-then-docs children order as-is. Shared enumeration –
+ *  okf.ts's validate/graph walk the exact same list, never a second walker. */
+export function treeDocPaths(node: TreeNode, out: string[] = []): string[] {
 	for (const child of node.children ?? []) {
 		if (child.type === "doc") out.push(child.path);
 		else treeDocPaths(child, out);
@@ -24,7 +25,7 @@ function treeDocPaths(node: TreeNode, out: string[] = []): string[] {
 
 /** The display-name rule (ui/display.ts's twin – the server never imports
  *  ui): frontmatter `title` when a non-empty string, else the name sans .md. */
-function displayTitle(title: unknown, name: string): string {
+export function displayTitle(title: unknown, name: string): string {
 	return typeof title === "string" && title.trim()
 		? title
 		: name.replace(/\.md$/i, "");

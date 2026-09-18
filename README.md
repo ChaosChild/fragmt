@@ -114,11 +114,50 @@ docs live in the nested repo; the inner one carries the usual fragmt rules.
 Running `serve` or `agent` from the outer root simply points you at the
 folder.
 
+## OKF mode
+
+fragmt can maintain the doc bundle as an
+[open-knowledge-format](https://github.com/GoogleCloudPlatform/open-knowledge-format)
+(OKF v0.2) knowledge base: typed concept docs, a generated `index.md` per
+directory, and the doc-to-doc reference graph kept as derived frontmatter.
+Docs stay plain markdown – OKF is a file convention any tooling (and any
+agent) can read directly.
+
+```sh
+fragmt init --okf      # enable on a fresh OR existing repo
+fragmt validate        # print conformance findings, one per line
+fragmt validate --fix  # apply the mechanical repairs in one commit
+```
+
+`init --okf` adopts, never rewrites: existing files are validated and the
+findings printed, the `index.md` set and the reference fields are committed,
+and `validate --fix` finishes adoption in a single pass. It composes with
+`--folder --new` for a nested docs repo.
+
+In OKF mode fragmt maintains:
+
+- **Conformant defaults** – new docs are born with a `type: concept`
+  frontmatter block; any non-empty type is conformant.
+- **Generated `index.md`** – per directory holding docs: concepts grouped
+  under `# <Type>` sections with absolute links, regenerated on membership
+  changes (create, move, rename, delete, merge) – never on content saves.
+- **`references` / `referenced-by`** – frontmatter fields derived from body
+  links, recomputed on every save. Body links stay canonical; the fields are
+  a cache.
+- **Reserved names** – `index.md` and `log.md` never hold concepts; creates
+  and renames targeting them are refused.
+
+`validate --fix` prepends missing frontmatter, adds missing types, and
+repopulates the derived fields in one commit – existing YAML is never
+re-serialized. While non-conformant docs remain, the sidebar shows a banner
+listing them by path and clause.
+
 ## CLI
 
 ```
-fragmt init [--root <path>]
+fragmt init [--root <path>] [--folder <name>] [--new] [--okf]
 fragmt serve [--port <n>] [--auth]
+fragmt validate [--fix]
 fragmt agent [status]
 fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--full]
 fragmt agent draft <doc> [--merge]
@@ -174,6 +213,7 @@ the markers is touched.
 | `order` | Reserved for explicit doc ordering (v1.x). Always `{}` for now. |
 | `authors` | Optional map of commit emails to GitHub usernames, for avatars. |
 | `agents` | Optional list of agent display names; their comments get an `agent` chip. |
+| `okf` | Optional. `true` maintains the bundle as OKF – set by `fragmt init --okf`. Absent means legacy behavior. |
 
 Parsing is strict – a malformed config fails loudly with the file path rather
 than falling back to a silent default.

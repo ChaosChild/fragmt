@@ -35,7 +35,9 @@ import {
 	mergeToMain,
 	moveDoc,
 	OnMainBranchError,
+	okfEnabled,
 	PathExistsError,
+	populateOkf,
 	readComments,
 	readDoc,
 	renameFolder,
@@ -52,6 +54,7 @@ import {
 	sync,
 	ThreadNotFoundError,
 	unmergedPaths,
+	validateOkf,
 	writeComments,
 	writeDoc,
 } from "../core/index.js";
@@ -643,6 +646,18 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		});
 	});
 
+	// OKF rungs 1–2 (#21): the sidebar banner's data – the §11 findings over
+	// the shared enumeration. Non-OKF repos answer {okf:false} with no scan.
+	// Read-only and param-free: nothing request-shaped reaches the walk.
+	app.get("/api/validate", async (c) => {
+		if (!okfEnabled(ctx.repoRoot)) return c.json({ okf: false });
+		const { conformant, findings } = await validateOkf(
+			ctx.repoRoot,
+			ctx.docsRoot,
+		);
+		return c.json({ okf: true, conformant, findings });
+	});
+
 	// Search (#14): a thin GET over the core's flat scan. `q` missing is a
 	// 400; present-but-short is searchDocs' own empty array, not an error.
 	app.get("/api/search", async (c) => {
@@ -759,7 +774,14 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		if (!inMerge(ctx.repoRoot))
 			return c.json({ error: "no merge is in progress" }, 409);
 		try {
-			return c.json(await concludeMerge(ctx.repoRoot));
+			const result = await concludeMerge(ctx.repoRoot);
+			// OKF (#21): the merge settled membership across the branch boundary
+			// – recompute the references graph and regenerate the indexes once
+			// (mechanical index.md conflicts heal by regeneration), in the
+			// regen's own commit. Non-OKF repos never reach it.
+			if (okfEnabled(ctx.repoRoot))
+				await populateOkf(ctx.repoRoot, ctx.docsRoot, commitAuthor(c));
+			return c.json(result);
 		} catch (e) {
 			if (e instanceof MergeUnresolvedError)
 				return c.json({ error: e.message }, 409);

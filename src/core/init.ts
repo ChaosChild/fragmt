@@ -14,9 +14,14 @@ export interface InitResult {
 /**
  * Adopt a docs root: refuse to overwrite an existing config, otherwise validate
  * the root is a directory inside the repo, write `.fragmt.json`, and count the
- * adopted markdown files. Pure – no process I/O; the CLI owns that.
+ * adopted markdown files. Pure – no process I/O; the CLI owns that. `okf`
+ * only shapes the fresh config file (the existing-repo flip is enableOkf).
  */
-export function initRepo(repoRoot: string, docsRoot: string): InitResult {
+export function initRepo(
+	repoRoot: string,
+	docsRoot: string,
+	okf = false,
+): InitResult {
 	if (existsSync(configPath(repoRoot))) {
 		// A re-run refreshes the managed AGENTS.md block (b5) to the current copy.
 		writeAgentsBlock(repoRoot);
@@ -34,7 +39,7 @@ export function initRepo(repoRoot: string, docsRoot: string): InitResult {
 		);
 	}
 
-	writeConfig(repoRoot, docsRoot);
+	writeConfig(repoRoot, docsRoot, okf);
 	// Count before the AGENTS.md write – the block is tool-owned, not an
 	// adopted doc (docsRoot "." would otherwise count it).
 	const count = countDocs(listTree(repoRoot, docsRoot));
@@ -48,14 +53,15 @@ export function initRepo(repoRoot: string, docsRoot: string): InitResult {
 /**
  * The #16 create path: turn `folder` inside the outer repo into its own
  * nested fragmt repo – `git init -b main` at the folder (markdown already
- * there is adopted), `.fragmt.json` with docsRoot ".", the standard AGENTS
- * block, then one identity-proof commit of everything. The outer repo's
- * AGENTS.md redirect is the CLI's call (writeOuterAgentsBlock). Unlike
- * initRepo this spawns git, so it is async.
+ * there is adopted), `.fragmt.json` with docsRoot "." (okf: true in OKF
+ * bundles), the standard AGENTS block, then one identity-proof commit of
+ * everything. The outer repo's AGENTS.md redirect is the CLI's call
+ * (writeOuterAgentsBlock). Unlike initRepo this spawns git, so it is async.
  */
 export async function initNestedRepo(
 	outerRoot: string,
 	folder: string,
+	okf = false,
 ): Promise<{ count: number }> {
 	const nestedRoot = resolve(outerRoot, folder);
 	const rel = relative(outerRoot, nestedRoot);
@@ -73,7 +79,7 @@ export async function initNestedRepo(
 
 	mkdirSync(nestedRoot, { recursive: true });
 	await git(nestedRoot, ["init", "-q", "-b", "main"]);
-	writeConfig(nestedRoot, ".");
+	writeConfig(nestedRoot, ".", okf);
 	// Count before the AGENTS.md write – the block is tool-owned, not an
 	// adopted doc (same rule as initRepo; docsRoot "." would count it).
 	const count = countDocs(listTree(nestedRoot, "."));

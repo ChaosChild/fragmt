@@ -4,6 +4,14 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import matter from "gray-matter";
 import { commitAs } from "./commit.js";
 import { localUser } from "./identity.js";
+import {
+	docPaths,
+	extractRefs,
+	okfEnabled,
+	propagateRefs,
+	refsList,
+	saveWithRefs,
+} from "./okf.js";
 
 export class DocPathError extends Error {}
 export class DocNotFoundError extends Error {}
@@ -152,6 +160,11 @@ export async function prepareDocWrite(
  *    re-serialize the YAML – the diff must not touch what wasn't edited);
  * 5. write LF, exactly one trailing newline, fence-to-body gap preserved;
  * 6. commit through the `commitAs` seam.
+ * OKF mode (§A1) replaces step 4 with saveWithRefs – the doc's own
+ * `references` line set from the newly derived body links – and settles the
+ * symmetric difference into the changed targets' `referenced-by` lists
+ * BEFORE any byte hits disk (a stale target aborts the whole batch,
+ * StaleDocError → 409): one commit, 1 + |symmetric difference| files.
  * `user` (serve --auth) overrides the commit author; omitted → localUser().
  */
 export async function writeDoc(
@@ -168,11 +181,41 @@ export async function writeDoc(
 		raw,
 	} = await prepareDocWrite(repoRoot, docsRoot, docPath, baseHash, user);
 	const normalized = canonicalBody(body);
+	const repoRelative = relative(repoRoot, abs).split(sep).join("/");
+	if (okfEnabled(repoRoot)) {
+		// The previous references list comes from the doc's own frontmatter,
+		// read pre-write; the new list derives from the incoming body.
+		const text = readFileSync(abs, "utf8");
+		const prev = refsList(
+			(matter(text, {}).data as Record<string, unknown>).references,
+		);
+		const next = extractRefs(
+			normalized,
+			docPath,
+			await docPaths(repoRoot, docsRoot),
+		);
+		const touched = await propagateRefs(
+			repoRoot,
+			docsRoot,
+			docPath,
+			prev,
+			next,
+		);
+		writeFileSync(abs, saveWithRefs(text, next, normalized) ?? raw(normalized));
+		const sha = await commitAs(
+			who,
+			{
+				files: [...new Set([repoRelative, ...touched])],
+				message: `Update ${docPath}`,
+			},
+			repoRoot,
+		);
+		return { sha, hash: docHash(normalized) };
+	}
 	writeFileSync(abs, raw(normalized));
-	const repoRel = relative(repoRoot, abs).split(sep).join("/");
 	const sha = await commitAs(
 		who,
-		{ files: [repoRel], message: `Update ${docPath}` },
+		{ files: [repoRelative], message: `Update ${docPath}` },
 		repoRoot,
 	);
 	return { sha, hash: docHash(normalized) };

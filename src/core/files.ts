@@ -2,16 +2,34 @@ import {
 	existsSync,
 	mkdirSync,
 	readdirSync,
+	readFileSync,
 	renameSync,
 	rmSync,
 	statSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
+import matter from "gray-matter";
 import { commitAs } from "./commit.js";
-import { canonicalBody, DocNotFoundError, resolveDocPath } from "./docs.js";
+import {
+	canonicalBody,
+	DocNotFoundError,
+	DocPathError,
+	resolveDocPath,
+} from "./docs.js";
 import { git } from "./git.js";
 import { localUser } from "./identity.js";
+import {
+	DEFAULT_TYPE,
+	docPaths,
+	extractRefs,
+	generateIndexes,
+	isReservedBase,
+	okfEnabled,
+	propagateRefs,
+	refsList,
+	saveWithRefs,
+} from "./okf.js";
 
 /** Target path already exists – the server maps this to 409. */
 export class PathExistsError extends Error {}
@@ -84,7 +102,14 @@ function keepEmptiedFolder(
 	return repoRel(repoRoot, keep);
 }
 
-/** Create a doc (LF, exactly one trailing newline) in one commit. */
+/**
+ * Create a doc (LF, exactly one trailing newline) in one commit. In OKF mode
+ * the file is born conformant: `---\ntype: concept\n---\n` (§4.1) plus the
+ * derived `references` when the seed body links existing docs, the linked
+ * docs' `referenced-by` lists settle in the same commit, the affected
+ * indexes regenerate on it, and a reserved basename is refused (§3.1 –
+ * DocPathError, the server's 400).
+ */
 export async function createDoc(
 	repoRoot: string,
 	docsRoot: string,
@@ -96,21 +121,60 @@ export async function createDoc(
 	if (existsSync(abs)) {
 		throw new PathExistsError(`already exists: ${docPath}`);
 	}
+	const okf = okfEnabled(repoRoot);
+	if (okf && isReservedBase(docPath)) {
+		throw new DocPathError(`reserved filename: ${docPath}`);
+	}
 	const who = user ?? (await localUser(repoRoot));
 	mkdirSync(dirname(abs), { recursive: true });
-	writeFileSync(abs, canonicalBody(body));
+	const normalized = canonicalBody(body);
+	const files = new Set([repoRel(repoRoot, abs)]);
+	if (okf) {
+		const targets = extractRefs(
+			normalized,
+			docPath,
+			await docPaths(repoRoot, docsRoot),
+		);
+		// saveWithRefs over the seed body itself: the type block + references.
+		// Its null (fenceless + nothing to carry) is a save-path contract; a
+		// create still owes the type block, so the fallback is not `normalized`.
+		writeFileSync(
+			abs,
+			saveWithRefs(normalized, targets, normalized) ??
+				`---\ntype: ${DEFAULT_TYPE}\n---\n${normalized}`,
+		);
+		for (const p of await propagateRefs(
+			repoRoot,
+			docsRoot,
+			docPath,
+			[],
+			targets,
+		))
+			files.add(p);
+		for (const p of await generateIndexes(repoRoot, docsRoot)) files.add(p);
+	} else {
+		writeFileSync(abs, normalized);
+	}
 	const sha = await commitAs(
 		who,
-		{ files: [repoRel(repoRoot, abs)], message: `Create ${docPath}` },
+		{ files: [...files], message: `Create ${docPath}` },
 		repoRoot,
 	);
 	return { sha };
 }
 
-/** Move/rename a doc in one commit; both ends pass the containment guard.
- *  The rename happens before the commit (the M3 seam needs the fs move), so
- *  a failed commit rolls the rename back – the doc is never stranded at its
- *  destination with no commit recording the move. */
+/**
+ * Move/rename a doc in one commit; both ends pass the containment guard.
+ * The rename happens before the commit (the M3 seam needs the fs move), so
+ * a failed commit rolls the rename back – the doc is never stranded at its
+ * destination with no commit recording the move. In OKF mode the target
+ * basename must not be reserved (§3.1), the moved doc's `references`
+ * re-derive from its new directory (relative §6.1 links resolve differently
+ * after the move) and settle their symmetric difference in the same commit,
+ * and the affected indexes regenerate on it. Links other docs hold to the
+ * old path become broken links – spec-tolerated, and `referenced-by` makes
+ * them cheap to heal once #33 ships move-time rewriting.
+ */
 export async function moveDoc(
 	repoRoot: string,
 	docsRoot: string,
@@ -126,17 +190,56 @@ export async function moveDoc(
 	if (existsSync(toAbs)) {
 		throw new PathExistsError(`already exists: ${to}`);
 	}
+	const okf = okfEnabled(repoRoot);
+	if (okf && isReservedBase(to)) {
+		throw new DocPathError(`reserved filename: ${to}`);
+	}
 	const who = user ?? (await localUser(repoRoot));
+	let prev: string[] = [];
+	if (okf) {
+		try {
+			prev = refsList(
+				(
+					matter(readFileSync(fromAbs, "utf8"), {}).data as Record<
+						string,
+						unknown
+					>
+				).references,
+			);
+		} catch {
+			prev = []; // unparseable frontmatter – the fields ride along as-is
+		}
+	}
 	mkdirSync(dirname(toAbs), { recursive: true });
 	renameSync(fromAbs, toAbs);
 	const keep = keepEmptiedFolder(repoRoot, docsRoot, dirname(fromAbs));
 	try {
+		const files = new Set([
+			repoRel(repoRoot, fromAbs),
+			repoRel(repoRoot, toAbs),
+			...(keep ? [keep] : []),
+		]);
+		if (okf) {
+			const text = readFileSync(toAbs, "utf8");
+			let next: string[] = [];
+			let updated: string | null = null;
+			try {
+				const parsed = matter(text, {});
+				const body = canonicalBody(parsed.content);
+				next = extractRefs(body, to, await docPaths(repoRoot, docsRoot));
+				updated = saveWithRefs(text, next, body);
+			} catch {
+				// Unparseable frontmatter – leave the derived fields as they are.
+			}
+			for (const p of await propagateRefs(repoRoot, docsRoot, to, prev, next))
+				files.add(p);
+			if (updated !== null) writeFileSync(toAbs, updated);
+			for (const p of await generateIndexes(repoRoot, docsRoot)) files.add(p);
+		}
 		const sha = await commitAs(
 			who,
 			{
-				files: keep
-					? [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs), keep]
-					: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
+				files: [...files],
 				message: `Rename ${from} to ${to}`,
 			},
 			repoRoot,
@@ -149,7 +252,12 @@ export async function moveDoc(
 	}
 }
 
-/** Delete a doc in one commit. Missing path → DocNotFoundError (server: 404). */
+/**
+ * Delete a doc in one commit. Missing path → DocNotFoundError (server: 404).
+ * OKF mode regenerates the affected indexes on the same commit; the deleted
+ * doc's referrers keep their (now broken, spec-tolerated) body links and
+ * `references` entries – #33's move/delete-time rewriting heals them.
+ */
 export async function deleteDoc(
 	repoRoot: string,
 	docsRoot: string,
@@ -162,9 +270,13 @@ export async function deleteDoc(
 	}
 	const who = user ?? (await localUser(repoRoot));
 	rmSync(abs);
+	const files = new Set([repoRel(repoRoot, abs)]);
+	if (okfEnabled(repoRoot)) {
+		for (const p of await generateIndexes(repoRoot, docsRoot)) files.add(p);
+	}
 	const sha = await commitAs(
 		who,
-		{ files: [repoRel(repoRoot, abs)], message: `Delete ${docPath}` },
+		{ files: [...files], message: `Delete ${docPath}` },
 		repoRoot,
 	);
 	return { sha };
@@ -202,7 +314,10 @@ export async function createFolder(
  * Rename a folder in one commit: a single renameSync moves the whole directory,
  * so no doc inside can be orphaned, and commitAs records the old and new trees
  * together. (`git mv <dir>` stages a move the commitAs seam cannot express –
- * see the note atop this file.)
+ * see the note atop this file.) OKF mode regenerates the indexes on the same
+ * commit. ponytail: per-doc reference re-derivation after a folder rename is
+ * left to the next save/--fix (only relative §6.1 links shift; absolute
+ * bundle-relative links – the recommended form – never do).
  */
 export async function renameFolder(
 	repoRoot: string,
@@ -219,17 +334,24 @@ export async function renameFolder(
 	if (existsSync(toAbs)) {
 		throw new PathExistsError(`already exists: ${to}`);
 	}
+	const okf = okfEnabled(repoRoot);
 	const who = user ?? (await localUser(repoRoot));
 	mkdirSync(dirname(toAbs), { recursive: true });
 	renameSync(fromAbs, toAbs);
 	const keep = keepEmptiedFolder(repoRoot, docsRoot, dirname(fromAbs));
 	try {
+		const files = new Set([
+			repoRel(repoRoot, fromAbs),
+			repoRel(repoRoot, toAbs),
+			...(keep ? [keep] : []),
+		]);
+		if (okf) {
+			for (const p of await generateIndexes(repoRoot, docsRoot)) files.add(p);
+		}
 		const sha = await commitAs(
 			who,
 			{
-				files: keep
-					? [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs), keep]
-					: [repoRel(repoRoot, fromAbs), repoRel(repoRoot, toAbs)],
+				files: [...files],
 				message: `Rename ${from} to ${to}`,
 			},
 			repoRoot,
@@ -246,7 +368,9 @@ export async function renameFolder(
 /**
  * Delete a folder and everything under it in one commit (the fs-level
  * equivalent of `git rm -r` – see the note atop this file). Missing folder →
- * DocNotFoundError (server: 404).
+ * DocNotFoundError (server: 404). OKF mode regenerates the indexes on the
+ * same commit (the deleted docs' referrers keep their broken-but-tolerated
+ * links, as in deleteDoc).
  */
 export async function deleteFolder(
 	repoRoot: string,
@@ -258,11 +382,16 @@ export async function deleteFolder(
 	if (!existsSync(abs) || !statSync(abs).isDirectory()) {
 		throw new DocNotFoundError(folderPath);
 	}
+	const okf = okfEnabled(repoRoot);
 	const who = user ?? (await localUser(repoRoot));
 	rmSync(abs, { recursive: true });
+	const files = new Set([repoRel(repoRoot, abs)]);
+	if (okf) {
+		for (const p of await generateIndexes(repoRoot, docsRoot)) files.add(p);
+	}
 	const sha = await commitAs(
 		who,
-		{ files: [repoRel(repoRoot, abs)], message: `Delete ${folderPath}` },
+		{ files: [...files], message: `Delete ${folderPath}` },
 		repoRoot,
 	);
 	return { sha };

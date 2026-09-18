@@ -42,6 +42,9 @@ export interface RepoMeta {
 	/** Agent display names (the comment rail's agent chip) – the config list
 	 *  verbatim, [] when the repo has none. */
 	agents: string[];
+	/** OKF mode (the sidebar banner's gate, #21) – the config flag verbatim,
+	 *  false when unset or unreadable. */
+	okf: boolean;
 	/** Non-null while a merge fragmt stood is being resolved – summary only;
 	 *  the full per-file detail is mergeState (b3's GET /api/merge). */
 	merge: { branch: string | null; remaining: number } | null;
@@ -227,19 +230,22 @@ export async function repoMeta(
 		}
 	}
 
-	// The authors map (avatar resolution) and the agents list (the agent
-	// chip): the config verbatim. RepoMeta has only repoRoot/docsRoot – the
-	// config is read here, the same loader the CLI uses for docsRoot; any
-	// config problem just means neither feature ({} / []) – never a failed
-	// meta walk over a cosmetic feature.
+	// The authors map (avatar resolution), the agents list (the agent
+	// chip), and the OKF mode flag (the banner's gate): the config verbatim.
+	// RepoMeta has only repoRoot/docsRoot – the config is read here, the same
+	// loader the CLI uses for docsRoot; any config problem just means none of
+	// the features ({} / [] / false) – never a failed meta walk over a
+	// cosmetic feature.
 	let authors: Record<string, string> = {};
 	let agents: string[] = [];
+	let okf = false;
 	try {
 		const config = loadConfig(repoRoot);
 		authors = config.authors ?? {};
 		agents = config.agents ?? [];
+		okf = config.okf === true;
 	} catch {
-		// no config / malformed – no authors map, no agents
+		// no config / malformed – no authors map, no agents, no OKF mode
 	}
 
 	// The merge summary (resolution mode's on-switch, b3): mergeState is one
@@ -256,6 +262,7 @@ export async function repoMeta(
 		deleted,
 		authors,
 		agents,
+		okf,
 		merge: state.inMerge
 			? { branch: state.branch, remaining: state.remaining }
 			: null,

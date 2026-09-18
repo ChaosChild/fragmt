@@ -228,12 +228,32 @@ export interface RepoMeta {
 	authors: Record<string, string>;
 	/** Agent display names – the config list verbatim (the rail's agent chip). */
 	agents: string[];
+	/** OKF mode – the banner's gate (#21); false when unset or unreadable. */
+	okf: boolean;
 	/** Non-null while a stood merge is being resolved (M4-4 b3) – resolution
 	 *  mode's on-switch; the full per-file detail is getMergeState. */
 	merge: { branch: string | null; remaining: number } | null;
 }
 
 export const getMeta = () => request<RepoMeta>("/api/meta");
+
+// --- OKF rungs 1–2: the sidebar conformance banner --------------------------
+
+/** Mirror of the core okf types (src/core/okf.ts) – GET /api/validate. The
+ *  optional fields are absent on the {okf:false} answer non-OKF repos get. */
+export interface OkfFinding {
+	path: string;
+	clause: "frontmatter" | "type" | "reserved";
+	detail: string;
+}
+export interface OkfValidate {
+	okf: boolean;
+	conformant?: boolean;
+	findings?: OkfFinding[];
+}
+
+/** The §11 findings, server-computed; refreshed on meta's cadence. */
+export const fetchOkfValidate = () => request<OkfValidate>("/api/validate");
 
 /** Creates (or reuses) a drafts/<slug> branch for the doc and checks it out. */
 export const startDraft = (docPath: string) =>

@@ -15,12 +15,19 @@ import {
 	authorsNotice,
 	classifyAuthorEmails,
 	configPath,
+	enableOkf,
 	findRepoRoot,
+	fixOkf,
+	GitIdentityError,
 	git,
 	initNestedRepo,
 	initRepo,
 	loadConfig,
+	localUser,
 	logCommits,
+	populateOkf,
+	validateOkf,
+	writeAgentsBlock,
 	writeOuterAgentsBlock,
 } from "../core/index.js";
 import { createApp, startServer } from "../server/index.js";
@@ -31,17 +38,20 @@ export const usage = `\
 fragmt – git-native documentation environment
 
 Usage:
-  fragmt init [--root <path>] [--folder <name>] [--new]
+  fragmt init [--root <path>] [--folder <name>] [--new] [--okf]
   fragmt serve [--port <n>] [--auth]
+  fragmt validate [--fix]
   fragmt agent [status]
   fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--full]
   fragmt agent draft <doc> [--merge]
   fragmt --help
 
 Commands:
-  init   Adopt an existing docs repo (write .fragmt.json); --folder <name> --new creates a nested docs repo
-  serve  Start the local web server
-  agent  The agent surface: status, comment, draft (AXI-conformant)
+  init     Adopt an existing docs repo (write .fragmt.json); --folder <name> --new creates a nested docs repo
+           --okf enables OKF mode (v0.2): existing repos flip the flag, docs validated, indexes + references committed
+  serve    Start the local web server
+  validate Check OKF conformance (§11); --fix applies the mechanical repairs in one commit
+  agent    The agent surface: status, comment, draft (AXI-conformant)
 `;
 
 /** Parse argv and dispatch. Exits the process. */
@@ -64,6 +74,10 @@ export async function main(argv: string[]): Promise<void> {
 			new: { type: "boolean", default: false },
 			port: { type: "string" },
 			auth: { type: "boolean", default: false },
+			// OKF rungs 1–2 (#21): the mode flag on init, the repair flag on
+			// validate.
+			okf: { type: "boolean", default: false },
+			fix: { type: "boolean", default: false },
 		},
 		allowPositionals: true,
 		strict: true,
@@ -80,7 +94,13 @@ export async function main(argv: string[]): Promise<void> {
 			await runInit(values.root, resolveRepoRoot("init"), undefined, {
 				folder: values.folder,
 				new: values.new === true,
+				okf: values.okf === true,
 			}),
+		);
+	}
+	if (command === "validate") {
+		process.exit(
+			await runValidate(values.fix === true, resolveRepoRoot("validate")),
 		);
 	}
 	if (command === "serve") {
@@ -110,6 +130,8 @@ export interface InitOptions {
 	folder?: string;
 	/** --new: create the nested repo (only meaningful with --folder). */
 	new?: boolean;
+	/** --okf: write/flip OKF mode and adopt the bundle (D1). */
+	okf?: boolean;
 	/** The graduation prompt's answer reader – real readline in production. */
 	ask?: () => Promise<string>;
 }
@@ -129,12 +151,15 @@ function askLine(): Promise<string> {
 }
 
 /**
- * `fragmt init`: today's adopt flow, plus the #16 nested-create path.
- * `--folder X --new` (or a re-run on an existing nested repo) creates/adopts
- * the folder as its own fragmt repo, writes the outer AGENTS.md redirect,
- * then offers the graduation (remote + push + submodule signal); everything
- * else keeps today's semantics, with --folder as the docs root. Returns the
- * exit code; `write` and `ask` are injectable for tests, stdout/stdin live.
+ * `fragmt init`: today's adopt flow, plus the #16 nested-create path and the
+ * #21 OKF adoption tail. `--folder X --new` (or a re-run on an existing
+ * nested repo) creates/adopts the folder as its own fragmt repo, writes the
+ * outer AGENTS.md redirect, then offers the graduation (remote + push +
+ * submodule signal); everything else keeps today's semantics, with --folder
+ * as the docs root. `--okf` on a fresh init writes the OKF config; on an
+ * existing repo it flips the flag (D1) instead of the plain re-init refusal.
+ * Returns the exit code; `write` and `ask` are injectable for tests,
+ * stdout/stdin live.
  */
 export async function runInit(
 	rootFlag: string | undefined,
@@ -153,7 +178,12 @@ export async function runInit(
 		) {
 			return await runNestedInit(repoRoot, folder, write, options);
 		}
-		return await runPlainInit(rootFlag ?? folder ?? ".", repoRoot, write);
+		return await runPlainInit(
+			rootFlag ?? folder ?? ".",
+			repoRoot,
+			write,
+			options.okf === true,
+		);
 	} catch (e) {
 		fail((e as Error).message);
 	}
@@ -162,14 +192,19 @@ export async function runInit(
 /**
  * Today's adopt flow (`fragmt init [--root <path>]`): initRepo, then the
  * avatar-path notice (rung B) – on both the fresh and the already-initialized
- * path, the same check serve runs.
+ * path, the same check serve runs. `--okf` on an existing config routes to
+ * the D1 flip instead; on a fresh init it follows the OKF adoption tail.
  */
 async function runPlainInit(
 	docsRoot: string,
 	repoRoot: string,
 	write: (s: string) => void,
+	okf = false,
 ): Promise<number> {
-	const result = initRepo(repoRoot, docsRoot);
+	if (okf && existsSync(configPath(repoRoot))) {
+		return await runOkfFlip(repoRoot, docsRoot, write);
+	}
+	const result = initRepo(repoRoot, docsRoot, okf);
 	if (result.alreadyInitialized) {
 		write("already initialized\n");
 	} else {
@@ -178,9 +213,114 @@ async function runPlainInit(
 		write(
 			`Initialized fragmt\n  docs root: ${docsRoot}\n  ${count} markdown ${noun}\n`,
 		);
+		if (okf) await adoptOkf(repoRoot, docsRoot, write);
 	}
 	await printAvatarNotice(repoRoot, docsRoot, write);
 	return 0;
+}
+
+/**
+ * The D1 flip: an existing repo gains OKF mode without re-initializing –
+ * rewrite the config flag (everything else in the file survives), refresh
+ * the AGENTS block (the plain re-run's behavior), print the findings, then
+ * the adoption commit. Adopt, don't rewrite: no conformance repair happens
+ * here, `validate --fix` finishes the job.
+ */
+async function runOkfFlip(
+	repoRoot: string,
+	docsRoot: string,
+	write: (s: string) => void,
+): Promise<number> {
+	enableOkf(repoRoot);
+	writeAgentsBlock(repoRoot);
+	write("OKF mode enabled\n");
+	await adoptOkf(repoRoot, docsRoot, write);
+	await printAvatarNotice(repoRoot, docsRoot, write);
+	return 0;
+}
+
+/**
+ * The `--okf` adoption tail, shared by every init path: the §11 findings
+ * first (the operator's to-do list), then ONE commit that populates the
+ * derived references fields repo-wide and generates the index.md set.
+ */
+async function adoptOkf(
+	repoRoot: string,
+	docsRoot: string,
+	write: (s: string) => void,
+): Promise<void> {
+	const { conformant, findings } = await validateOkf(repoRoot, docsRoot);
+	if (conformant) {
+		write("OKF conformant\n");
+	} else {
+		write(`${findings.length} OKF finding(s):\n`);
+		for (const f of findings) write(`${f.path}: ${f.clause}: ${f.detail}\n`);
+		write("fix with: fragmt validate --fix\n");
+	}
+	// The adoption commit's identity: the operator's when git has one, else
+	// the fragmt machine identity (the nested initial commit's author),
+	// materialized as repo-local config so the COMMITTER resolves too —
+	// commitAs passes --author only, and fresh nested bundles / CI runners
+	// ship no identity anywhere git looks.
+	let who: { name: string; email: string };
+	try {
+		who = await localUser(repoRoot);
+	} catch (e) {
+		if (!(e instanceof GitIdentityError)) throw e;
+		who = { name: "fragmt", email: "fragmt@localhost" };
+		await git(repoRoot, ["config", "user.name", who.name]);
+		await git(repoRoot, ["config", "user.email", who.email]);
+	}
+	const { files } = await populateOkf(repoRoot, docsRoot, who);
+	write(
+		files.length === 0
+			? "OKF: nothing to populate\n"
+			: `OKF: populated ${files.length} file(s) in one commit\n`,
+	);
+}
+
+/**
+ * `fragmt validate [--fix]` (#21): OKF repos only – anything else (no
+ * config, or the flag unset) exits 2 with the `init --okf` hint. Prints the
+ * §11 findings one per line, grouped by clause (validateOkf's order);
+ * `--fix` applies the mechanical repairs in one commit first. Exit 0
+ * conformant / 1 findings / 2 not an OKF repo. `write` injectable for tests.
+ */
+export async function runValidate(
+	fix: boolean,
+	repoRoot: string,
+	write: (s: string) => void = (s) => {
+		process.stdout.write(s);
+	},
+): Promise<number> {
+	let docsRoot: string | undefined;
+	let okf = false;
+	try {
+		const config = loadConfig(repoRoot);
+		docsRoot = config.docsRoot;
+		okf = config.okf === true;
+	} catch {
+		okf = false; // not initialized – the same exit-2 hint covers it
+	}
+	if (!okf || docsRoot === undefined) {
+		write("not an OKF repo – enable with: fragmt init --okf\n");
+		return 2;
+	}
+	if (fix) {
+		const { files } = await fixOkf(repoRoot, docsRoot);
+		write(
+			files.length === 0
+				? "nothing to fix\n"
+				: `fixed ${files.length} file(s) in one commit\n`,
+		);
+	}
+	const { conformant, findings } = await validateOkf(repoRoot, docsRoot);
+	if (conformant) {
+		write("conformant\n");
+		return 0;
+	}
+	for (const f of findings) write(`${f.path}: ${f.clause}: ${f.detail}\n`);
+	return 1;
 }
 
 /**
@@ -188,7 +328,9 @@ async function runPlainInit(
  * asked (a folder already holding `.fragmt.json` is a re-run – "already
  * initialized"), the outer AGENTS.md redirect, then the ask-and-wait
  * graduation – re-offered on a re-run when it never completed. The avatar
- * notice operates on the nested repo now (docsRoot ".").
+ * notice operates on the nested repo now (docsRoot "."). `--okf` writes the
+ * OKF config on create, flips it on a re-run, and runs the adoption tail on
+ * the nested bundle either way.
  */
 async function runNestedInit(
 	repoRoot: string,
@@ -198,12 +340,22 @@ async function runNestedInit(
 ): Promise<number> {
 	const nestedRoot = resolve(repoRoot, folder);
 	if (!existsSync(configPath(nestedRoot))) {
-		const { count } = await initNestedRepo(repoRoot, folder);
+		const { count } = await initNestedRepo(
+			repoRoot,
+			folder,
+			options.okf === true,
+		);
 		const noun = count === 1 ? "file" : "files";
 		write(
 			`Initialized fragmt\n  docs root: ${folder} (nested repo)\n  ${count} markdown ${noun}\n`,
 		);
 		writeOuterAgentsBlock(repoRoot, folder);
+		if (options.okf === true) await adoptOkf(nestedRoot, ".", write);
+	} else if (options.okf === true) {
+		enableOkf(nestedRoot);
+		writeAgentsBlock(nestedRoot);
+		write("OKF mode enabled\n");
+		await adoptOkf(nestedRoot, ".", write);
 	} else {
 		write("already initialized\n");
 	}
