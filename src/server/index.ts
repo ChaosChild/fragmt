@@ -1,9 +1,16 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
+import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getRequestListener } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono } from "hono";
+import {
+	deriveGraph,
+	graphToDot,
+	graphToJson,
+	graphToMermaid,
+} from "../core/graph.js";
 import {
 	abortMerge,
 	actorOf,
@@ -68,6 +75,7 @@ import {
 	writeComments,
 	writeDoc,
 } from "../core/index.js";
+import { bundleZip } from "../core/zip.js";
 import {
 	type AppEnv,
 	type AuthConfig,
@@ -745,6 +753,45 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 			ctx.docsRoot,
 		);
 		return c.json({ okf: true, conformant, findings });
+	});
+
+	// Rung 5 (#21): the reference graph and the bundle zip. Read-only and
+	// param-free like /api/validate: the format query selects the renderer
+	// AFTER the derivation, nothing request-shaped reaches the walk. Fresh
+	// per call – deriveGraph reads the working tree's bodies (never the
+	// frontmatter cache), so an uncommitted edit shows on the next request.
+	app.get("/api/graph", async (c) => {
+		if (!okfEnabled(ctx.repoRoot)) return c.json({ okf: false });
+		const graph = await deriveGraph(ctx.repoRoot, ctx.docsRoot);
+		switch (c.req.query("format")) {
+			case undefined:
+			case "json":
+				return c.json({ okf: true, ...graphToJson(graph, new Date()) });
+			case "mermaid":
+				return c.text(graphToMermaid(graph, new Date()));
+			case "dot":
+				return c.body(graphToDot(graph), 200, {
+					"content-type": "text/vnd.graphviz; charset=utf-8",
+				});
+			default:
+				return c.json({ error: "unknown format – json, mermaid, or dot" }, 400);
+		}
+	});
+
+	// The D1 bundle: the working tree as a zip download. Non-OKF repos 404 –
+	// no payload exists to send – with the {okf:false} convention.
+	app.get("/api/export/bundle", async (c) => {
+		if (!okfEnabled(ctx.repoRoot)) return c.json({ okf: false }, 404);
+		// bundleZip always allocates a fresh ArrayBuffer; the cast only pins
+		// the type hono's c.body overload demands (no copy).
+		const bytes = (await bundleZip(
+			ctx.repoRoot,
+			ctx.docsRoot,
+		)) as Uint8Array<ArrayBuffer>;
+		return c.body(bytes, 200, {
+			"content-type": "application/zip",
+			"content-disposition": `attachment; filename="${basename(resolve(ctx.repoRoot, ctx.docsRoot))}.zip"`,
+		});
 	});
 
 	// Search (#14): a thin GET over the core's flat scan. `q` missing is a
