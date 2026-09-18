@@ -10,7 +10,6 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 
 - Multi-user auth foundation – **leads** – #20 (PR wiring split to #27, 2026-09-01 round-2 Lavish review)
 - PR create/review in the UI (split from #20) – #27
-- OKF support – `init --okf`, conformant defaults + validate, frontmatter editor, trust stamping, references pane – #21
 - Agent-in-UI: harness bridge + client-side agent tools – after multi-user – #22
 - MCP – reconsider after multi-user / remote deployment – #23
 
@@ -25,6 +24,8 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 
 ## Graduated
 
+- OKF support #21 → shipped 2026-09-18 in v0.9.0 (`feat/okf-rungs-1-2` + `feat/okf-rungs-3-4` → PRs #36 + #37): rungs 1–4 plus the references core and pane — `init --okf` (fresh, existing-repo flip, nested), `validate [--fix]` over the three §11 clauses with self-healing generated indexes, reserved `index.md`/`log.md`, the derived `references`/`referenced-by` graph, the unified metadata editor with §4.1 extension keys, trust stamping (`generated`/`verified`, four verify affordances including `fragmt agent verify --as-actor`), trust badges + `verifiedByYou`, the conditional OKF AGENTS block, and a React component harness pinning the dirty-guard matrix. Spec source moved to `GoogleCloudPlatform/open-knowledge-format` (v0.2). Specs in [milestones/okf-rungs-1-2.md](milestones/okf-rungs-1-2.md) and [milestones/okf-rungs-3-4.md](milestones/okf-rungs-3-4.md). The issue stays open for the rung-5 remainder only (graph view/export).
+- OKF rungs 3–4 #33 (split from #21) → shipped complete in the same v0.9.0 round, with four operator-review passes folded in (unified editing, extension keys, side-by-side references, reserved-file surfaces) and the dirty-guard hardening.
 - Merge-conflict resolution in the UI → specced and shipped as M4-4 (stand-conflicted merge, per-hunk ours/theirs/edit resolution, structural sidecar merge, conclude-merge commit; the M4-3-era "milestone of its own" cost estimate was right – it was one).
 - Drag & drop collision-aware targets → shipped in M4-4 (client tree consult: drop-target validity + move-picker filtering).
 - The agent as a first-class user → graduated into M4-4 as the `fragmt agent` CLI + AGENTS.md + identity (the planned MCP server was dropped in the same decision – the CLI is the agent contract).
