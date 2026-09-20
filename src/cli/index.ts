@@ -7,10 +7,16 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { networkInterfaces } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import {
+	deriveGraph,
+	graphToDot,
+	graphToJson,
+	graphToMermaid,
+} from "../core/graph.js";
 import {
 	authorsNotice,
 	classifyAuthorEmails,
@@ -30,6 +36,7 @@ import {
 	writeAgentsBlock,
 	writeOuterAgentsBlock,
 } from "../core/index.js";
+import { bundleZip } from "../core/zip.js";
 import { createApp, startServer } from "../server/index.js";
 import { runAgent } from "./agent.js";
 
@@ -41,6 +48,7 @@ Usage:
   fragmt init [--root <path>] [--folder <name>] [--new] [--okf]
   fragmt serve [--port <n>] [--auth]
   fragmt validate [--fix]
+  fragmt export [--format mermaid|dot|json] [--out <file>] [--bundle]
   fragmt agent [status]
   fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor <who>] [--full]
   fragmt agent draft <doc> [--merge] [--as-actor <who>]
@@ -52,6 +60,7 @@ Commands:
            --okf enables OKF mode (v0.2): existing repos flip the flag, docs validated, indexes + references committed
   serve    Start the local web server
   validate Check OKF conformance (§11); --fix applies the mechanical repairs in one commit
+  export   The OKF reference graph – json (default), mermaid, or dot; --bundle zips the docs working tree
   agent    The agent surface: status, comment, draft, verify (AXI-conformant)
            --as-actor self-declares the OKF trust actor (default fragmt-agent/unspecified)
 `;
@@ -80,6 +89,11 @@ export async function main(argv: string[]): Promise<void> {
 			// validate.
 			okf: { type: "boolean", default: false },
 			fix: { type: "boolean", default: false },
+			// Rung 5 (#21): export's flags – --format only means anything
+			// without --bundle, which supersedes it.
+			bundle: { type: "boolean", default: false },
+			format: { type: "string" },
+			out: { type: "string" },
 		},
 		allowPositionals: true,
 		strict: true,
@@ -103,6 +117,18 @@ export async function main(argv: string[]): Promise<void> {
 	if (command === "validate") {
 		process.exit(
 			await runValidate(values.fix === true, resolveRepoRoot("validate")),
+		);
+	}
+	if (command === "export") {
+		process.exit(
+			await runExport(
+				{
+					bundle: values.bundle === true,
+					format: values.format,
+					out: values.out,
+				},
+				resolveRepoRoot("export"),
+			),
 		);
 	}
 	if (command === "serve") {
@@ -323,6 +349,69 @@ export async function runValidate(
 	}
 	for (const f of findings) write(`${f.path}: ${f.clause}: ${f.detail}\n`);
 	return 1;
+}
+
+/** `fragmt export`'s flags (rung 5). */
+export interface ExportOptions {
+	/** --bundle: the docs working tree as a zip; supersedes --format. */
+	bundle?: boolean;
+	/** json (default) | mermaid | dot. */
+	format?: string;
+	/** Write to this file instead of stdout. */
+	out?: string;
+}
+
+/**
+ * `fragmt export` (rung 5 #21): the reference graph as json (default),
+ * mermaid, or dot – stdout, or UTF-8 bytes to --out – or, with --bundle, the
+ * docs working tree zipped to `<docs-dir>.zip` beside the working directory
+ * (--out names it). OKF repos only – anything else exits 2 with the `init
+ * --okf` hint (the validate convention), on stderr. A pure read of the
+ * working tree: no commit, and the walk never trusts the frontmatter cache.
+ * Returns the exit code; `write`/`errWrite` injectable for tests.
+ */
+export async function runExport(
+	options: ExportOptions,
+	repoRoot: string,
+	write: (s: string) => void = (s) => {
+		process.stdout.write(s);
+	},
+	errWrite: (s: string) => void = (s) => {
+		process.stderr.write(s);
+	},
+): Promise<number> {
+	let docsRoot: string | undefined;
+	let okf = false;
+	try {
+		const config = loadConfig(repoRoot);
+		docsRoot = config.docsRoot;
+		okf = config.okf === true;
+	} catch {
+		okf = false; // not initialized – the same exit-2 hint covers it
+	}
+	if (!okf || docsRoot === undefined) {
+		errWrite("not an OKF repo – enable with: fragmt init --okf\n");
+		return 2;
+	}
+	if (options.bundle === true) {
+		const out = options.out ?? `${basename(resolve(repoRoot, docsRoot))}.zip`;
+		writeFileSync(out, await bundleZip(repoRoot, docsRoot));
+		return 0;
+	}
+	const graph = await deriveGraph(repoRoot, docsRoot);
+	let text: string;
+	if (options.format === "mermaid") {
+		text = graphToMermaid(graph, new Date());
+	} else if (options.format === "dot") {
+		text = graphToDot(graph);
+	} else if (options.format === undefined || options.format === "json") {
+		text = `${JSON.stringify(graphToJson(graph, new Date()), null, 2)}\n`;
+	} else {
+		fail(`unknown format: ${options.format} – json, mermaid, or dot`);
+	}
+	if (options.out === undefined) write(text);
+	else writeFileSync(options.out, text, "utf8");
+	return 0;
 }
 
 /**
