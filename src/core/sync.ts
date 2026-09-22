@@ -83,6 +83,31 @@ export async function pushAs(
 	);
 }
 
+/** #27: fetch a ref from the explicit HTTPS URL with the user's token (used
+ *  to fast-forward local main after a fragmt-side PR merge). Refuses
+ *  harmlessly when main is checked out or not fast-forwardable – git's own
+ *  refusal surfaces, scrubbed. */
+export async function fetchRefs(
+	repoRoot: string,
+	url: string,
+	refspec: string,
+	token: string,
+): Promise<void> {
+	const basic = Buffer.from(`x-access-token:${token}`).toString("base64");
+	try {
+		await git(repoRoot, ["fetch", url, refspec], {
+			env: {
+				GIT_CONFIG_COUNT: "1",
+				GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
+				GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`,
+			},
+		});
+	} catch (e) {
+		if (e instanceof GitError) throw scrubSecret(e, basic);
+		throw e;
+	}
+}
+
 /**
  * #27 (review round): sync pulls the current branch, then MIRRORS – every
  * local branch to origin, never force – so no work lives only on the local

@@ -88,5 +88,6 @@ test("create → draft → edit → merge lands the edit on main and drops the b
 	expect(await (await api("GET", "/api/branches")).json()).toEqual({
 		current: "main",
 		branches: ["main"],
+		merged: ["main"],
 	});
 });

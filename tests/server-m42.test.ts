@@ -105,6 +105,7 @@ test("POST /api/merge: 200 {sha}, branch gone, back on main; on main → 400", a
 	expect(await (await api("GET", "/api/branches")).json()).toEqual({
 		current: "main",
 		branches: ["main"],
+		merged: ["main"],
 	});
 	expect(readFileSync(join(root, "a.md"), "utf8")).toBe("# a v2\n");
 
