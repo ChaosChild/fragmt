@@ -26,8 +26,7 @@ GH_CLIENT_ID=… GH_CLIENT_SECRET=… npx fragmt serve --auth --port 4400
 
 Open `http://<host>:4400`, press **Sign in with GitHub**, done. Sign-in
 attributes every subsequent edit and comment commit to the signed-in user
-(author field; the committer stays the machine's git identity, the same way
-GitHub's web editor attributes edits).
+(author and committer ride the same identity).
 
 ## Registering the GitHub OAuth app
 
@@ -65,9 +64,11 @@ How it works, and its edges:
 - The repo's `origin` must be a github.com URL. Anything else (or GitHub
   being unreachable) **fails closed**: signed-in users can read, every
   mutation is refused.
-- Merges of draft branches currently commit with the server's git identity;
-  edit and comment commits carry the signed-in author. True per-user push
-  identity arrives with PR wiring ([#27](https://github.com/ChaosChild/fragmt/issues/27)).
+- The PR flow and per-user pushes need **git ≥ 2.31 on the server** – the
+  signed-in user's token rides env-based git config, never argv or disk.
+- With auth on, sync mirror-pushes every branch to origin under the
+  signed-in user's token; plain `serve` pushes with machine credentials as
+  before.
 
 ## Avatars and the authors map
 

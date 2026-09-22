@@ -35,7 +35,9 @@ Two types, two mechanisms:
 
 ### 4. Sync: one function, three triggers
 
-- `sync()` = `git pull --rebase` + push pending commits.
+- `sync()` = `git pull --rebase` + `git push --all` (#27): every local
+  branch mirrors to origin, never force – no work lives only on the local
+  disk.
 - Triggers: `setInterval`, browser focus event, before opening a doc for editing.
 - v2 hosted: add a GitHub webhook route that calls the same `sync()`. Nothing else changes.
 - Conflicts: markdown merges well; on real conflict surface "resolve on branch" in UI. Fancy merge UI deferred until it hurts.
@@ -48,17 +50,19 @@ Two types, two mechanisms:
   - Auth on (`fragmt serve --auth --port <n>`): `user` from the GitHub OAuth
     web-flow session (the 2026-09-01 round replaced the old device-flow
     sketch; the callback needs a repeatable port, which `--auth` therefore
-    requires). Commit with author = signed-in user (GitHub noreply email),
-    committer = the machine's git identity – how GitHub's own web editor
-    attributes edits.
+    requires). Commit with author = committer = the signed-in user (GitHub
+    noreply email) – the commit seam passes both from the same identity as
+    per-spawn env, so local mode keeps the machine identity unchanged.
 - The gate: with `--auth`, every `/api/*` route needs a session except
   `/api/auth/*`; sessions are in-memory (a restart signs everyone out),
   cookies HttpOnly + SameSite=Lax, tokens never leave the server process.
 - No users table, no roles: **GitHub repo collaborator permissions are the
   authorization system**, checked with the signed-in user's own token
   (cached ~5 min). admin/maintain/write edit, read reads, everyone else gets
-  403; a non-github.com origin fails closed. True per-user push identity
-  arrives with PR wiring (#27).
+  403; a non-github.com origin fails closed. Per-user push identity (#27):
+  pushes go to the slug's explicit HTTPS URL – never origin's – with the
+  session token as a per-invocation http extraheader via env config (never
+  argv, never disk; git ≥ 2.31), scrubbed from every error.
 
 ### 6. One core library, thin heads
 

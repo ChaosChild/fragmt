@@ -287,9 +287,10 @@ async function adoptOkf(
 	}
 	// The adoption commit's identity: the operator's when git has one, else
 	// the fragmt machine identity (the nested initial commit's author),
-	// materialized as repo-local config so the COMMITTER resolves too —
-	// commitAs passes --author only, and fresh nested bundles / CI runners
-	// ship no identity anywhere git looks.
+	// materialized as repo-local config so the COMMITTER resolves too –
+	// commitAs passes --author and the committer env from the same user
+	// (local mode keeps the machine identity), and fresh nested bundles /
+	// CI runners ship no identity anywhere git looks.
 	let who: { name: string; email: string };
 	try {
 		who = await localUser(repoRoot);

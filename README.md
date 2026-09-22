@@ -213,6 +213,23 @@ samples included – see [HOSTING](docs/HOSTING.md). Commit authors are
 recognized by their GitHub avatar – automatically for signed-in users, and
 via a two-line authors map in `.fragmt.json` for everyone else.
 
+### Pull requests
+
+With `serve --auth`, pull requests are part of the editor: draft branches
+push and open PRs as the signed-in user – the review, merge and sync ride
+that user's own GitHub token, never the operator's credentials.
+
+- The branch menu carries a PR chip per draft branch; the review lives in
+  the slideout's Pull requests mode – the open list, paged diffs (20 files
+  per page), and Merge with your own token. A conflicted PR states it and
+  links out to GitHub.
+- Sync mirrors every branch to origin (never force), so no work lives only
+  on the local disk – plain `serve` keeps pushing with machine credentials.
+- Branch delete is gated on merged: an unmerged branch can't be deleted
+  from the menu.
+- None of this exists in local mode – a solo operator wanting PRs runs
+  `serve --auth`.
+
 ## Agents
 
 AI coding agents are first-class users, and the contract is the `fragmt agent`
