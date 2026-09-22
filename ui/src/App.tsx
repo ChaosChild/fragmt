@@ -70,6 +70,7 @@ import {
 	type FileOp,
 	NewDocButton,
 } from "./Menus";
+import { PRPane } from "./PRPane";
 import { ReferencesPane } from "./ReferencesPane";
 import { ResolutionView } from "./ResolutionView";
 import { SearchModal } from "./SearchModal";
@@ -84,7 +85,7 @@ import { ThemeToggle } from "./ThemeToggle";
 
 /** #27 (b3): the slideout's PR target – the list, or one PR by number.
  *  App owns it; the entry points (brand-row/topbar button, BranchMenu
- *  chips) set it, the slideout's PR mode renders it (b4). */
+ *  chips) set it, the slideout's PR mode renders it (PRPane, b4). */
 export type PrView = { kind: "list" } | { kind: "pr"; n: number };
 
 function firstDoc(node: TreeNode): string | null {
@@ -196,6 +197,10 @@ export function App() {
 	const auth = useAuth();
 	const [prAvailable, setPrAvailable] = useState(false);
 	const [prView, setPrView] = useState<PrView | null>(null);
+	// b4: the PR mode's slideout-head line – PRPane reports it (the list's
+	// open count, the detail's "PR #n · title"); until the first report
+	// lands, the head falls back to the plain "Pull requests".
+	const [prTitle, setPrTitle] = useState<string | null>(null);
 	const refreshPrAvailable = useCallback(() => {
 		getPRs()
 			.then((r) => setPrAvailable(r.enabled && (r.slug ?? null) !== null))
@@ -221,6 +226,11 @@ export function App() {
 	// its close button and the Escape chain return to comments. It re-targets
 	// with the main doc; a preview still wins over it.
 	const [refsMode, setRefsMode] = useState(false);
+	// #27 (b4): opening the PR surface lifts the ≤1180px sheet like the
+	// references toggle does – the desktop pane is always present anyway.
+	useEffect(() => {
+		if (prView) setRailOpen(true);
+	}, [prView]);
 	const [slideoutShare, setSlideoutShare] = useState(() =>
 		readStoredSlideoutShare(),
 	);
@@ -1031,9 +1041,11 @@ export function App() {
 	// editor preventDefaults every Escape it sees; read mode's Escapes arrive
 	// here by design, PM being keydown-inert on a non-editable view – the
 	// bubble's capture listener eats the selection-clearing ones). Modal
-	// first, then the preview, then the References mode (#33): the modal
-	// usually closes itself (focus sits in its input), so this leg mostly
-	// covers focus escaping its trap.
+	// first, then the preview, then the PR mode (#27 b4 – slotted to match
+	// the render precedence: a preview wins over it, it wins over
+	// references), then the References mode (#33): the modal usually closes
+	// itself (focus sits in its input), so this leg mostly covers focus
+	// escaping its trap.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: closePreview is re-created per render on purpose – its sidebar restore reads autoCollapsed (a ref), so the two open flags are the only state this listener branches on.
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -1044,6 +1056,9 @@ export function App() {
 			} else if (previewPath !== null) {
 				e.preventDefault();
 				closePreview();
+			} else if (prView !== null) {
+				e.preventDefault();
+				setPrView(null);
 			} else if (refsMode) {
 				e.preventDefault();
 				setRefsMode(false);
@@ -1051,7 +1066,7 @@ export function App() {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [searchOpen, previewPath, refsMode]);
+	}, [searchOpen, previewPath, prView, refsMode]);
 
 	// The preview's fetch – the main doc's read client, cancel-guarded like
 	// the sidecar fetch. Quiet both ways: DocPreview's skeleton while
@@ -1281,8 +1296,8 @@ export function App() {
 			<div className="ambient" aria-hidden="true" />
 			<div
 				className="app-frame"
-				// #27 (b3): the pending PR target, readable until b4 renders the
-				// slideout mode from it ("list" | "pr:<n>" – absent = closed).
+				// #27 (b3): the PR target, mirrored for the guard tests
+				// ("list" | "pr:<n>" – absent = closed).
 				data-prview={
 					prView
 						? prView.kind === "list"
@@ -1325,15 +1340,16 @@ export function App() {
 				)}
 				<div
 					className="layout"
-					// Without a preview the pane is a fixed 316px column, so main
-					// must claim ALL free space – flex-grow 1. The 55/45 share
-					// only applies while the pane is flexed (preview open): per
-					// spec §9.7.1 a grow < 1 takes just grow × free-space, so a
-					// lone 0.55 grower leaves 45% of the layout dead.
+					// Without a wide state (a preview, or the PR mode – #27 b4 rides
+					// the same split) the pane is a fixed 316px column, so main must
+					// claim ALL free space – flex-grow 1. The 55/45 share only
+					// applies while the pane is flexed: per spec §9.7.1 a grow < 1
+					// takes just grow × free-space, so a lone 0.55 grower leaves
+					// 45% of the layout dead.
 					style={
 						{
 							"--slideout-share": String(
-								previewPath !== null ? slideoutShare : 1,
+								previewPath !== null || prView !== null ? slideoutShare : 1,
 							),
 						} as CSSProperties
 					}
@@ -1529,21 +1545,25 @@ export function App() {
 								onDeleteDoc={requestDeleteDoc}
 								onRenamed={onRenamed}
 								okf={meta?.okf === true}
-								referencesOpen={refsMode && previewPath === null}
+								referencesOpen={
+									refsMode && previewPath === null && prView === null
+								}
 								onOpenReferences={openReferences}
 							/>
 						)}
 					</main>
 					{/* The right pane (#15, testing round): the v0.5.0 comments rail
 					    again – permanent, 316px, the open doc's threads – until a
-					    preview opens and widens it into the split. Hidden in
-					    resolution mode (the doc pane is taken over, its comments
-					    mid-merge) and while the graph lens is up – it reads the
-					    same selection, not a doc. */}
+					    preview opens and widens it into the split (the PR mode, #27
+					    b4, rides the same wide split). Hidden in resolution mode
+					    (the doc pane is taken over, its comments mid-merge) and
+					    while the graph lens is up – it reads the same selection,
+					    not a doc. */}
 					{selected && !inResolution && !graphOpen && (
 						<Slideout
 							open={railOpen}
 							preview={previewPath !== null}
+							prTitle={prView !== null ? (prTitle ?? "Pull requests") : null}
 							references={refsMode}
 							commentCount={threads.length}
 							previewTitle={previewTitle}
@@ -1553,14 +1573,27 @@ export function App() {
 							onClose={
 								previewPath !== null
 									? closePreview
-									: refsMode
-										? () => setRefsMode(false)
-										: closeSheet
+									: prView !== null
+										? () => setPrView(null)
+										: refsMode
+											? () => setRefsMode(false)
+											: closeSheet
 							}
 							onShare={applySlideoutShare}
 						>
+							{/* Render precedence (#27 b4): a preview wins over the PR
+							    mode exactly as it wins over references – App renders
+							    DocPreview when previewPath is set, whatever prView
+							    holds; the PR mode yields and returns when the preview
+							    closes. */}
 							{previewPath === null ? (
-								refsMode ? (
+								prView !== null ? (
+									<PRPane
+										prView={prView}
+										setPrView={setPrView}
+										onHead={setPrTitle}
+									/>
+								) : refsMode ? (
 									<ReferencesPane
 										references={doc?.frontmatter.references ?? []}
 										referencedBy={doc?.frontmatter["referenced-by"] ?? []}

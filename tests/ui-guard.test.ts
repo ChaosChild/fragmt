@@ -18,6 +18,7 @@ import {
 	render,
 	screen,
 	waitFor,
+	within,
 } from "@testing-library/react";
 import { type ComponentProps, createElement } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -26,6 +27,7 @@ import { AuthGate } from "../ui/src/AuthGate.js";
 import type {
 	DocGraph,
 	DocResponse,
+	PrFile,
 	PrSummary,
 	RepoMeta,
 	TreeNode,
@@ -541,6 +543,15 @@ const PR12: PrSummary = {
 	changed_files: 2,
 };
 
+// b4: the detail's default file page – one parsed patch.
+const PR_FILE: PrFile = {
+	filename: "docs/a.md",
+	status: "modified",
+	additions: 2,
+	deletions: 1,
+	patch: "@@ -1,2 +1,3 @@\n body\n-old line\n+new line\n+another",
+};
+
 // current = "work": main is merged (trash acts, no PR → the open-PR chip),
 // feat is unmerged (trash disabled, D7) and carries PR #12 (the view chip).
 const BRANCHES_PR = {
@@ -553,6 +564,17 @@ function prFetch(
 	opts: {
 		slug?: { owner: string; repo: string } | null;
 		openPrAnswer?: Response;
+		/** b4: the list's prs override (the empty-list state). */
+		prs?: PrSummary[];
+		/** b4: the detail answer – `pr` overlays PR12, `files` is page 1,
+		 *  `files2` any later page. */
+		detail?: {
+			pr?: Partial<PrSummary>;
+			files?: PrFile[];
+			files2?: PrFile[];
+		};
+		mergeAnswer?: Response;
+		pushAnswer?: Response;
 	} = {},
 ) {
 	return async (
@@ -566,6 +588,12 @@ function prFetch(
 				user: { login: "tester" },
 				canWrite: true,
 			});
+		const action = url.pathname.match(/^\/api\/prs\/(\d+)\/(merge|push)$/);
+		if (action) {
+			if (action[2] === "merge")
+				return opts.mergeAnswer ?? jsonResponse({ merged: true });
+			return opts.pushAnswer ?? jsonResponse({ pushed: true });
+		}
 		if (url.pathname === "/api/prs") {
 			// The create: the client sends branch + optional body only; the
 			// duplicate/idempotent answer (200 with a PrSummary) covers both.
@@ -574,8 +602,20 @@ function prFetch(
 			return jsonResponse({
 				enabled: true,
 				slug: "slug" in opts ? opts.slug : { owner: "o", repo: "r" },
-				prs: [PR12],
+				prs: opts.prs ?? [PR12],
 				byBranch: { feat: { number: 12, title: PR12.title, state: "open" } },
+			});
+		}
+		const detail = url.pathname.match(/^\/api\/prs\/(\d+)$/);
+		if (detail) {
+			const page = Number(url.searchParams.get("files_page") ?? 1);
+			return jsonResponse({
+				pr: { ...PR12, ...opts.detail?.pr },
+				files:
+					page > 1
+						? (opts.detail?.files2 ?? [])
+						: (opts.detail?.files ?? [PR_FILE]),
+				filesPage: page,
 			});
 		}
 		if (url.pathname === "/api/branches") return jsonResponse(BRANCHES_PR);
@@ -744,5 +784,206 @@ describe("BranchMenu: PR chips + the merged gate (#27 b3)", () => {
 		// The form stays open, nothing fired.
 		expect(screen.getByRole("button", { name: "Open PR" })).toBeTruthy();
 		expect(onAction).not.toHaveBeenCalled();
+	});
+});
+
+// --- #27 (b4): the PR review pane ----------------------------------------------
+
+/** The mounted slideout – queries scope to it so pane buttons never collide
+ *  with the header's (Merge exists in both). */
+function slideoutEl(): HTMLElement {
+	const el = document.querySelector<HTMLElement>(".slideout");
+	if (!el) throw new Error("no slideout");
+	return el;
+}
+
+/** Authed App → PR list → PR #12's detail, waited to its ready state (the
+ *  pane's title line renders only with a fetched pr). */
+async function openPrDetail(
+	fetchImpl: (
+		url: RequestInfo | URL,
+		init?: RequestInit,
+	) => Promise<Response> = prFetch(),
+): Promise<HTMLElement> {
+	await renderAuthedApp(fetchImpl);
+	fireEvent.click(await screen.findByRole("button", { name: "Pull requests" }));
+	fireEvent.click(await screen.findByText("Docs: the feat branch"));
+	return waitFor(() => {
+		const slideout = slideoutEl();
+		if (!slideout.querySelector(".pr-title"))
+			throw new Error("detail not loaded yet");
+		return slideout;
+	});
+}
+
+describe("App: the PR review pane (#27 b4)", () => {
+	test("the list renders rows and the head count; a row click opens the detail with status, meta, and patch rows", async () => {
+		await renderAuthedApp(prFetch());
+		fireEvent.click(
+			await screen.findByRole("button", { name: "Pull requests" }),
+		);
+		expect(await screen.findByText("Pull requests · 1 open")).toBeTruthy();
+		fireEvent.click(screen.getByText("Docs: the feat branch"));
+
+		const s = await waitFor(() => {
+			const slideout = slideoutEl();
+			if (!slideout.querySelector(".pr-title"))
+				throw new Error("detail not loaded yet");
+			return slideout;
+		});
+		// The head carries the detail line; the pane the honest chips, the
+		// branch pair, and the parsed patch rows.
+		expect(within(s).getByText("PR #12 · Docs: the feat branch")).toBeTruthy();
+		expect(within(s).getByText("open")).toBeTruthy();
+		expect(within(s).getByText("mergeable")).toBeTruthy();
+		expect(within(s).getByText("feat")).toBeTruthy();
+		expect(within(s).getByText("main")).toBeTruthy();
+		expect(s.textContent).toContain("2 files");
+		expect(document.querySelectorAll(".pr-patch-row.add")).toHaveLength(2);
+		expect(document.querySelectorAll(".pr-patch-row.del")).toHaveLength(1);
+		expect(document.querySelectorAll(".pr-patch-row.hunk")).toHaveLength(1);
+		expect(document.querySelector(".pr-file-name")?.getAttribute("title")).toBe(
+			"docs/a.md",
+		);
+		// Asserted by attribute, never clicked – happy-dom would really
+		// navigate on an un-prevented anchor.
+		const gh = within(s).getByRole("link", { name: "Open on GitHub" });
+		expect(gh.getAttribute("href")).toBe(PR12.html_url);
+		expect(gh.getAttribute("target")).toBe("_blank");
+		// Opening a review never navigates the editor.
+		expect(breadcrumbText()).toBe("a");
+	});
+
+	test("an empty list answers with the calm empty state and a zero count", async () => {
+		await renderAuthedApp(prFetch({ prs: [] }));
+		fireEvent.click(
+			await screen.findByRole("button", { name: "Pull requests" }),
+		);
+		expect(await screen.findByText("No open pull requests.")).toBeTruthy();
+		expect(await screen.findByText("Pull requests · 0 open")).toBeTruthy();
+	});
+
+	test("the pager steps 20-file pages: prev disabled on page 1, next only while the page was full", async () => {
+		const files20: PrFile[] = Array.from({ length: 20 }, (_, i) => ({
+			filename: `f${i}.md`,
+			status: "modified",
+			additions: 1,
+			deletions: 0,
+			patch: "@@ -1 +1 @@\n-x\n+y",
+		}));
+		const s = await openPrDetail(
+			prFetch({ detail: { files: files20, files2: files20.slice(0, 3) } }),
+		);
+		const prev = within(s).getByRole("button", {
+			name: "Previous page",
+		}) as HTMLButtonElement;
+		const next = within(s).getByRole("button", {
+			name: "Next page",
+		}) as HTMLButtonElement;
+		expect(prev.disabled).toBe(true);
+		expect(next.disabled).toBe(false);
+		expect(s.textContent).toContain("files 1–20 · page 1/≥2");
+
+		fireEvent.click(next);
+		await waitFor(() => {
+			expect(s.textContent).toContain("files 21–23 · page 2");
+		});
+		expect(prev.disabled).toBe(false);
+		expect(next.disabled).toBe(true);
+		// Each page fetched on demand – page 2 only after the click.
+		const pages = vi
+			.mocked(fetch)
+			.mock.calls.filter(([u]) => String(u).startsWith("/api/prs/12?"))
+			.map(([u]) =>
+				Number(
+					new URL(String(u), "http://localhost").searchParams.get("files_page"),
+				),
+			);
+		expect(pages).toEqual([1, 2]);
+	});
+
+	test("Merge hides on draft, conflicted, and closed PRs; Push commits hides when closed", async () => {
+		for (const over of [
+			{ draft: true },
+			{ mergeable: false },
+			{ state: "closed" as const },
+		]) {
+			cleanup();
+			const s = await openPrDetail(prFetch({ detail: { pr: over } }));
+			expect(within(s).queryByRole("button", { name: "Merge" })).toBeNull();
+			if (over.state === "closed") {
+				expect(
+					within(s).queryByRole("button", { name: "Push commits" }),
+				).toBeNull();
+			} else {
+				expect(
+					within(s).getByRole("button", { name: "Push commits" }),
+				).toBeTruthy();
+			}
+		}
+	});
+
+	test("a conflicted merge answer swaps Merge for the resolve-on-GitHub state", async () => {
+		const s = await openPrDetail(
+			prFetch({
+				mergeAnswer: jsonResponse({
+					conflicted: true,
+					html_url: "https://github.com/o/r/pull/12",
+				}),
+			}),
+		);
+		fireEvent.click(within(s).getByRole("button", { name: "Merge" }));
+		expect(
+			await within(s).findByText(/conflicts that must be resolved on GitHub/),
+		).toBeTruthy();
+		expect(within(s).queryByRole("button", { name: "Merge" })).toBeNull();
+		const resolve = within(s).getByRole("link", { name: /Resolve on GitHub/ });
+		expect(resolve.getAttribute("href")).toBe("https://github.com/o/r/pull/12");
+		expect(resolve.getAttribute("target")).toBe("_blank");
+	});
+
+	test("a successful merge refreshes the detail (the closed answer replaces the button)", async () => {
+		let merged = false;
+		const base = prFetch();
+		const s = await openPrDetail(async (input, init) => {
+			const url = new URL(String(input), "http://localhost");
+			if (url.pathname === "/api/prs/12/merge") {
+				merged = true;
+				return jsonResponse({ merged: true });
+			}
+			if (merged && url.pathname === "/api/prs/12")
+				return jsonResponse({
+					pr: { ...PR12, state: "closed", mergeable: null },
+					files: [PR_FILE],
+					filesPage: 1,
+				});
+			return base(input, init);
+		});
+		fireEvent.click(within(s).getByRole("button", { name: "Merge" }));
+		expect(await within(s).findByText("closed")).toBeTruthy();
+		expect(within(s).queryByRole("button", { name: "Merge" })).toBeNull();
+		const detailGets = vi
+			.mocked(fetch)
+			.mock.calls.filter(([u]) => String(u).startsWith("/api/prs/12?")).length;
+		expect(detailGets).toBeGreaterThanOrEqual(2);
+	});
+
+	test("a push with nothing to push answers with the quiet up-to-date note", async () => {
+		const s = await openPrDetail(
+			prFetch({ pushAnswer: jsonResponse({ pushed: false }) }),
+		);
+		fireEvent.click(within(s).getByRole("button", { name: "Push commits" }));
+		expect(await within(s).findByText("already up to date")).toBeTruthy();
+	});
+
+	test("Escape closes the PR mode back to the comments rail", async () => {
+		await renderAuthedApp(prFetch());
+		fireEvent.click(
+			await screen.findByRole("button", { name: "Pull requests" }),
+		);
+		expect(prviewTarget()).toBe("list");
+		fireEvent.keyDown(window, { key: "Escape" });
+		expect(prviewTarget()).toBeNull();
+		expect(await screen.findByText("Comments · 0")).toBeTruthy();
 	});
 });

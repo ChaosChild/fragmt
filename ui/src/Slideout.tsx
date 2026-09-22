@@ -59,11 +59,17 @@ function SlideoutDivider({
  * into the bottom sheet (≤1180px); the head row in the comments state
  * is that sheet's affordance – desktop CSS hides it with the whole head.
  * The References mode (#33, D1) keeps the rail's fixed width and shows its
- * own close (a dismissible mode, unlike the permanent rail).
+ * own close (a dismissible mode, unlike the permanent rail). The PR mode
+ * (#27 b4) is the fourth state: the same wide split as a preview (the
+ * shared .preview class + divider), its head line supplied by App (PRPane
+ * reports it). Precedence: a preview wins over the PR mode, the PR mode
+ * wins over References – the close of either dismissible mode returns to
+ * the rail.
  */
 export function Slideout({
 	open,
 	preview,
+	prTitle,
 	references,
 	commentCount,
 	previewTitle,
@@ -78,6 +84,11 @@ export function Slideout({
 	open: boolean;
 	/** A preview is open – the wide split state, with its head row. */
 	preview: boolean;
+	/** #27 (b4): the PR mode's head line – "Pull requests · N open" or
+	 *  "PR #n · title" (App holds what PRPane reports, with a plain
+	 *  "Pull requests" fallback). Non-null = the fourth state, riding the
+	 *  same wide split as a preview. */
+	prTitle: string | null;
 	/** The References mode is showing (#33) – the third state; wins over
 	 *  the comments rail, yields to a preview (App renders the content). */
 	references: boolean;
@@ -101,13 +112,22 @@ export function Slideout({
 	// The signed-in session for the comments bar head's user chip (null =
 	// auth off – the head keeps its exact pre-auth shape).
 	const auth = useAuth();
+	// #27 (b4): the wide split serves a preview OR the PR mode – the
+	// .preview class is the shared wide machinery (divider, flexed width).
+	const wide = preview || prTitle !== null;
 	return (
 		<>
-			{preview && <SlideoutDivider onShare={onShare} />}
+			{wide && <SlideoutDivider onShare={onShare} />}
 			<aside
-				className={`slideout${open ? " open" : ""}${preview ? " preview" : ""}${references && !preview ? " references" : ""}`}
+				className={`slideout${open ? " open" : ""}${wide ? " preview" : ""}${references && !wide ? " references" : ""}`}
 				aria-label={
-					preview ? "Preview" : references ? "References" : "Comments"
+					preview
+						? "Preview"
+						: prTitle !== null
+							? "Pull requests"
+							: references
+								? "References"
+								: "Comments"
 				}
 			>
 				<div className="slideout-head">
@@ -117,6 +137,10 @@ export function Slideout({
 								Preview · {previewTitle}
 							</span>
 						)
+					) : prTitle !== null ? (
+						<span className="slideout-title" title={prTitle}>
+							{prTitle}
+						</span>
 					) : references ? (
 						<span className="slideout-title">References</span>
 					) : (
@@ -167,9 +191,11 @@ export function Slideout({
 						aria-label={
 							preview
 								? "Close preview"
-								: references
-									? "Close references"
-									: "Close comments"
+								: prTitle !== null
+									? "Close pull requests"
+									: references
+										? "Close references"
+										: "Close comments"
 						}
 						onClick={onClose}
 					>
