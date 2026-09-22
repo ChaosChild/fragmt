@@ -8,10 +8,18 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vitest";
-import { sync } from "../src/core/index.js";
+import {
+	GitError,
+	githubPushUrl,
+	pushRefs,
+	scrubSecret,
+	sync,
+} from "../src/core/index.js";
 
-// sync = pullRebase then push, against a bare origin and real clones.
+// sync = pullRebase then a mirror push (--all, #27), against a bare origin
+// and real clones. Per-user pushes ride pushRefs (explicit URL + token env).
 // core.autocrlf is pinned false so byte-exact file assertions hold on Windows.
 
 const dirs: string[] = [];
@@ -81,6 +89,36 @@ function commitFile(root: string, name: string, body: string, message: string) {
 	run(root, ["add", "-A"]);
 	run(root, ["commit", "-q", "-m", message]);
 }
+
+/**
+ * A bare origin plus one work repo: main pushed (tracking set) and a second
+ * branch `topic` with its own commit. Base for the pushRefs/sync mirror tests.
+ */
+function bareAndWork(): { origin: string; work: string } {
+	const origin = mkdtempSync(join(tmpdir(), "fragmt-origin-"));
+	run(origin, ["init", "-q", "--bare", "-b", "main"]);
+	dirs.push(origin);
+
+	const work = repo("fragmt-work-");
+	run(work, ["remote", "add", "origin", origin]);
+	commitFile(work, "f.md", "seed\n", "seed");
+	run(work, ["push", "-q", "-u", "origin", "main"]);
+	run(work, ["checkout", "-q", "-b", "topic"]);
+	commitFile(work, "t.md", "topic\n", "topic work");
+	run(work, ["checkout", "-q", "main"]);
+	dirs.push(work);
+	return { origin, work };
+}
+
+const branches = (root: string) =>
+	execFileSync(
+		"git",
+		["for-each-ref", "refs/heads", "--format=%(refname:short)"],
+		{ cwd: root, encoding: "utf8" },
+	)
+		.trim()
+		.split("\n")
+		.filter(Boolean);
 
 const head = (root: string) =>
 	execFileSync("git", ["rev-parse", "HEAD"], {
@@ -163,14 +201,69 @@ test("a repo with no remote syncs as a no-op success", {
 	expect(status(root)).toBe("");
 });
 
-test("a remote without upstream tracking is also a no-op success", {
+test("a remote without upstream tracking: pull no-ops, sync still succeeds", {
 	timeout: 20_000,
 }, async () => {
 	const { b } = originAndClones();
 	run(b, ["branch", "--unset-upstream"]);
 	const preHead = head(b);
 
+	// No tracking → the rebase pull is skipped; the mirror push finds b's
+	// branches already at origin's tips, so nothing moves.
 	expect(await sync(b)).toEqual({ conflict: false });
 	expect(head(b)).toBe(preHead);
 	expect(status(b)).toBe("");
+});
+
+test("githubPushUrl: https, owner, repo, .git suffix", () => {
+	expect(githubPushUrl({ owner: "acme", repo: "fragmt" })).toBe(
+		"https://github.com/acme/fragmt.git",
+	);
+});
+
+test("scrubSecret: every GitError field loses the credential", () => {
+	const secret = Buffer.from("x-access-token:faketoken").toString("base64");
+	const e = new GitError(
+		`git push failed: ${secret}`,
+		128,
+		`fatal: ${secret}`,
+		`remote: ${secret}`,
+	);
+	const clean = scrubSecret(e, secret);
+	expect(clean.message).toBe("git push failed: <redacted>");
+	expect(clean.stderr).toBe("fatal: <redacted>");
+	expect(clean.stdout).toBe("remote: <redacted>");
+	expect(clean.exitCode).toBe(128);
+	expect(`${clean.message}${clean.stderr}${clean.stdout}`).not.toContain(
+		secret,
+	);
+});
+
+test("pushRefs: refspec + explicit URL mechanics over file:// (extraheader inert there)", {
+	timeout: 20_000,
+}, async () => {
+	const { origin, work } = bareAndWork();
+	await pushRefs(
+		work,
+		pathToFileURL(origin).href,
+		["topic:refs/heads/topic"],
+		"faketoken",
+	);
+	expect(branches(origin)).toContain("topic");
+});
+
+test("pushRefs with --all mirrors every branch", {
+	timeout: 20_000,
+}, async () => {
+	const { origin, work } = bareAndWork();
+	await pushRefs(work, pathToFileURL(origin).href, ["--all"], "faketoken");
+	expect(branches(origin)).toEqual(["main", "topic"]);
+});
+
+test("sync() mirrors every branch to origin (no `as`)", {
+	timeout: 20_000,
+}, async () => {
+	const { origin, work } = bareAndWork();
+	expect(await sync(work)).toEqual({ conflict: false });
+	expect(branches(origin)).toEqual(["main", "topic"]);
 });
