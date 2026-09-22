@@ -2465,6 +2465,32 @@ button.comment-quote:hover {
 .menu-note strong {
 	font-weight: 600;
 }
+/* #27 (b3): the BranchMenu row's PR chips – the okf-chip recipe (quiet,
+   hairline border), mono and compact; `.open` is the create affordance
+   (dashed). Theme variables only, so light and dark both read. */
+.pr-chip {
+	flex-shrink: 0;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	letter-spacing: 0.04em;
+	color: var(--muted);
+	border: 1px solid var(--border);
+	border-radius: 3px;
+	padding: 2px 5px;
+	background: transparent;
+	cursor: pointer;
+}
+.pr-chip:hover {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+.pr-chip.open {
+	border-style: dashed;
+}
+.pr-chip:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
 .iconbtn.danger {
 	color: var(--danger);
 	border-color: color-mix(in srgb, var(--danger) 45%, transparent);

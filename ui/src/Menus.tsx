@@ -11,7 +11,7 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { getBranches } from "./api";
+import { getBranches, getPRs, openPR } from "./api";
 import { popoverPosition } from "./popover-position";
 
 /** Every file operation the sidebar menus / doc head can request (App performs it). */
@@ -26,7 +26,11 @@ export type FileOp =
 export type BranchAction =
 	| { kind: "switch"; name: string }
 	| { kind: "create"; name: string }
-	| { kind: "delete"; name: string };
+	| { kind: "delete"; name: string }
+	/** #27 (b3): the row's PR chip – App opens the slideout on that PR. */
+	| { kind: "view-pr"; number: number }
+	/** #27 (b3): the open-PR popover's success – same slideout target. */
+	| { kind: "open-pr-created"; number: number };
 
 /** Docs must end in .md (core rule) – keep free-form input forgiving. */
 function toDocPath(input: string): string {
@@ -189,28 +193,53 @@ export function UserChip({
  * The sidebar-head branch control: reads as metadata ("on main"), opens a
  * small menu to switch, create, or delete a branch. Performing the action
  * (and the unsaved-changes guard on switches) is App's business.
+ * #27 (b3): when prsEnabled, opening also fetches GET /api/prs in parallel –
+ * each non-current row gains a PR chip (`PR #n` to view, dashed `open PR` to
+ * create, in-menu popover) and the trash gates on the merged list (D7).
  */
 export function BranchMenu({
 	current,
+	prsEnabled,
 	onAction,
 }: {
 	current: string | null;
+	prsEnabled: boolean;
 	onAction: (action: BranchAction) => void;
 }) {
 	const menu = useMenu();
 	const [branches, setBranches] = useState<string[] | null>(null);
+	const [merged, setMerged] = useState<string[] | null>(null);
 	const [failed, setFailed] = useState(false);
 	const [name, setName] = useState("");
+	// branch → its open PR (the only field the chips read); null = unfetched
+	// or failed – no chips either way, the menu still works.
+	const [byBranch, setByBranch] = useState<Record<
+		string,
+		{ number: number }
+	> | null>(null);
+	// The open-PR popover's branch (the NewDocButton mode swap) + its form.
+	const [openPrFor, setOpenPrFor] = useState<string | null>(null);
+	const [prBody, setPrBody] = useState("");
+	const [prError, setPrError] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (!menu.open) return;
+		if (!menu.open) {
+			setOpenPrFor(null);
+			setPrError(null);
+			return;
+		}
 		getBranches()
 			.then((r) => {
 				setBranches(r.branches);
+				setMerged(r.merged);
 				setFailed(false);
 			})
 			.catch(() => setFailed(true));
-	}, [menu.open]);
+		if (prsEnabled)
+			getPRs()
+				.then((r) => setByBranch(r.byBranch ?? {}))
+				.catch(() => setByBranch(null));
+	}, [menu.open, prsEnabled]);
 
 	function submit(e: FormEvent) {
 		e.preventDefault();
@@ -220,6 +249,26 @@ export function BranchMenu({
 		menu.close();
 		onAction({ kind: "create", name: n });
 	}
+
+	// Branch + optional description only – the title derives server-side.
+	// A failure keeps the form open with the server's error inline.
+	async function submitOpenPr(e: FormEvent) {
+		e.preventDefault();
+		const b = openPrFor;
+		if (!b) return;
+		try {
+			const pr = await openPR(b, prBody.trim() || undefined);
+			menu.close();
+			setOpenPrFor(null);
+			setPrBody("");
+			onAction({ kind: "open-pr-created", number: pr.number });
+		} catch (e2) {
+			setPrError(e2 instanceof Error ? e2.message : String(e2));
+		}
+	}
+
+	const prBy = (b: string) => byBranch?.[b] ?? null;
+	const isMerged = (b: string) => merged?.includes(b) ?? false;
 
 	return (
 		<span className="menu-wrap" ref={menu.wrapRef}>
@@ -236,51 +285,110 @@ export function BranchMenu({
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				{failed && <p className="menu-empty">branches unavailable</p>}
-				{(branches ?? []).map((b) => (
-					// One row, two targets: the name switches, the trash deletes
-					// (never offered on the current branch – the server refuses it).
-					<span key={b} className="menu-row">
-						<button
-							type="button"
-							className="menu-item"
-							aria-current={b === current ? "true" : undefined}
-							onClick={() => {
-								menu.close();
-								if (b !== current) onAction({ kind: "switch", name: b });
-							}}
-						>
-							{b}
-						</button>
-						{b !== current && (
-							<button
-								type="button"
-								className="tool-btn"
-								title="Delete branch"
-								aria-label={`Delete branch ${b}`}
-								onClick={() => {
-									menu.close();
-									onAction({ kind: "delete", name: b });
-								}}
-							>
-								<Trash2 aria-hidden="true" />
-							</button>
+				{openPrFor !== null ? (
+					<form className="popover-form" onSubmit={submitOpenPr}>
+						<p className="menu-note">
+							<strong>Open pull request</strong>
+							<br />
+							{openPrFor}
+						</p>
+						<label htmlFor="pr-desc">Description (optional)</label>
+						<textarea
+							id="pr-desc"
+							value={prBody}
+							onChange={(e) => setPrBody(e.target.value)}
+						/>
+						{prError && (
+							<p className="rename-error" role="alert">
+								{prError}
+							</p>
 						)}
-					</span>
-				))}
-				<form className="popover-form" onSubmit={submit}>
-					<label htmlFor="branch-name">New branch</label>
-					<input
-						id="branch-name"
-						value={name}
-						onChange={(e) => setName(e.target.value)}
-						placeholder="drafts/title"
-					/>
-					<div className="popover-actions">
-						<button type="submit" className="iconbtn primary">
-							Create
-						</button>
-					</div>
-				</form>
+						<div className="popover-actions">
+							<button type="submit" className="iconbtn primary">
+								Open PR
+							</button>
+						</div>
+					</form>
+				) : (
+					<>
+						{(branches ?? []).map((b) => {
+							const pr = prBy(b);
+							return (
+								// One row, three targets: the name switches, the PR chip
+								// views/creates (non-current rows only), the trash deletes
+								// (never offered on the current branch – the server refuses
+								// it; gated on merged, D7 – no force-delete from here).
+								<span key={b} className="menu-row">
+									<button
+										type="button"
+										className="menu-item"
+										aria-current={b === current ? "true" : undefined}
+										onClick={() => {
+											menu.close();
+											if (b !== current) onAction({ kind: "switch", name: b });
+										}}
+									>
+										{b}
+									</button>
+									{b !== current && pr && (
+										<button
+											type="button"
+											className="pr-chip"
+											title={`View pull request #${pr.number}`}
+											onClick={() => {
+												menu.close();
+												onAction({ kind: "view-pr", number: pr.number });
+											}}
+										>
+											PR #{pr.number}
+										</button>
+									)}
+									{b !== current && !pr && byBranch !== null && (
+										<button
+											type="button"
+											className="pr-chip open"
+											title="Open a pull request for this branch"
+											onClick={() => setOpenPrFor(b)}
+										>
+											open PR
+										</button>
+									)}
+									{b !== current && (
+										<button
+											type="button"
+											className="tool-btn"
+											disabled={!isMerged(b)}
+											title={isMerged(b) ? "Delete branch" : "Not merged yet"}
+											aria-label={`Delete branch ${b}`}
+											aria-disabled={!isMerged(b) || undefined}
+											onClick={() => {
+												if (!isMerged(b)) return;
+												menu.close();
+												onAction({ kind: "delete", name: b });
+											}}
+										>
+											<Trash2 aria-hidden="true" />
+										</button>
+									)}
+								</span>
+							);
+						})}
+						<form className="popover-form" onSubmit={submit}>
+							<label htmlFor="branch-name">New branch</label>
+							<input
+								id="branch-name"
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								placeholder="drafts/title"
+							/>
+							<div className="popover-actions">
+								<button type="submit" className="iconbtn primary">
+									Create
+								</button>
+							</div>
+						</form>
+					</>
+				)}
 			</MenuPopover>
 		</span>
 	);

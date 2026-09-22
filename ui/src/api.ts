@@ -116,6 +116,9 @@ export async function saveDoc(
 export interface BranchesResponse {
 	current: string;
 	branches: string[];
+	/** #27 (D7): branches merged into local main – the delete gate. A repo
+	 *  with no main answers ALL branches (gate open). */
+	merged: string[];
 }
 
 /** Mirror of the core SyncResult. */
@@ -618,3 +621,68 @@ export function authView(session: AuthSession): "off" | "signin" | "app" {
 	if (!session.enabled) return "off";
 	return session.user ? "app" : "signin";
 }
+
+// --- #27: pull requests ------------------------------------------------------
+
+/** The PR wire shape (server prSummary) – exactly the fields the UI reads. */
+export interface PrSummary {
+	number: number;
+	title: string;
+	state: "open" | "closed";
+	draft: boolean;
+	mergeable: boolean | null;
+	html_url: string;
+	head: { ref: string; sha: string };
+	base: { ref: string };
+	user: { login: string };
+	changed_files: number;
+}
+
+export interface PrFile {
+	filename: string;
+	status: string;
+	additions: number;
+	deletions: number;
+	patch?: string;
+}
+
+/** GET /api/prs: auth off answers {enabled:false}, a non-GitHub origin
+ *  {enabled:true, slug:null} – the prs/byBranch fields exist only on the ok
+ *  answer (read them as []/{}). Availability = enabled && slug != null. */
+export interface PrsResponse {
+	enabled: boolean;
+	slug?: { owner: string; repo: string } | null;
+	prs?: PrSummary[];
+	byBranch?: Record<string, { number: number; title: string; state: string }>;
+}
+
+export const getPRs = () => request<PrsResponse>("/api/prs");
+
+/** Branch + optional description only – the title derives server-side from
+ *  the branch name. 201 created and the 200 duplicate (idempotent) both
+ *  answer the PrSummary. */
+export const openPR = (branch: string, body?: string) =>
+	request<PrSummary>("/api/prs", {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ branch, ...(body === undefined ? {} : { body }) }),
+	});
+
+/** One 20-file page – a page with <20 files is the last. */
+export const getPR = (n: number, filesPage = 1) =>
+	request<{ pr: PrSummary; files: PrFile[]; filesPage: number }>(
+		`/api/prs/${n}?files_page=${filesPage}`,
+	);
+
+export const pushPR = (n: number, branch: string) =>
+	request<{ pushed: boolean }>(`/api/prs/${n}/push`, {
+		method: "POST",
+		headers: JSON_HEADERS,
+		body: JSON.stringify({ branch }),
+	});
+
+export const mergePR = (n: number) =>
+	request<{ merged: true } | { conflicted: true; html_url: string }>(
+		`/api/prs/${n}/merge`,
+		{ method: "POST" },
+	);

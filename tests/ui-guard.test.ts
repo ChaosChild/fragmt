@@ -22,14 +22,17 @@ import {
 import { type ComponentProps, createElement } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { App } from "../ui/src/App.js";
+import { AuthGate } from "../ui/src/AuthGate.js";
 import type {
 	DocGraph,
 	DocResponse,
+	PrSummary,
 	RepoMeta,
 	TreeNode,
 } from "../ui/src/api.js";
 import { DocView } from "../ui/src/DocView.js";
 import { GraphView } from "../ui/src/GraphView.js";
+import { type BranchAction, BranchMenu } from "../ui/src/Menus.js";
 
 // RTL wraps render/fireEvent/waitFor in act; React 19 requires the flag.
 (
@@ -515,5 +518,231 @@ describe("App: the graph entry + lens (rung 5)", () => {
 		expect(
 			screen.queryByRole("button", { name: "Reference graph" }),
 		).toBeNull();
+	});
+});
+
+// --- #27 (b3): the PR entry points ---------------------------------------------
+//
+// The PR surface exists only under auth (App's useAuth() non-null) AND a
+// github.com origin (GET /api/prs answers slug non-null) – the same fetch
+// stubbing pattern as above, layered over mockFetch with a signed-in session
+// and the b2 wire shapes.
+
+const PR12: PrSummary = {
+	number: 12,
+	title: "Docs: the feat branch",
+	state: "open",
+	draft: false,
+	mergeable: true,
+	html_url: "https://github.com/o/r/pull/12",
+	head: { ref: "feat", sha: "abc123" },
+	base: { ref: "main" },
+	user: { login: "tester" },
+	changed_files: 2,
+};
+
+// current = "work": main is merged (trash acts, no PR → the open-PR chip),
+// feat is unmerged (trash disabled, D7) and carries PR #12 (the view chip).
+const BRANCHES_PR = {
+	current: "work",
+	branches: ["main", "work", "feat"],
+	merged: ["main"],
+};
+
+function prFetch(
+	opts: {
+		slug?: { owner: string; repo: string } | null;
+		openPrAnswer?: Response;
+	} = {},
+) {
+	return async (
+		input: RequestInfo | URL,
+		init?: RequestInit,
+	): Promise<Response> => {
+		const url = new URL(String(input), "http://localhost");
+		if (url.pathname === "/api/auth/session")
+			return jsonResponse({
+				enabled: true,
+				user: { login: "tester" },
+				canWrite: true,
+			});
+		if (url.pathname === "/api/prs") {
+			// The create: the client sends branch + optional body only; the
+			// duplicate/idempotent answer (200 with a PrSummary) covers both.
+			if ((init?.method ?? "GET") === "POST")
+				return opts.openPrAnswer ?? jsonResponse({ ...PR12, number: 13 });
+			return jsonResponse({
+				enabled: true,
+				slug: "slug" in opts ? opts.slug : { owner: "o", repo: "r" },
+				prs: [PR12],
+				byBranch: { feat: { number: 12, title: PR12.title, state: "open" } },
+			});
+		}
+		if (url.pathname === "/api/branches") return jsonResponse(BRANCHES_PR);
+		return mockFetch(input);
+	};
+}
+
+/** App under a signed-in gate – useAuth() non-null is the PR surface's gate. */
+async function renderAuthedApp(
+	fetchImpl: (url: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+) {
+	vi.stubGlobal("fetch", vi.fn(fetchImpl));
+	const view = render(createElement(AuthGate, null, createElement(App)));
+	await view.findByRole("button", { name: "Edit" });
+	return view;
+}
+
+function prviewTarget(): string | null {
+	return (
+		document.querySelector(".app-frame")?.getAttribute("data-prview") ?? null
+	);
+}
+
+describe("App: the PR entry points (#27 b3)", () => {
+	test("the PR button hides while auth is off (local mode)", async () => {
+		await renderAppReady();
+		expect(screen.queryByRole("button", { name: "Pull requests" })).toBeNull();
+	});
+
+	test("under auth on a GitHub origin it shows and sets the list target", async () => {
+		await renderAuthedApp(prFetch());
+		fireEvent.click(
+			await screen.findByRole("button", { name: "Pull requests" }),
+		);
+		expect(prviewTarget()).toBe("list");
+	});
+
+	test("hidden on a non-GitHub origin (slug null)", async () => {
+		await renderAuthedApp(prFetch({ slug: null }));
+		expect(screen.queryByRole("button", { name: "Pull requests" })).toBeNull();
+	});
+
+	test("the BranchMenu chip sets the pr:<n> target", async () => {
+		await renderAuthedApp(prFetch());
+		fireEvent.click(
+			screen.getByRole("button", { name: "Branch: work. Switch branch" }),
+		);
+		fireEvent.click(await screen.findByText("PR #12"));
+		await waitFor(() => expect(prviewTarget()).toBe("pr:12"));
+	});
+});
+
+describe("BranchMenu: PR chips + the merged gate (#27 b3)", () => {
+	function openMenu(onAction: (action: BranchAction) => void) {
+		vi.stubGlobal("fetch", vi.fn(prFetch()));
+		render(
+			createElement(BranchMenu, {
+				current: "work",
+				prsEnabled: true,
+				onAction,
+			}),
+		);
+		fireEvent.click(
+			screen.getByRole("button", { name: "Branch: work. Switch branch" }),
+		);
+	}
+
+	test("chip states: PR #n on the PR'd branch, dashed open PR on the rest; the trash gates on merged", async () => {
+		const onAction = vi.fn();
+		openMenu(onAction);
+
+		// feat has an open PR → the view chip; main doesn't → the create chip.
+		expect(await screen.findByText("PR #12")).toBeTruthy();
+		expect(
+			screen.getByTitle("Open a pull request for this branch"),
+		).toBeTruthy();
+
+		// D7: main is merged → the trash acts; feat is not → disabled with the
+		// tooltip, no force-delete affordance.
+		const mainTrash = screen.getByRole("button", {
+			name: "Delete branch main",
+		}) as HTMLButtonElement;
+		const featTrash = screen.getByRole("button", {
+			name: "Delete branch feat",
+		}) as HTMLButtonElement;
+		expect(mainTrash.disabled).toBe(false);
+		expect(featTrash.disabled).toBe(true);
+		expect(featTrash.title).toBe("Not merged yet");
+		expect(featTrash.getAttribute("aria-disabled")).toBe("true");
+
+		// The chip routes through App: view-pr with the PR number.
+		fireEvent.click(screen.getByText("PR #12"));
+		expect(onAction).toHaveBeenCalledWith({ kind: "view-pr", number: 12 });
+	});
+
+	test("the open-PR popover submits openPR with branch + description and fires the success action", async () => {
+		const onAction = vi.fn();
+		openMenu(onAction);
+
+		fireEvent.click(
+			await screen.findByTitle("Open a pull request for this branch"),
+		);
+		expect(await screen.findByText("Open pull request")).toBeTruthy();
+		expect(screen.getByText("main")).toBeTruthy();
+		fireEvent.change(screen.getByLabelText("Description (optional)"), {
+			target: { value: "Adds the a doc" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: "Open PR" }));
+
+		await waitFor(() =>
+			expect(onAction).toHaveBeenCalledWith({
+				kind: "open-pr-created",
+				number: 13,
+			}),
+		);
+		// The client contract: branch + body only – the title derives server-side.
+		const post = vi
+			.mocked(fetch)
+			.mock.calls.find(
+				([u, init]) => String(u) === "/api/prs" && init?.method === "POST",
+			);
+		expect(post).toBeTruthy();
+		expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+			branch: "main",
+			body: "Adds the a doc",
+		});
+		// Close everything: the menu (and its popover form) is gone.
+		await waitFor(() =>
+			expect(screen.queryByText("Open pull request")).toBeNull(),
+		);
+	});
+
+	test("a failed open keeps the form open with the server error inline", async () => {
+		const onAction = vi.fn();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				prFetch({
+					openPrAnswer: new Response(
+						JSON.stringify({ error: "github unreachable" }),
+						{
+							status: 502,
+							headers: { "content-type": "application/json" },
+						},
+					),
+				}),
+			),
+		);
+		render(
+			createElement(BranchMenu, {
+				current: "work",
+				prsEnabled: true,
+				onAction,
+			}),
+		);
+		fireEvent.click(
+			screen.getByRole("button", { name: "Branch: work. Switch branch" }),
+		);
+		fireEvent.click(
+			await screen.findByTitle("Open a pull request for this branch"),
+		);
+		fireEvent.click(await screen.findByRole("button", { name: "Open PR" }));
+
+		const alert = await screen.findByRole("alert");
+		expect(alert.textContent).toBe("github unreachable");
+		// The form stays open, nothing fired.
+		expect(screen.getByRole("button", { name: "Open PR" })).toBeTruthy();
+		expect(onAction).not.toHaveBeenCalled();
 	});
 });

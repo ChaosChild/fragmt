@@ -1,4 +1,10 @@
-import { ChevronsLeft, ChevronsRight, Search, Waypoints } from "lucide-react";
+import {
+	ChevronsLeft,
+	ChevronsRight,
+	GitPullRequest,
+	Search,
+	Waypoints,
+} from "lucide-react";
 import {
 	type CSSProperties,
 	useCallback,
@@ -7,6 +13,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useAuth } from "./AuthGate";
 import {
 	type CommentFile,
 	type CommentThread,
@@ -27,6 +34,7 @@ import {
 	getComments,
 	getDoc,
 	getMeta,
+	getPRs,
 	getTree,
 	MergeError,
 	mergeDraft,
@@ -73,6 +81,11 @@ import {
 	storeSlideoutShare,
 } from "./slideout-geometry";
 import { ThemeToggle } from "./ThemeToggle";
+
+/** #27 (b3): the slideout's PR target – the list, or one PR by number.
+ *  App owns it; the entry points (brand-row/topbar button, BranchMenu
+ *  chips) set it, the slideout's PR mode renders it (b4). */
+export type PrView = { kind: "list" } | { kind: "pr"; n: number };
 
 function firstDoc(node: TreeNode): string | null {
 	for (const child of node.children ?? []) {
@@ -175,6 +188,22 @@ export function App() {
 	// Whether a sync has confirmed the latest local commit – splits the
 	// amber word: Saved (committed, not yet synced) vs Synced (green).
 	const [synced, setSynced] = useState(true);
+
+	// --- #27 (b3): the PR surface's boot state. Availability = auth on AND
+	// a github.com origin (enabled && slug non-null); a fetch failure reads
+	// as unavailable. prView is the slideout's PR target (b4 renders it) –
+	// PR actions never navigate the editor, so no dirty-guard/Escape slots.
+	const auth = useAuth();
+	const [prAvailable, setPrAvailable] = useState(false);
+	const [prView, setPrView] = useState<PrView | null>(null);
+	const refreshPrAvailable = useCallback(() => {
+		getPRs()
+			.then((r) => setPrAvailable(r.enabled && (r.slug ?? null) !== null))
+			.catch(() => setPrAvailable(false));
+	}, []);
+	useEffect(() => {
+		if (auth) refreshPrAvailable();
+	}, [auth, refreshPrAvailable]);
 
 	// --- comments (M4-5): App owns the sidecar state – the pane's thread
 	// list and DocView's create-notification both read from this one fetch;
@@ -515,7 +544,9 @@ export function App() {
 	}
 
 	// --- branches: switching reloads tree + open doc from the new branch.
-	async function switchTo(action: BranchAction) {
+	// Only the name-carrying actions ever reach here – the PR actions (#27
+	// b3) and delete are handled before the guard in requestBranch.
+	async function switchTo(action: Extract<BranchAction, { name: string }>) {
 		try {
 			if (action.kind === "create") await createBranch(action.name);
 			else await checkoutBranch(action.name);
@@ -555,37 +586,39 @@ export function App() {
 	}
 
 	// Branch switches pass through the guard; deletion skips it – it never
-	// touches the worktree or the checked-out branch.
+	// touches the worktree or the checked-out branch. The PR actions
+	// (#27 b3) set the slideout's PR target – never an editor navigation,
+	// so they skip the guard by design.
 	function requestBranch(action: BranchAction) {
 		if (action.kind === "delete") {
 			void runDeleteBranch(action.name);
 			return;
 		}
+		if (action.kind === "view-pr") {
+			setPrView({ kind: "pr", n: action.number });
+			return;
+		}
+		if (action.kind === "open-pr-created") {
+			setPrView({ kind: "pr", n: action.number });
+			refreshPrAvailable();
+			return;
+		}
 		guardAction(`Switch to ${action.name}`, () => void switchTo(action));
 	}
 
-	// Branch deletion (M4-3): confirm → DELETE; an unmerged 409 asks again
-	// before the force delete. The server refuses the current branch, so the
-	// worktree is never touched – no dirty guard. BranchMenu refetches its
-	// list on open; meta and the branch line refresh here.
+	// Branch deletion (M4-3, #27 D7): confirm → normal DELETE only. The
+	// unmerged trash is disabled in BranchMenu (the merged gate), so the
+	// force-delete affordance is gone from the UI – the server keeps the
+	// capability. The server refuses the current branch, so the worktree is
+	// never touched – no dirty guard. BranchMenu refetches its list on open;
+	// meta and the branch line refresh here.
 	async function runDeleteBranch(name: string) {
 		if (!window.confirm(`Delete branch "${name}"?`)) return;
 		try {
 			await deleteBranch(name);
 		} catch (e) {
-			if (e instanceof SaveError && e.status === 409) {
-				if (!window.confirm(`"${name}" has unmerged commits. Force-delete?`))
-					return;
-				try {
-					await deleteBranch(name, true);
-				} catch (e2) {
-					setError(e2 instanceof Error ? e2.message : String(e2));
-					return;
-				}
-			} else {
-				setError(e instanceof Error ? e.message : String(e));
-				return;
-			}
+			setError(e instanceof Error ? e.message : String(e));
+			return;
 		}
 		setError(null);
 		refreshMeta();
@@ -1179,7 +1212,26 @@ export function App() {
 			<Search aria-hidden="true" />
 		</button>
 	);
-	const branchMenu = <BranchMenu current={branch} onAction={requestBranch} />;
+	// #27 (b3): the PR list's entry, beside ⌕ in both head locations.
+	// Availability (auth on + github origin) drives the hiding everywhere.
+	const prBtn = prAvailable && (
+		<button
+			type="button"
+			className="tool-btn"
+			title="Pull requests"
+			aria-label="Pull requests"
+			onClick={() => setPrView({ kind: "list" })}
+		>
+			<GitPullRequest aria-hidden="true" />
+		</button>
+	);
+	const branchMenu = (
+		<BranchMenu
+			current={branch}
+			prsEnabled={prAvailable}
+			onAction={requestBranch}
+		/>
+	);
 	// Resolution mode owns the merge act – the button hides until the
 	// standing merge finishes or aborts (both locations).
 	const mergeBtn = !inResolution && (
@@ -1227,7 +1279,18 @@ export function App() {
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
-			<div className="app-frame">
+			<div
+				className="app-frame"
+				// #27 (b3): the pending PR target, readable until b4 renders the
+				// slideout mode from it ("list" | "pr:<n>" – absent = closed).
+				data-prview={
+					prView
+						? prView.kind === "list"
+							? "list"
+							: `pr:${prView.n}`
+						: undefined
+				}
+			>
 				{/* Collapsed chrome (#15): while the sidebar is tucked away, the
 				    topbar carries what its head held – expand, brand, branch,
 				    Merge, new doc, search, theme, sync LED. The fixed actions
@@ -1253,6 +1316,7 @@ export function App() {
 						    The sync LED lives in the rail head alone (redundant
 						    here). */}
 						{searchBtn}
+						{prBtn}
 						{newDocBtn}
 						{graphBtn}
 						<ThemeToggle />
@@ -1289,6 +1353,7 @@ export function App() {
 								<span className="brand">fragmt</span>
 								<div className="side-head-spacer" />
 								{searchBtn}
+								{prBtn}
 								{newDocBtn}
 								{graphBtn}
 								{/* Moved from the rail head (#15) – the sidebar head is
