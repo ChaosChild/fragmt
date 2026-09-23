@@ -246,6 +246,38 @@ test("status: empty draft model is definitive, hints still concrete", async () =
 	expect(r.out[4]).toBe("  fragmt agent draft a.md");
 });
 
+test("status hints: alphabetical pick, stable across commit order, never AGENTS.md (#47)", async () => {
+	const root = seeded();
+	const first = await agent(root, ["status"]);
+	expect(first.out.at(-2)).toBe("  fragmt agent comment a.md");
+
+	// b.md commits later – git-log order would put it first; the hint stays a.md.
+	write(root, "docs/b.md", "# b\n");
+	commit(root, "add b");
+	const second = await agent(root, ["status"]);
+	expect(second.out.at(-2)).toBe("  fragmt agent comment a.md");
+
+	// AGENTS.md adopted as a doc never becomes the hint, whatever the order.
+	write(root, "docs/AGENTS.md", "# contract\n");
+	commit(root, "adopt agents as a doc");
+	const withAgents = await agent(root, ["status"]);
+	expect(withAgents.out.at(-2)).toBe("  fragmt agent comment a.md");
+	expect(withAgents.out.join("\n")).not.toContain("AGENTS.md");
+
+	// AGENTS.md as the only doc: the doc hint is skipped entirely.
+	const only = repo();
+	write(only, "docs/AGENTS.md", "# contract\n");
+	commit(only, "seed");
+	initRepo(only, "docs");
+	commit(only, "adopt docs root");
+	const agentsOnly = await agent(only, ["status"]);
+	// One hint only, so it is the last line.
+	expect(agentsOnly.out.at(-1)).toBe(
+		"  fragmt serve – create the first doc in the UI",
+	);
+	expect(agentsOnly.out.join("\n")).not.toContain("AGENTS.md");
+});
+
 test("comment: listing rows + aggregate; empty sidecar state", async () => {
 	const root = seeded();
 	await addThread(root, "a.md", "t1", "the marked text", "looks wrong");
@@ -259,9 +291,28 @@ test("comment: listing rows + aggregate; empty sidecar state", async () => {
 	]);
 	expect(r.out[3]).toBe("  fragmt agent comment a.md --thread t1 --full");
 
-	const none = await agent(root, ["comment", "missing.md"]);
+	// #46 control: a real doc with zero threads still reads as the empty state.
+	write(root, "docs/empty.md", "# empty\n");
+	commit(root, "add empty");
+	const none = await agent(root, ["comment", "empty.md"]);
 	expect(none.code).toBe(0);
 	expect(none.out[0]).toBe("threads[0]: none – 0 of 0 total, 0 open");
+
+	// #46: a nonexistent doc is refused, not an empty listing.
+	const ghost = await agent(root, ["comment", "missing.md"]);
+	expect(ghost.code).toBe(1);
+	expect(ghost.out[0]).toBe("error: no doc missing.md");
+	// The thread path shares the guard – a missing doc has no threads either.
+	const ghostThread = await agent(root, [
+		"comment",
+		"missing.md",
+		"--thread",
+		"t1",
+		"--body",
+		"x",
+	]);
+	expect(ghostThread.code).toBe(1);
+	expect(ghostThread.out[0]).toBe("error: no doc missing.md");
 });
 
 test("comment --thread: detail truncates at 120; --full untruncates", async () => {

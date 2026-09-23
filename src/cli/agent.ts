@@ -175,7 +175,12 @@ function statusHints(meta: RepoMeta): string[] {
 			"fragmt serve – finish or abort the standing merge in the UI",
 			"fragmt agent status – re-check merge state",
 		];
-	const doc = Object.keys(meta.docs)[0];
+	// #47: git-log order is "whatever committed last" – pick alphabetically,
+	// and never AGENTS.md: the contract file is not a drafting target (if it
+	// is the only doc, doc stays undefined and the hint is skipped).
+	const doc = Object.keys(meta.docs)
+		.sort()
+		.find((d) => d.split("/").pop() !== "AGENTS.md");
 	const draft = Object.entries(meta.drafts).flatMap(([d, es]) =>
 		es.map((e) => ({ doc: d, branch: e.branch })),
 	)[0];
@@ -261,6 +266,7 @@ async function runStatus(
 
 async function runComment(
 	repoRoot: string,
+	docsRoot: string,
 	parsed: { values: AgentValues; positionals: string[] },
 	out: (s: string) => void,
 ): Promise<number> {
@@ -268,6 +274,14 @@ async function runComment(
 	const doc = positionals[0];
 	if (doc === undefined) {
 		out("error: comment needs a doc path (docsRoot-relative .md)");
+		return 1;
+	}
+	// #46: a missing doc used to list as "no threads" with exit 0 – the same
+	// resolve-and-refuse as draft/verify, once here for the listing and the
+	// thread paths alike (a nonexistent doc has neither).
+	const abs = resolveDocPath(repoRoot, docsRoot, doc);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		out(`error: no doc ${doc}`);
 		return 1;
 	}
 	if (
@@ -617,7 +631,8 @@ export async function runAgent(
 	try {
 		const docsRoot = loadConfig(repoRoot).docsRoot;
 		if (verb === "status") return await runStatus(repoRoot, docsRoot, out);
-		if (verb === "comment") return await runComment(repoRoot, parsed, out);
+		if (verb === "comment")
+			return await runComment(repoRoot, docsRoot, parsed, out);
 		if (verb === "verify")
 			return await runVerify(repoRoot, docsRoot, parsed, out);
 		if (verb === "save") return await runSave(repoRoot, docsRoot, parsed, out);
