@@ -18,6 +18,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
+import { runAgent } from "../src/cli/agent.js";
 import { runInit, runValidate } from "../src/cli/index.js";
 import {
 	AGENTS_BEGIN,
@@ -376,4 +377,56 @@ test("validate exit codes: 2 with the hint off-mode, 0 when conformant", async (
 	const good = sink();
 	expect(await runValidate(false, okf, good.write)).toBe(0);
 	expect(good.lines.join("")).toContain("conformant\n");
+});
+
+test("#50: with docsRoot '.', the root index never catalogs AGENTS.md – init, save, and --fix all hold", async () => {
+	const root = repo();
+	put(root, "guide.md", "---\ntype: Metric\n---\n\n# G\n");
+	put(root, "sub/deep.md", "---\ntype: Playbook\n---\n\n# D\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	// The save body lives outside the repo – a .md inside would be a doc.
+	const bodyDir = mkdtempSync(join(tmpdir(), "fragmt-body-"));
+	dirs.push(bodyDir);
+	writeFileSync(join(bodyDir, "body.md"), "# G v2\n");
+	const noAgents = () => {
+		const index = readFileSync(join(root, "index.md"), "utf8");
+		expect(index).toContain("* [guide](/guide.md)");
+		expect(index).toContain("# Subdirectories");
+		expect(index).not.toContain("AGENTS");
+	};
+
+	// init writes the frontmatter-carrying AGENTS.md itself – the bundle
+	// adopts it as a doc, the generated root index still leaves it out.
+	expect(await runInit(".", root, sink().write, { okf: true })).toBe(0);
+	noAgents();
+
+	// A save that changes directory membership (a new doc) regenerates the
+	// index on the draft branch – the new entry lands, AGENTS stays out.
+	writeFileSync(join(bodyDir, "fresh.md"), "# F\n");
+	expect(
+		await runAgent(
+			["save", "fresh.md", "--file", join(bodyDir, "fresh.md")],
+			root,
+			() => {},
+		),
+	).toBe(0);
+	const saved = readFileSync(join(root, "index.md"), "utf8");
+	expect(saved).toContain("* [fresh](/fresh.md)");
+	expect(saved).not.toContain("AGENTS");
+
+	// A hand-mangled index with the entry restored is rewritten without it.
+	put(
+		root,
+		"index.md",
+		'---\nokf_version: "0.2"\n---\n\n# Metric\n\n* [AGENTS](/AGENTS.md)\n* [guide](/guide.md)\n',
+	);
+	const fixed = sink();
+	expect(await runValidate(true, root, fixed.write)).toBe(0);
+	expect(fixed.lines.join("")).toContain("fixed");
+	noAgents();
+
+	const check = sink();
+	expect(await runValidate(false, root, check.write)).toBe(0);
+	expect(check.lines.join("")).toContain("conformant");
 });

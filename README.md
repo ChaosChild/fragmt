@@ -263,6 +263,14 @@ block into `AGENTS.md`, teaching any agent the drafting rules; with
 contract, the reserved and generated files, which fields fragmt owns, and
 the `verify`/`validate` loop. Nothing outside the markers is touched.
 
+On Windows with git's default `core.autocrlf`, every content commit prints
+`warning: … LF will be replaced by CRLF the next time Git touches it`. That is
+git's working-copy layer talking, not a fragmt problem: fragmt stores doc
+bodies as LF and canonicalizes them on every read and write, so the warning
+never reflects a change to the repository. It is noise – no action is needed.
+If the noise bothers you, `git config core.autocrlf` (user level) is the knob;
+fragmt adds no `.gitattributes` of its own.
+
 ## Configuration
 
 `.fragmt.json` at the repo root is the whole configuration surface:
