@@ -52,6 +52,7 @@ Usage:
   fragmt agent [status]
   fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor <who>] [--full]
   fragmt agent draft <doc> [--merge] [--as-actor <who>]
+  fragmt agent save <doc> (--file <path> | --stdin) [--author <who>] [--message <text>]
   fragmt agent verify <doc> [--as-actor <who>] [--author <who>]
   fragmt --help
 
@@ -61,7 +62,7 @@ Commands:
   serve    Start the local web server
   validate Check OKF conformance (§11); --fix applies the mechanical repairs in one commit
   export   The OKF reference graph – json (default), mermaid, or dot; --bundle zips the docs working tree
-  agent    The agent surface: status, comment, draft, verify (AXI-conformant)
+  agent    The agent surface: status, save, comment, draft, verify (AXI-conformant)
            --as-actor self-declares the OKF trust actor (default fragmt-agent/unspecified)
 `;
 

@@ -24,6 +24,7 @@ import {
 	type CommentThread,
 	initRepo,
 	readComments,
+	readDoc,
 } from "../src/core/index.js";
 
 // M4-4 b4: the pure AXI formatters directly, then runAgent end-to-end on temp
@@ -550,6 +551,17 @@ test("mid-merge: comment and draft mutations are refused with the guard text", a
 	expect(draft.out[0]).toBe(
 		"error: a merge is in progress – finish or abort it first",
 	);
+
+	const save = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("# mid-merge\n"),
+	]);
+	expect(save.code).toBe(1);
+	expect(save.out[0]).toBe(
+		"error: a merge is in progress – finish or abort it first",
+	);
 });
 
 test("unresolvable conflict: aborted fallback lists the files", async () => {
@@ -572,6 +584,141 @@ test("unresolvable conflict: aborted fallback lists the files", async () => {
 	// Aborted: back on the draft, nothing standing.
 	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("drafts/r");
 	expect(run(root, ["branch", "--list", "drafts/r"])).not.toBe("");
+});
+
+// --- save: the content verb (#41) ----------------------------------------------
+
+/** A --file body fixture outside the repo (never pollutes the tree). */
+function bodyFile(content: string): string {
+	const dir = mkdtempSync(join(tmpdir(), "fragmt-savebody-"));
+	dirs.push(dir);
+	const abs = join(dir, "body.md");
+	writeFileSync(abs, content);
+	return abs;
+}
+
+/** seeded() with the OKF flag on and a.md/b.md born conformant. */
+function okfSeeded(): string {
+	const root = repo();
+	write(root, "docs/a.md", "---\ntype: concept\n---\n\n# A\n");
+	write(root, "docs/b.md", "---\ntype: concept\n---\n\n# B\n");
+	commit(root, "seed");
+	initRepo(root, "docs", true);
+	commit(root, "adopt docs root");
+	return root;
+}
+
+test("save on main auto-drafts: lands on drafts/<slug>, main untouched", async () => {
+	const root = seeded();
+	const r = await agent(root, ["save", "a.md", "--file", bodyFile("# a v2\n")]);
+	expect(r.code).toBe(0);
+	expect(r.out[0]).toMatch(
+		/^ok: saved a\.md on drafts\/a \([0-9a-f]{7}\) · auto-drafted from main$/,
+	);
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("drafts/a");
+	expect(readFileSync(join(root, "docs/a.md"), "utf8")).toBe("# a v2\n");
+	expect(run(root, ["show", "main:docs/a.md"])).toBe("# a");
+	// The honest default message names the verb and the doc.
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe("agent save a.md");
+});
+
+test("save while already on the doc's draft branch: lands directly, no new branch", async () => {
+	const root = seeded();
+	run(root, ["checkout", "-q", "-b", "drafts/a"]);
+	const r = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("# direct\n"),
+	]);
+	expect(r.code).toBe(0);
+	expect(r.out[0]).toMatch(/^ok: saved a\.md on drafts\/a \([0-9a-f]{7}\)$/);
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("drafts/a");
+	expect(
+		run(root, [
+			"for-each-ref",
+			"--format=%(refname:short)",
+			"refs/heads/drafts",
+		]),
+	).toBe("drafts/a"); // the one that already existed – nothing was created
+	expect(readFileSync(join(root, "docs/a.md"), "utf8")).toBe("# direct\n");
+});
+
+test("save of a new doc in an OKF repo: born with type concept and status draft", async () => {
+	const root = okfSeeded();
+	const r = await agent(root, [
+		"save",
+		"new-doc.md",
+		"--file",
+		bodyFile("# New\n"),
+	]);
+	expect(r.code).toBe(0);
+	expect(r.out[0]).toMatch(
+		/^ok: saved new-doc\.md on drafts\/new-doc \([0-9a-f]{7}\) · auto-drafted from main$/,
+	);
+	const doc = readDoc(root, "docs", "new-doc.md");
+	expect(doc.frontmatter.type).toBe("concept");
+	expect(doc.frontmatter.status).toBe("draft");
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe(
+		"drafts/new-doc",
+	);
+});
+
+test("OKF save semantics ride the commit: refs settled, generated stamped, author carried", async () => {
+	const root = okfSeeded();
+	const r = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("# A\n\nSee [B](/b.md).\n"),
+		"--author",
+		"Zed Agent",
+		"--message",
+		"docs: rewrite a",
+	]);
+	expect(r.code).toBe(0);
+	const a = readDoc(root, "docs", "a.md");
+	expect(a.frontmatter.references).toEqual(["b.md"]);
+	expect((a.frontmatter.generated as { by: string }).by).toBe(
+		"human:zed-agent",
+	);
+	expect(readDoc(root, "docs", "b.md").frontmatter["referenced-by"]).toEqual([
+		"a.md",
+	]);
+	// ONE commit carries doc + target – nothing left for merge-time healing.
+	expect(
+		run(root, ["show", "--name-only", "--format=", "HEAD"]).split("\n"),
+	).toEqual(["docs/a.md", "docs/b.md"]);
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe("docs: rewrite a");
+	// --author is the commit author AND committer (this round's commitAs).
+	expect(run(root, ["log", "-1", "--format=%an"])).toBe("Zed Agent");
+	expect(run(root, ["log", "-1", "--format=%cn"])).toBe("Zed Agent");
+	expect(run(root, ["log", "-1", "--format=%ce"])).toBe(
+		"zed-agent@users.noreply.fragmt",
+	);
+});
+
+test("save: missing doc/body source and a nonexistent --file are one-line errors", async () => {
+	const root = seeded();
+	const noDoc = await agent(root, ["save"]);
+	expect(noDoc.code).toBe(1);
+	expect(noDoc.out[0]).toBe(
+		"error: save needs a doc path (docsRoot-relative .md)",
+	);
+
+	// Zero or two body sources is a usage error, like an unknown flag.
+	const neither = await agent(root, ["save", "a.md"]);
+	expect(neither.code).toBe(2);
+	expect(neither.out[0]).toBe(
+		"error: save needs exactly one body source – --file <path> or --stdin",
+	);
+	const both = await agent(root, ["save", "a.md", "--file", "x.md", "--stdin"]);
+	expect(both.code).toBe(2);
+
+	const missing = join(root, "nope.md");
+	const bad = await agent(root, ["save", "a.md", "--file", missing]);
+	expect(bad.code).toBe(1);
+	expect(bad.out[0]).toBe(`error: --file not found: ${missing}`);
 });
 
 // --- init: the avatar-path notice (rung B) -----------------------------------

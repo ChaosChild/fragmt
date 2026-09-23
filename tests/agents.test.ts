@@ -101,3 +101,9 @@ test("isAgent: exact-name membership against the config list", () => {
 	expect(isAgent("claude", ["Claude"])).toBe(false);
 	expect(isAgent("Anyone", [])).toBe(false);
 });
+
+test("the taught first rule names agent save – the drafting write path", () => {
+	expect(AGENTS_BODY).toContain(
+		"Run `fragmt agent save <doc> --file <body>` (it drafts automatically)",
+	);
+});

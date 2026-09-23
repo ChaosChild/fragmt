@@ -6,7 +6,9 @@ import {
 	addReply,
 	type CommentThread,
 	commitAs,
+	createDoc,
 	currentBranch,
+	docHash,
 	GitIdentityError,
 	inMerge,
 	loadConfig,
@@ -16,12 +18,14 @@ import {
 	populateOkf,
 	type RepoMeta,
 	readComments,
+	readDoc,
 	repoMeta,
 	resolveDocPath,
 	setResolved,
 	stampGenerated,
 	startDraft,
 	verifyDoc,
+	writeDoc,
 } from "../core/index.js";
 import { nestedDocsRedirect } from "./index.js";
 
@@ -170,10 +174,13 @@ type AgentValues = {
 	"as-actor"?: string;
 	full?: boolean;
 	merge?: boolean;
+	file?: string;
+	stdin?: boolean;
+	message?: string;
 };
 
 function parseVerb(
-	verb: "status" | "comment" | "draft" | "verify",
+	verb: "status" | "comment" | "draft" | "verify" | "save",
 	args: string[],
 ): { values: AgentValues; positionals: string[] } {
 	const asActor = { "as-actor": { type: "string" } } as const;
@@ -191,7 +198,14 @@ function parseVerb(
 				? { merge: { type: "boolean", default: false }, ...asActor }
 				: verb === "verify"
 					? { author: { type: "string" }, ...asActor }
-					: {};
+					: verb === "save"
+						? {
+								file: { type: "string" },
+								stdin: { type: "boolean", default: false },
+								author: { type: "string" },
+								message: { type: "string" },
+							}
+						: {};
 	const { values, positionals } = parseArgs({
 		args,
 		options,
@@ -380,6 +394,77 @@ async function runDraft(
 }
 
 /**
+ * `fragmt agent save <doc> (--file <path> | --stdin) [--author <who>]
+ * [--message <text>]` – the content verb (#41): the same writeDoc/createDoc
+ * paths the server's PUT/POST ride, so a CLI save gets every save-time
+ * semantic in its ONE commit – the OKF `generated` stamp, `references`
+ * settlement, `referenced-by` propagation – instead of leaving them for
+ * merge-time healing, and a new doc is born conformant. Branch discipline
+ * is the server's model: on main the startDraft dance (POST /api/draft)
+ * runs first; any other branch writes directly. The stale check hashes the
+ * body the agent just superseded – PUT's discipline, honestly.
+ */
+async function runSave(
+	repoRoot: string,
+	docsRoot: string,
+	parsed: { values: AgentValues; positionals: string[] },
+	out: (s: string) => void,
+): Promise<number> {
+	const { values, positionals } = parsed;
+	const doc = positionals[0];
+	if (doc === undefined) {
+		out("error: save needs a doc path (docsRoot-relative .md)");
+		return 1;
+	}
+	// Exactly one body source; a usage error like an unknown flag (exit 2).
+	const fromFile = values.file !== undefined;
+	const fromStdin = values.stdin === true;
+	if (fromFile === fromStdin) {
+		out("error: save needs exactly one body source – --file <path> or --stdin");
+		return 2;
+	}
+	if (fromFile && !existsSync(values.file as string)) {
+		out(`error: --file not found: ${values.file}`);
+		return 1;
+	}
+	const body = readFileSync(fromFile ? (values.file as string) : 0, "utf8");
+	if (inMerge(repoRoot)) {
+		out(IN_MERGE);
+		return 1;
+	}
+	const user =
+		values.author !== undefined
+			? parseAuthor(values.author)
+			: await localUser(repoRoot);
+	if (!user.name || !user.email) {
+		out("error: --author needs a display name and an address");
+		return 1;
+	}
+	// The server's write model: on main, draft first (the POST /api/draft
+	// dance); a branch switch is the auto-draft note's trigger.
+	const before = await currentBranch(repoRoot);
+	const { current } = await startDraft(repoRoot, doc, docsRoot);
+	const message = values.message ?? `agent save ${doc}`;
+	const abs = resolveDocPath(repoRoot, docsRoot, doc);
+	const { sha } =
+		existsSync(abs) && statSync(abs).isFile()
+			? await writeDoc(
+					repoRoot,
+					docsRoot,
+					doc,
+					body,
+					docHash(readDoc(repoRoot, docsRoot, doc).markdown),
+					user,
+					{ message },
+				)
+			: await createDoc(repoRoot, docsRoot, doc, body, user, { message });
+	const note = current !== before ? " · auto-drafted from main" : "";
+	out(`ok: saved ${doc} on ${current} (${sha.slice(0, 7)})${note}`);
+	helpBlock(out, [`fragmt agent draft ${doc} --merge – merge back to main`]);
+	return 0;
+}
+
+/**
  * `fragmt agent verify <doc> [--as-actor <string>] [--author <who>]` – the
  * agent-first A1 affordance (operator round 4C): the standalone verified
  * event through the same core verifyDoc the UI's Verify button rides, no
@@ -429,7 +514,8 @@ async function runVerify(
 
 /**
  * `fragmt agent [status] | comment <doc> […] | draft <doc> [--merge] |
- * verify <doc> [--as-actor <string>] [--author <who>]`.
+ * save <doc> (--file <path> | --stdin) […] | verify <doc>
+ * [--as-actor <string>] [--author <who>]`.
  * Returns the exit code: 0 ok, 1 runtime error (`error: …` on stdout, one
  * line), 2 unknown flag/verb. `write` is injectable for tests; stdout live.
  */
@@ -446,7 +532,8 @@ export async function runAgent(
 		verb !== "status" &&
 		verb !== "comment" &&
 		verb !== "draft" &&
-		verb !== "verify"
+		verb !== "verify" &&
+		verb !== "save"
 	) {
 		out("error: unknown flag or verb");
 		return 2;
@@ -464,6 +551,7 @@ export async function runAgent(
 		if (verb === "comment") return await runComment(repoRoot, parsed, out);
 		if (verb === "verify")
 			return await runVerify(repoRoot, docsRoot, parsed, out);
+		if (verb === "save") return await runSave(repoRoot, docsRoot, parsed, out);
 		return await runDraft(repoRoot, docsRoot, parsed, out);
 	} catch (e) {
 		// #16: run from the outer repo of a nested setup – the shared redirect
