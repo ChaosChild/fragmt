@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import {
+	agentUsage,
 	detailLines,
 	parseAuthor,
 	runAgent,
@@ -206,6 +207,10 @@ async function agent(
 
 test("usage advertises the agent namespace", () => {
 	expect(usage).toMatch(/fragmt agent/);
+	// #43: the draft line advertises --author now.
+	expect(usage).toContain(
+		"fragmt agent draft <doc> [--merge] [--author <who>] [--as-actor <who>]",
+	);
 });
 
 test("status: one-block summary, draft rows, help hints; bare agent = status", async () => {
@@ -438,6 +443,93 @@ test("draft: missing doc and missing repo config are one-line errors", async () 
 	expect(noDoc.code).toBe(1);
 	expect(noDoc.out[0]).toBe(
 		"error: draft needs a doc path (docsRoot-relative .md)",
+	);
+});
+
+test("draft: a nonexistent doc is refused with the save pointer, no branch", async () => {
+	const root = seeded();
+	const r = await agent(root, ["draft", "guides/missing.md"]);
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe(
+		"error: no doc guides/missing.md – create it with: fragmt agent save guides/missing.md --file <body>",
+	);
+	// The useless draft branch is never created.
+	expect(run(root, ["branch", "--list", "drafts/missing"])).toBe("");
+
+	// An existing doc drafts exactly as before.
+	const ok = await agent(root, ["draft", "a.md"]);
+	expect(ok.code).toBe(0);
+	expect(ok.out[0]).toBe("ok: on draft drafts/a (created)");
+});
+
+test("draft --author: rides the stamp and merge commits on --merge", async () => {
+	const root = okfSeeded();
+	const start = await agent(root, [
+		"draft",
+		"a.md",
+		"--author",
+		"QA Bot <qa@example.invalid>",
+	]);
+	expect(start.code).toBe(0);
+	expect(start.out[0]).toBe("ok: on draft drafts/a (created)");
+	write(root, "docs/a.md", "---\ntype: concept\n---\n\n# A v2\n");
+	commit(root, "edit a on the draft");
+	// Diverge main – a fast-forward merge creates no merge commit at all.
+	run(root, ["checkout", "-q", "main"]);
+	write(root, "docs/b.md", "---\ntype: concept\n---\n\n# B v2\n");
+	commit(root, "edit b on main");
+	run(root, ["checkout", "-q", "drafts/a"]);
+
+	const merged = await agent(root, [
+		"draft",
+		"a.md",
+		"--merge",
+		"--author",
+		"QA Bot <qa@example.invalid>",
+	]);
+	expect(merged.code).toBe(0);
+	// The pre-merge OKF stamp commit AND the merge commit carry the passed
+	// identity as author AND committer.
+	expect(run(root, ["log", "--format=%an %cn", "--grep=OKF: stamp"])).toBe(
+		"QA Bot QA Bot",
+	);
+	expect(run(root, ["log", "--format=%an %cn", "--merges", "-1"])).toBe(
+		"QA Bot QA Bot",
+	);
+});
+
+test("draft without --author: stamp and merge commits keep the machine identity", async () => {
+	const root = okfSeeded();
+	await agent(root, ["draft", "b.md"]);
+	write(root, "docs/b.md", "---\ntype: concept\n---\n\n# B v2\n");
+	commit(root, "edit b on the draft");
+	run(root, ["checkout", "-q", "main"]);
+	write(root, "docs/a.md", "---\ntype: concept\n---\n\n# A v2\n");
+	commit(root, "edit a on main");
+	run(root, ["checkout", "-q", "drafts/b"]);
+
+	const merged = await agent(root, ["draft", "b.md", "--merge"]);
+	expect(merged.code).toBe(0);
+	expect(run(root, ["log", "--format=%an %cn", "--grep=OKF: stamp"])).toBe(
+		"Agent Test Agent Test",
+	);
+	expect(run(root, ["log", "--format=%an %cn", "--merges", "-1"])).toBe(
+		"Agent Test Agent Test",
+	);
+});
+
+test("agent --help: the namespace usage on stdout, exit 0, all five verbs", async () => {
+	const r = await agent(seeded(), ["--help"]);
+	expect(r.code).toBe(0);
+	const text = r.out.join("\n");
+	// The blob arrives newline-trimmed through the line-based writer.
+	expect(text).toBe(agentUsage.replace(/\n$/, ""));
+	expect(text).toContain("fragmt agent – the agent surface");
+	for (const verb of ["status", "save", "comment", "draft", "verify"]) {
+		expect(text).toMatch(new RegExp(`^  ${verb}\\b`, "m")); // Commands rows
+	}
+	expect(text).toContain(
+		"fragmt agent draft <doc> [--merge] [--author <who>] [--as-actor <who>]",
 	);
 });
 

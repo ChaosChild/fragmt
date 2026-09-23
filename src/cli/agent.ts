@@ -67,6 +67,32 @@ export function parseAuthor(who: string): { name: string; email: string } {
 	return { name, email: `${authorSlug(name)}@users.noreply.fragmt` };
 }
 
+/**
+ * The merge commit's identity seam (#43): mergeToMain commits through git's
+ * own `merge --no-edit`, which takes no author – but env outranks config, and
+ * env is how commitAs already carries identity. Set process-wide for the one
+ * call, restored after: the CLI is one-shot and the tests run sequentially.
+ * Undefined passes through untouched (the machine identity, as before).
+ */
+async function mergeAs<T>(
+	user: { name: string; email: string } | undefined,
+	run: () => Promise<T>,
+): Promise<T> {
+	if (user === undefined) return run();
+	const env = {
+		GIT_AUTHOR_NAME: user.name,
+		GIT_AUTHOR_EMAIL: user.email,
+		GIT_COMMITTER_NAME: user.name,
+		GIT_COMMITTER_EMAIL: user.email,
+	};
+	Object.assign(process.env, env);
+	try {
+		return await run();
+	} finally {
+		for (const k of Object.keys(env)) delete process.env[k];
+	}
+}
+
 /** The status block: summary line + draft rows (empty state: none). */
 export function statusLines(meta: RepoMeta): string[] {
 	const rows = Object.entries(meta.drafts).flatMap(([doc, entries]) =>
@@ -195,7 +221,11 @@ function parseVerb(
 					...asActor,
 				}
 			: verb === "draft"
-				? { merge: { type: "boolean", default: false }, ...asActor }
+				? {
+						merge: { type: "boolean", default: false },
+						author: { type: "string" },
+						...asActor,
+					}
 				: verb === "verify"
 					? { author: { type: "string" }, ...asActor }
 					: verb === "save"
@@ -333,8 +363,28 @@ async function runDraft(
 		out("error: draft needs a doc path (docsRoot-relative .md)");
 		return 1;
 	}
+	// #42: a draft of an absent doc used to answer ok and then silently skip
+	// the pre-merge stamp – refuse and point at the creation verb instead
+	// (runVerify's guard, plus the pointer).
+	const abs = resolveDocPath(repoRoot, docsRoot, doc);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		out(
+			`error: no doc ${doc} – create it with: fragmt agent save ${doc} --file <body>`,
+		);
+		return 1;
+	}
 	if (inMerge(repoRoot)) {
 		out(IN_MERGE);
+		return 1;
+	}
+	// #43: --author is optional like save/comment/verify's – resolved only
+	// when passed, since a plain draft commits nothing and a machine with no
+	// git identity may still draft. When passed it rides every commit this
+	// verb makes: the OKF stamp below and the merge itself.
+	const user =
+		values.author !== undefined ? parseAuthor(values.author) : undefined;
+	if (user !== undefined && (!user.name || !user.email)) {
+		out("error: --author needs a display name and an address");
 		return 1;
 	}
 	if (values.merge !== true) {
@@ -345,34 +395,24 @@ async function runDraft(
 	}
 	const branch = await currentBranch(repoRoot);
 	// D4: OKF mode stamps the draft's doc on the DRAFT branch pre-merge – a
-	// tiny commit that rides into main with the merge. A doc path that does
-	// not resolve (or a doc deleted in the draft) skips the stamp; the merge
-	// itself proceeds exactly as before.
+	// tiny commit that rides into main with the merge. The doc's presence is
+	// the guard at the top (#42), so the stamp can no longer skip silently.
 	if (okfEnabled(repoRoot)) {
 		const actor = values["as-actor"] ?? AGENT_DEFAULT;
-		let abs: string | null = null;
-		try {
-			const a = resolveDocPath(repoRoot, docsRoot, doc);
-			abs = existsSync(a) && statSync(a).isFile() ? a : null;
-		} catch {
-			abs = null;
-		}
-		if (abs !== null) {
-			const next = stampGenerated(readFileSync(abs, "utf8"), actor);
-			if (next !== null) {
-				writeFileSync(abs, next);
-				await commitAs(
-					await localUser(repoRoot),
-					{
-						files: [relative(repoRoot, abs).split(sep).join("/")],
-						message: `OKF: stamp ${doc} as ${actor}`,
-					},
-					repoRoot,
-				);
-			}
+		const next = stampGenerated(readFileSync(abs, "utf8"), actor);
+		if (next !== null) {
+			writeFileSync(abs, next);
+			await commitAs(
+				user ?? (await localUser(repoRoot)),
+				{
+					files: [relative(repoRoot, abs).split(sep).join("/")],
+					message: `OKF: stamp ${doc} as ${actor}`,
+				},
+				repoRoot,
+			);
 		}
 	}
-	const result = await mergeToMain(repoRoot, docsRoot);
+	const result = await mergeAs(user, () => mergeToMain(repoRoot, docsRoot));
 	if (result.merged) {
 		// The server's conclude seam's twin: a clean merge regenerates the
 		// references graph and indexes on main.
@@ -513,8 +553,31 @@ async function runVerify(
 }
 
 /**
- * `fragmt agent [status] | comment <doc> […] | draft <doc> [--merge] |
- * save <doc> (--file <path> | --stdin) […] | verify <doc>
+ * The namespace help (#44): `fragmt agent --help` – index.ts usage's
+ * register in miniature, every verb with its flags and a one-line purpose.
+ * Exported so tests assert on it.
+ */
+export const agentUsage = `\
+fragmt agent – the agent surface: status, save, comment, draft, verify
+
+Usage:
+  fragmt agent [status]
+  fragmt agent save <doc> (--file <path> | --stdin) [--author <who>] [--message <text>]
+  fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor <who>] [--full]
+  fragmt agent draft <doc> [--merge] [--author <who>] [--as-actor <who>]
+  fragmt agent verify <doc> [--as-actor <who>] [--author <who>]
+
+Commands:
+  status  Branch, draft rows, merge state (bare fragmt agent is status)
+  save    Create or overwrite a doc in one conformant commit – new docs on main auto-draft
+  comment List threads, or reply/resolve one – new threads start from a text selection in the UI
+  draft   Start or join the doc's draft branch; --merge merges it back to main
+  verify  Record the doc's verified event as the self-declared --as-actor
+`;
+
+/**
+ * `fragmt agent [status] | comment <doc> […] | draft <doc> [--merge]
+ * [--author <who>] | save <doc> (--file <path> | --stdin) […] | verify <doc>
  * [--as-actor <string>] [--author <who>]`.
  * Returns the exit code: 0 ok, 1 runtime error (`error: …` on stdout, one
  * line), 2 unknown flag/verb. `write` is injectable for tests; stdout live.
@@ -528,6 +591,12 @@ export async function runAgent(
 ): Promise<number> {
 	const out = (s: string) => write(`${s}\n`);
 	const verb = argv[0] ?? "status";
+	// #44: the namespace help answers before any verb parsing – stdout, exit
+	// 0, the same contract as `fragmt --help`.
+	if (verb === "--help") {
+		write(agentUsage);
+		return 0;
+	}
 	if (
 		verb !== "status" &&
 		verb !== "comment" &&
