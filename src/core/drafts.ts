@@ -26,12 +26,15 @@ import { localUser } from "./identity.js";
 import { mainBranch } from "./meta.js";
 
 /**
- * Draft naming (M4-2 spec): `drafts/<slug>` where slug = basename minus .md,
+ * Draft naming (M4-2 spec, #45 path-aware): `drafts/<slug>` where slug =
+ * docPath minus .md – directory segments join with "-", a root doc keeps the
+ * flat shape (auth.md → drafts/auth, guides/auth.md → drafts/guides-auth) –
  * lowercased, every non-[a-z0-9] char → "-", edges trimmed. Collisions with
- * existing branch names append -2, -3, …
+ * existing branch names append -2, -3, … Pre-#45 basename-only branches keep
+ * their names (nothing migrates); they simply block their old slug.
  */
 export function nextDraftName(existing: string[], docPath: string): string {
-	const slug = (docPath.split("/").pop() ?? "")
+	const slug = docPath
 		.replace(/\.md$/i, "")
 		.toLowerCase()
 		.replace(/[^a-z0-9]/g, "-")

@@ -21,14 +21,30 @@ import { PathExistsError } from "../src/core/files.js";
 
 // nextDraftName is pure – slug rules and collision suffixes, no git involved.
 
-test("slug: basename minus .md, lowercase, non-[a-z0-9] → '-', trimmed", () => {
+test("slug: full path minus .md (folders join with '-'), lowercase, non-[a-z0-9] → '-', trimmed", () => {
+	// #45: the directory rides the slug so same-basename docs can't collide.
 	expect(nextDraftName([], "docs/M4-2-drafting.md")).toBe(
-		"drafts/m4-2-drafting",
+		"drafts/docs-m4-2-drafting",
 	);
 	expect(nextDraftName([], "M4-2-drafting.md")).toBe("drafts/m4-2-drafting");
 	expect(nextDraftName([], "PLAN.md")).toBe("drafts/plan");
 	expect(nextDraftName([], "My Doc! v2.md")).toBe("drafts/my-doc--v2");
 	expect(nextDraftName([], "_Notes_.md")).toBe("drafts/notes");
+});
+
+test("#45: nested same-basename docs slug uniquely; root docs keep the flat shape; the counter rides the new shape", () => {
+	expect(nextDraftName([], "guides/auth.md")).toBe("drafts/guides-auth");
+	expect(nextDraftName([], "specs/auth.md")).toBe("drafts/specs-auth");
+	// A root doc keeps today's flat shape.
+	expect(nextDraftName([], "auth.md")).toBe("drafts/auth");
+	// A pre-#45 basename branch keeps its name – and blocks its old slug,
+	// so the nested doc takes its own path-aware name instead.
+	expect(nextDraftName(["drafts/auth"], "guides/auth.md")).toBe(
+		"drafts/guides-auth",
+	);
+	expect(nextDraftName(["drafts/guides-auth"], "guides/auth.md")).toBe(
+		"drafts/guides-auth-2",
+	);
 });
 
 test("collisions append -2, -3, …; free base name taken as-is", () => {

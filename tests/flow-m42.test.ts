@@ -58,7 +58,11 @@ test("create → draft → edit → merge lands the edit on main and drops the b
 	// 2. Draft it – the protected-main checkout the UI performs first.
 	const draft = await api("POST", "/api/draft", { docPath: "docs/flow.md" });
 	expect(draft.status).toBe(200);
-	expect(await draft.json()).toEqual({ current: "drafts/flow", reused: false });
+	// #45 path-aware slug: the directory joins the branch name (docs/flow.md).
+	expect(await draft.json()).toEqual({
+		current: "drafts/docs-flow",
+		reused: false,
+	});
 
 	// 3. Save an edit on the draft (the PUT the editor's Save sends).
 	const onDraft = (await (

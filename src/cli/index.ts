@@ -20,6 +20,7 @@ import {
 import {
 	authorsNotice,
 	classifyAuthorEmails,
+	commitInitFiles,
 	configPath,
 	enableOkf,
 	findRepoRoot,
@@ -243,6 +244,9 @@ async function runPlainInit(
 	if (result.alreadyInitialized) {
 		write("already initialized\n");
 	} else {
+		// #48: the config commit lands once, here – the OKF adoption commit
+		// (and the flip path, which has an existing config) never re-commit it.
+		await commitInitFiles(repoRoot);
 		const count = result.count ?? 0;
 		const noun = count === 1 ? "file" : "files";
 		write(

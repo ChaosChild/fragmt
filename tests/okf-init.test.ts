@@ -155,6 +155,59 @@ test("plain re-init on an existing config still refuses (no --okf)", async () =>
 	expect(run(root, ["ls-files"])).not.toContain("docs/index.md");
 });
 
+test("#48: plain init commits only the two fragmt files; unrelated content stays untracked", async () => {
+	const root = repo();
+	put(root, "docs/only.md", "# Only\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	put(root, "scratch.txt", "mine\n"); // unrelated – never fragmt's to commit
+	const out = sink();
+
+	expect(await runInit("docs", root, out.write)).toBe(0);
+
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe(
+		"Adopt docs into fragmt repo",
+	);
+	expect(
+		run(root, ["show", "--name-only", "--format=", "HEAD"])
+			.split("\n")
+			.filter(Boolean)
+			.sort(),
+	).toEqual([".fragmt.json", "AGENTS.md"]);
+	expect(run(root, ["status", "--porcelain"])).toBe("?? scratch.txt");
+});
+
+test("#48: plain init on an unborn repo: the config commit is the initial commit, tree clean", async () => {
+	const root = repo(); // git init, zero commits
+	const out = sink();
+
+	expect(await runInit(".", root, out.write)).toBe(0);
+
+	expect(run(root, ["rev-list", "--count", "HEAD"])).toBe("1");
+	expect(run(root, ["ls-files"])).toContain(".fragmt.json");
+	expect(run(root, ["ls-files"])).toContain("AGENTS.md");
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("#48: init --okf tracks the config exactly once – the adoption commit rides on top", async () => {
+	const root = repo();
+	put(root, "docs/a.md", "---\ntype: Metric\n---\n\n# A\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	const out = sink();
+
+	expect(await runInit("docs", root, out.write, { okf: true })).toBe(0);
+
+	// One commit ever touches the config; the OKF population is a second one.
+	expect(run(root, ["log", "--format=%s", "--", ".fragmt.json"])).toBe(
+		"Adopt docs into fragmt repo",
+	);
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe(
+		"OKF: populate references and indexes",
+	);
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
 test("nested --folder --new --okf: OKF bundle in its own repo, outer redirect intact", async () => {
 	const outer = repo();
 	put(outer, "docs/guide.md", "# Guide\n");
