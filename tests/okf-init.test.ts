@@ -60,6 +60,27 @@ const sink = () => {
 	return { lines, write: (s: string) => lines.push(s) };
 };
 
+test("fresh init --okf on an empty repo: AGENTS.md born conformant, zero findings", async () => {
+	const root = repo();
+	const out = sink();
+
+	expect(await runInit(".", root, out.write, { okf: true })).toBe(0);
+
+	// Born with the frontmatter – fragmt's own file is never its own finding.
+	const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+	expect(agents.startsWith('---\ntype: concept\nstatus: "draft"\n---\n')).toBe(
+		true,
+	);
+	const text = out.lines.join("");
+	expect(text).toContain("OKF conformant");
+	expect(text).not.toContain("AGENTS.md:");
+
+	// `validate` agrees immediately – no `--fix` chore for the operator.
+	const v = sink();
+	expect(await runValidate(false, root, v.write)).toBe(0);
+	expect(v.lines.join("")).toContain("conformant");
+});
+
 test("fresh init --okf: OKF config, findings printed, docs untouched, index committed", async () => {
 	const root = repo();
 	put(root, "docs/notes.md", "# Notes\n");
@@ -219,9 +240,16 @@ test("nested --folder --new --okf: nested AGENTS.md teaches OKF, outer redirects
 	const inner = readFileSync(join(outer, "docs", "AGENTS.md"), "utf8");
 	expect(inner).toContain("## OKF rules");
 	expect(inner).toContain(AGENTS_BEGIN);
+	// The nested bundle's AGENTS.md is born conformant (created fresh by
+	// initNestedRepo after the nested config write).
+	expect(inner.startsWith('---\ntype: concept\nstatus: "draft"\n---\n')).toBe(
+		true,
+	);
 	const redirect = readFileSync(join(outer, "AGENTS.md"), "utf8");
 	expect(redirect).toContain("docs live in the nested repo at docs/");
 	expect(redirect).not.toContain("OKF rules");
+	// The outer repo is not the OKF bundle – its redirect is born bare.
+	expect(redirect.startsWith("---")).toBe(false);
 });
 
 test("validate --fix reaches a conformant end state in one commit", async () => {
