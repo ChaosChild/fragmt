@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { writeAgentsBlock } from "./agents.js";
+import { commitAs } from "./commit.js";
 import { ConfigError, configPath, writeConfig } from "./config.js";
 import { git } from "./git.js";
 import { countDocs, listTree } from "./tree.js";
@@ -48,6 +49,27 @@ export function initRepo(
 		alreadyInitialized: false,
 		count,
 	};
+}
+
+/**
+ * The #48 plain-init commit: the fragmt-owned files only (.fragmt.json +
+ * AGENTS.md, both always at the repo root), never unrelated worktree content
+ * – no add -A. The fixed fragmt identity rides commitAs's --author flag +
+ * committer env, so the commit resolves with no git config anywhere (the
+ * b62b060 CI lesson initNestedRepo's -c flags encode). .fragmt.json is brand
+ * new on this path, so the commit is never empty; on an existing repo it
+ * joins the branch, on an unborn one it is the initial commit. Resolves the
+ * new sha.
+ */
+export async function commitInitFiles(repoRoot: string): Promise<string> {
+	return commitAs(
+		{ name: "fragmt", email: "fragmt@localhost" },
+		{
+			files: [".fragmt.json", "AGENTS.md"],
+			message: "Adopt docs into fragmt repo",
+		},
+		repoRoot,
+	);
 }
 
 /**

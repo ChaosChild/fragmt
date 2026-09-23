@@ -186,7 +186,8 @@ export async function prepareDocWrite(
  * key throws OkfFieldError, and setFrontmatterKeys' grammar/enum gates
  * throw inside the splice. Non-OKF repos ignore `metaEdits` entirely, like
  * every other OKF-only option. `user` (serve --auth) overrides the commit
- * author; omitted → localUser().
+ * author; omitted → localUser(). `opts.message` (the agent CLI's --message)
+ * overrides the commit subject; omitted → `Update <docPath>`.
  */
 export async function writeDoc(
 	repoRoot: string,
@@ -200,6 +201,8 @@ export async function writeDoc(
 		actor?: string;
 		/** User frontmatter edits riding this save (changed keys only). */
 		metaEdits?: FrontmatterEdit[];
+		/** Commit subject override (the agent CLI's --message). */
+		message?: string;
 	} = {},
 ): Promise<{ sha: string; hash: string }> {
 	const hasMeta = opts.metaEdits !== undefined && opts.metaEdits.length > 0;
@@ -260,7 +263,7 @@ export async function writeDoc(
 			who,
 			{
 				files: [...new Set([repoRelative, ...touched])],
-				message: `Update ${docPath}`,
+				message: opts.message ?? `Update ${docPath}`,
 			},
 			repoRoot,
 		);
@@ -269,7 +272,7 @@ export async function writeDoc(
 	writeFileSync(abs, raw(normalized));
 	const sha = await commitAs(
 		who,
-		{ files: [repoRelative], message: `Update ${docPath}` },
+		{ files: [repoRelative], message: opts.message ?? `Update ${docPath}` },
 		repoRoot,
 	);
 	return { sha, hash: docHash(normalized) };

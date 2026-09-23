@@ -1710,7 +1710,8 @@ button.comment-quote:hover {
 	flex-direction: column;
 	gap: 2px;
 }
-.refs-row {
+.refs-row,
+.pr-row {
 	display: block;
 	width: 100%;
 	text-align: left;
@@ -1729,11 +1730,13 @@ button.comment-quote:hover {
 		background var(--motion-fast) var(--ease-standard),
 		color var(--motion-fast) var(--ease-standard);
 }
-.refs-row:hover {
+.refs-row:hover,
+.pr-row:hover {
 	background: var(--glass-inner);
 	color: var(--accent);
 }
-.refs-row:focus-visible {
+.refs-row:focus-visible,
+.pr-row:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);
 }
@@ -1741,6 +1744,176 @@ button.comment-quote:hover {
 	margin: 0;
 	font-size: 12px;
 	color: var(--muted);
+}
+/* ── #27 (b4): the PR pane – the slideout's fourth mode ──────────── */
+/* The pane body – the refs pane's scroll-region shape. */
+.pr-pane {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: var(--space-3);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+.pr-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+/* Branch refs and PR numbers read as code, not prose. */
+.pr-ref,
+.pr-num {
+	font-family: var(--font-mono);
+	color: var(--muted);
+}
+.pr-top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--space-2);
+}
+.pr-back {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	border: none;
+	background: none;
+	cursor: pointer;
+	min-height: 32px;
+	padding: 0;
+	font-size: 12.5px;
+	color: var(--muted);
+}
+.pr-back:hover {
+	color: var(--accent);
+}
+.pr-back:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
+}
+.pr-back svg {
+	width: 14px;
+	height: 14px;
+}
+.pr-title {
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.3;
+	color: var(--fg);
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+.pr-meta {
+	margin: 0;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--muted);
+}
+.pr-actions {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	flex-wrap: wrap;
+}
+/* Quiet notes – loading, empty list, no patch, up-to-date pushes. */
+.pr-note {
+	margin: 0;
+	font-size: 12px;
+	color: var(--muted);
+}
+/* A failed action – the rail-error recipe. */
+.pr-error {
+	margin: 0;
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--danger);
+}
+/* D6's conflicted answer – the warn-tinted hand-off to GitHub. */
+.pr-conflict {
+	margin: 0;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius);
+	background: var(--warn-soft);
+	color: var(--warn);
+	font-size: 12.5px;
+}
+.pr-conflict a {
+	color: inherit;
+}
+/* One file card – the resolve-file recipe, tightened for the pane. */
+.pr-file {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	margin-bottom: var(--space-3);
+	overflow: hidden;
+}
+.pr-file-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding: var(--space-2) var(--space-3);
+	border-bottom: 1px solid var(--border-soft);
+}
+.pr-file-name {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	color: var(--fg);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.pr-file-stats {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	flex-shrink: 0;
+}
+.pr-add {
+	color: var(--success);
+}
+.pr-del {
+	color: var(--danger);
+}
+/* Patch rows – the hunk-text language (mono on the pane ground), one div
+   per unified-diff row; add/del tint through theme vars so both themes
+   read. */
+.pr-patch {
+	background: var(--pane);
+	font-family: var(--font-mono);
+	font-size: 12px;
+	line-height: 1.5;
+	padding: var(--space-1) 0;
+}
+.pr-patch-row {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	padding: 0 var(--space-3);
+}
+.pr-patch-row.add {
+	background: color-mix(in srgb, var(--success) 12%, transparent);
+}
+.pr-patch-row.del {
+	background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.pr-patch-row.hunk {
+	color: var(--muted);
+	background: var(--glass-inner);
+}
+.pr-patch-more {
+	padding: 0 var(--space-3);
+	color: var(--muted);
+}
+.pr-pager {
+	display: flex;
+	align-items: center;
+	gap: var(--space-2);
+	padding-top: var(--space-2);
 }
 /* Preview body (b4) – the pane's own scroll region, .rail-body's shape. */
 .preview-body {
@@ -2464,6 +2637,32 @@ button.comment-quote:hover {
 }
 .menu-note strong {
 	font-weight: 600;
+}
+/* #27 (b3): the BranchMenu row's PR chips – the okf-chip recipe (quiet,
+   hairline border), mono and compact; `.open` is the create affordance
+   (dashed). Theme variables only, so light and dark both read. */
+.pr-chip {
+	flex-shrink: 0;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	letter-spacing: 0.04em;
+	color: var(--muted);
+	border: 1px solid var(--border);
+	border-radius: 3px;
+	padding: 2px 5px;
+	background: transparent;
+	cursor: pointer;
+}
+.pr-chip:hover {
+	color: var(--accent);
+	border-color: var(--accent);
+}
+.pr-chip.open {
+	border-style: dashed;
+}
+.pr-chip:focus-visible {
+	outline: none;
+	box-shadow: var(--focus-ring);
 }
 .iconbtn.danger {
 	color: var(--danger);

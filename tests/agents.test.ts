@@ -68,13 +68,42 @@ test("writeAgentsBlock picks the body from the config's mode – same v1 fences"
 	// changes: the OKF section rides AGENTS_BODY verbatim inside the fences.
 	writeConfig(root, ".", true);
 	writeAgentsBlock(root);
+	// The file already existed (created plain above): the refresh never adds
+	// frontmatter to it – creation-only, `validate --fix` owns the rest.
 	expect(read()).toBe(`${AGENTS_BEGIN}\n${AGENTS_BODY_OKF}${AGENTS_END}\n`);
 	expect(AGENTS_BODY_OKF.startsWith(AGENTS_BODY)).toBe(true);
 	expect(AGENTS_BODY_OKF).toContain("## OKF rules");
+});
+
+test("OKF config: a created AGENTS.md is born with the frontmatter prefix", () => {
+	writeConfig(root, ".", true);
+	writeAgentsBlock(root);
+	expect(read()).toBe(
+		`---\ntype: concept\nstatus: "draft"\n---\n${AGENTS_BEGIN}\n${AGENTS_BODY_OKF}${AGENTS_END}\n`,
+	);
+});
+
+test("OKF config: refresh preserves existing frontmatter exactly – no duplication", () => {
+	writeConfig(root, ".", true);
+	const mine = '---\ntype: tutorial\nstatus: "stable"\nnote: mine\n---\n';
+	writeFileSync(
+		join(root, "AGENTS.md"),
+		`${mine}${AGENTS_BEGIN}\nSTALE\n${AGENTS_END}\n`,
+	);
+	writeAgentsBlock(root);
+	expect(read()).toBe(
+		`${mine}${AGENTS_BEGIN}\n${AGENTS_BODY_OKF}${AGENTS_END}\n`,
+	);
 });
 
 test("isAgent: exact-name membership against the config list", () => {
 	expect(isAgent("Claude", ["Claude", "Rex"])).toBe(true);
 	expect(isAgent("claude", ["Claude"])).toBe(false);
 	expect(isAgent("Anyone", [])).toBe(false);
+});
+
+test("the taught first rule names agent save – the drafting write path", () => {
+	expect(AGENTS_BODY).toContain(
+		"Run `fragmt agent save <doc> --file <body>` (it drafts automatically)",
+	);
 });

@@ -1,6 +1,6 @@
 # Backlog
 
-The work queue lives in GitHub issues carrying the [`backlog`](https://github.com/ChaosChild/fragmt/labels/backlog) label; this file is the index and the graduation log. The issue body is canonical for scope – entries here are pointers, never second descriptions. An item graduates when picked up – into a milestone in [PLAN.md](PLAN.md) through M5, into a backlog-driven round since milestones were retired (2026-08-26) – getting an implementation-exact spec in [milestones/](milestones/) either way; the issue closes against the round's PR and the pointer moves to *Graduated*. Add new entries with the date and the session that surfaced them.
+This file is a historical record, not an actively maintained queue – the live work queue is the GitHub issues carrying the [`backlog`](https://github.com/ChaosChild/fragmt/labels/backlog) label; what remains here is the index and the graduation log. The issue body is canonical for scope – entries here are pointers, never second descriptions. An item graduates when picked up – into a milestone in [PLAN.md](PLAN.md) through M5, into a backlog-driven round since milestones were retired (2026-08-26) – getting an implementation-exact spec in [milestones/](milestones/) either way; the issue closes against the round's PR and the pointer moves to *Graduated*. Add new entries with the date and the session that surfaced them.
 
 ## Index
 
@@ -8,8 +8,6 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 
 ### Post-v1 – collaboration first, then the OKF era (order locked 2026-08-21)
 
-- Multi-user auth foundation – **leads** – #20 (PR wiring split to #27, 2026-09-01 round-2 Lavish review)
-- PR create/review in the UI (split from #20) – #27
 - Agent-in-UI: harness bridge + client-side agent tools – after multi-user – #22
 - MCP – reconsider after multi-user / remote deployment – #23
 
@@ -34,3 +32,5 @@ The work queue lives in GitHub issues carrying the [`backlog`](https://github.co
 - Draft change visibility #18 → shipped 2026-09-01 in backlog round 2 (`feat/draft-gutter-multiuser` → 0.7.0 candidate): one `git diff main..HEAD -U0` spawn behind `GET /api/draft-diff`, a pure blank-line/fence-aware block mapping with a correct-or-absent guard, amber bars on the touched blocks in read and edit mode; spec in [milestones/draft-change-visibility.md](milestones/draft-change-visibility.md).
 - Avatar resolution #30 → shipped 2026-09-15 in `feat/avatar-resolution` → v0.8.0: verified-email cache for signed-in users, authors-map notice for local mode; the avatar gap described is closed both ways.
 - Nested docs repo #16 → shipped 2026-09-15 in `feat/nested-docs-repo` → v0.8.0: init --folder --new create path (folder created if missing, existing markdown into the initial commit), ask-and-wait origin graduation staging gitlink + .gitmodules (tracked-folder migration included), AGENTS.md at both roots, wrong-root redirect for serve/agent; the OKF subdirectory shape #21 composes on.
+- Multi-user auth foundation #20 → shipped 2026-09-01 in v0.7.0 (`feat/draft-gutter-multiuser` → PR #29): serve --auth (GitHub OAuth web flow, in-memory per-user sessions, the /api/* gate, collaborator permissions with the user's own token, loopback default), per-user commit authors, the sign-in gate UI, verified-email avatar resolution (#30 follow-up in v0.8.0).
+- PR create/review in the UI #27 → shipped 2026-09-22 in v0.10.0 (`feat/pr-wiring`): per-user push identity (committer + pusher = the signed-in user; token as an env-injected http extraheader, scrubbed from errors), the sync mirror (push --all, never force – drafts stop living only locally), the GitHub client + /api/prs routes, PR chips + the slideout's Pull requests mode (paged diffs, in-UI merge, conflict link-out), and the merged-gated branch delete. Spec in [milestones/pr-wiring.md](milestones/pr-wiring.md).

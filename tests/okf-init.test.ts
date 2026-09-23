@@ -18,6 +18,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
+import { runAgent } from "../src/cli/agent.js";
 import { runInit, runValidate } from "../src/cli/index.js";
 import {
 	AGENTS_BEGIN,
@@ -59,6 +60,27 @@ const sink = () => {
 	const lines: string[] = [];
 	return { lines, write: (s: string) => lines.push(s) };
 };
+
+test("fresh init --okf on an empty repo: AGENTS.md born conformant, zero findings", async () => {
+	const root = repo();
+	const out = sink();
+
+	expect(await runInit(".", root, out.write, { okf: true })).toBe(0);
+
+	// Born with the frontmatter – fragmt's own file is never its own finding.
+	const agents = readFileSync(join(root, "AGENTS.md"), "utf8");
+	expect(agents.startsWith('---\ntype: concept\nstatus: "draft"\n---\n')).toBe(
+		true,
+	);
+	const text = out.lines.join("");
+	expect(text).toContain("OKF conformant");
+	expect(text).not.toContain("AGENTS.md:");
+
+	// `validate` agrees immediately – no `--fix` chore for the operator.
+	const v = sink();
+	expect(await runValidate(false, root, v.write)).toBe(0);
+	expect(v.lines.join("")).toContain("conformant");
+});
 
 test("fresh init --okf: OKF config, findings printed, docs untouched, index committed", async () => {
 	const root = repo();
@@ -132,6 +154,59 @@ test("plain re-init on an existing config still refuses (no --okf)", async () =>
 	expect(out.lines.join("")).toContain("already initialized");
 	expect(loadConfig(root).okf).toBeUndefined();
 	expect(run(root, ["ls-files"])).not.toContain("docs/index.md");
+});
+
+test("#48: plain init commits only the two fragmt files; unrelated content stays untracked", async () => {
+	const root = repo();
+	put(root, "docs/only.md", "# Only\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	put(root, "scratch.txt", "mine\n"); // unrelated – never fragmt's to commit
+	const out = sink();
+
+	expect(await runInit("docs", root, out.write)).toBe(0);
+
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe(
+		"Adopt docs into fragmt repo",
+	);
+	expect(
+		run(root, ["show", "--name-only", "--format=", "HEAD"])
+			.split("\n")
+			.filter(Boolean)
+			.sort(),
+	).toEqual([".fragmt.json", "AGENTS.md"]);
+	expect(run(root, ["status", "--porcelain"])).toBe("?? scratch.txt");
+});
+
+test("#48: plain init on an unborn repo: the config commit is the initial commit, tree clean", async () => {
+	const root = repo(); // git init, zero commits
+	const out = sink();
+
+	expect(await runInit(".", root, out.write)).toBe(0);
+
+	expect(run(root, ["rev-list", "--count", "HEAD"])).toBe("1");
+	expect(run(root, ["ls-files"])).toContain(".fragmt.json");
+	expect(run(root, ["ls-files"])).toContain("AGENTS.md");
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("#48: init --okf tracks the config exactly once – the adoption commit rides on top", async () => {
+	const root = repo();
+	put(root, "docs/a.md", "---\ntype: Metric\n---\n\n# A\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	const out = sink();
+
+	expect(await runInit("docs", root, out.write, { okf: true })).toBe(0);
+
+	// One commit ever touches the config; the OKF population is a second one.
+	expect(run(root, ["log", "--format=%s", "--", ".fragmt.json"])).toBe(
+		"Adopt docs into fragmt repo",
+	);
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe(
+		"OKF: populate references and indexes",
+	);
+	expect(run(root, ["status", "--porcelain"])).toBe("");
 });
 
 test("nested --folder --new --okf: OKF bundle in its own repo, outer redirect intact", async () => {
@@ -219,9 +294,16 @@ test("nested --folder --new --okf: nested AGENTS.md teaches OKF, outer redirects
 	const inner = readFileSync(join(outer, "docs", "AGENTS.md"), "utf8");
 	expect(inner).toContain("## OKF rules");
 	expect(inner).toContain(AGENTS_BEGIN);
+	// The nested bundle's AGENTS.md is born conformant (created fresh by
+	// initNestedRepo after the nested config write).
+	expect(inner.startsWith('---\ntype: concept\nstatus: "draft"\n---\n')).toBe(
+		true,
+	);
 	const redirect = readFileSync(join(outer, "AGENTS.md"), "utf8");
 	expect(redirect).toContain("docs live in the nested repo at docs/");
 	expect(redirect).not.toContain("OKF rules");
+	// The outer repo is not the OKF bundle – its redirect is born bare.
+	expect(redirect.startsWith("---")).toBe(false);
 });
 
 test("validate --fix reaches a conformant end state in one commit", async () => {
@@ -295,4 +377,56 @@ test("validate exit codes: 2 with the hint off-mode, 0 when conformant", async (
 	const good = sink();
 	expect(await runValidate(false, okf, good.write)).toBe(0);
 	expect(good.lines.join("")).toContain("conformant\n");
+});
+
+test("#50: with docsRoot '.', the root index never catalogs AGENTS.md – init, save, and --fix all hold", async () => {
+	const root = repo();
+	put(root, "guide.md", "---\ntype: Metric\n---\n\n# G\n");
+	put(root, "sub/deep.md", "---\ntype: Playbook\n---\n\n# D\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	// The save body lives outside the repo – a .md inside would be a doc.
+	const bodyDir = mkdtempSync(join(tmpdir(), "fragmt-body-"));
+	dirs.push(bodyDir);
+	writeFileSync(join(bodyDir, "body.md"), "# G v2\n");
+	const noAgents = () => {
+		const index = readFileSync(join(root, "index.md"), "utf8");
+		expect(index).toContain("* [guide](/guide.md)");
+		expect(index).toContain("# Subdirectories");
+		expect(index).not.toContain("AGENTS");
+	};
+
+	// init writes the frontmatter-carrying AGENTS.md itself – the bundle
+	// adopts it as a doc, the generated root index still leaves it out.
+	expect(await runInit(".", root, sink().write, { okf: true })).toBe(0);
+	noAgents();
+
+	// A save that changes directory membership (a new doc) regenerates the
+	// index on the draft branch – the new entry lands, AGENTS stays out.
+	writeFileSync(join(bodyDir, "fresh.md"), "# F\n");
+	expect(
+		await runAgent(
+			["save", "fresh.md", "--file", join(bodyDir, "fresh.md")],
+			root,
+			() => {},
+		),
+	).toBe(0);
+	const saved = readFileSync(join(root, "index.md"), "utf8");
+	expect(saved).toContain("* [fresh](/fresh.md)");
+	expect(saved).not.toContain("AGENTS");
+
+	// A hand-mangled index with the entry restored is rewritten without it.
+	put(
+		root,
+		"index.md",
+		'---\nokf_version: "0.2"\n---\n\n# Metric\n\n* [AGENTS](/AGENTS.md)\n* [guide](/guide.md)\n',
+	);
+	const fixed = sink();
+	expect(await runValidate(true, root, fixed.write)).toBe(0);
+	expect(fixed.lines.join("")).toContain("fixed");
+	noAgents();
+
+	const check = sink();
+	expect(await runValidate(false, root, check.write)).toBe(0);
+	expect(check.lines.join("")).toContain("conformant");
 });

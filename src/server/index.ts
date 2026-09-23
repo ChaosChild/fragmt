@@ -6,6 +6,16 @@ import { getRequestListener } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Context, Hono } from "hono";
 import {
+	createPull,
+	type GhApiOpts,
+	getPull,
+	getPullFiles,
+	listPulls,
+	mergePull,
+	type PullRequest,
+	repoDefaultBranch,
+} from "../core/github.js";
+import {
 	deriveGraph,
 	graphToDot,
 	graphToJson,
@@ -33,9 +43,14 @@ import {
 	docHash,
 	draftDiffLines,
 	type FrontmatterEdit,
+	fetchRefs,
 	GitError,
+	type GithubSlug,
 	GitIdentityError,
+	git,
 	gitAllowList,
+	githubPushUrl,
+	githubSlug,
 	inMerge,
 	isFrontmatterKey,
 	listBranches,
@@ -43,6 +58,7 @@ import {
 	localUser,
 	MANAGED_FRONTMATTER_KEYS,
 	MergeUnresolvedError,
+	mergedBranches,
 	mergeState,
 	mergeToMain,
 	moveDoc,
@@ -51,6 +67,7 @@ import {
 	okfEnabled,
 	PathExistsError,
 	populateOkf,
+	pushAs,
 	readComments,
 	readDoc,
 	refsList,
@@ -79,6 +96,7 @@ import { bundleZip } from "../core/zip.js";
 import {
 	type AppEnv,
 	type AuthConfig,
+	type AuthUser,
 	commitAuthor,
 	registerAuth,
 	sessionDisabled,
@@ -92,6 +110,9 @@ export interface ServerContext {
 	auth?: AuthConfig;
 	/** Injectable GitHub fetch (tests stub the OAuth + collaborator calls). */
 	githubFetch?: typeof fetch;
+	/** #27: injectable git push/fetch for the PR routes (tests stub them). */
+	gitPush?: typeof pushAs;
+	gitFetch?: typeof fetchRefs;
 }
 
 const DOCS_PREFIX = "/api/docs/";
@@ -654,12 +675,22 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		});
 	});
 
-	app.get("/api/branches", async (c) =>
-		c.json({
+	app.get("/api/branches", async (c) => {
+		// #27 (D7): the merged list gates the UI's branch delete – git-native,
+		// never PR-based. A repo with no main keeps the gate open: the failure
+		// falls back to "everything merged" so no branch turns undeletable.
+		let merged: string[] = [];
+		try {
+			merged = await mergedBranches(ctx.repoRoot, "main");
+		} catch {
+			merged = await listBranches(ctx.repoRoot);
+		}
+		return c.json({
 			current: await currentBranch(ctx.repoRoot),
 			branches: await listBranches(ctx.repoRoot),
-		}),
-	);
+			merged,
+		});
+	});
 
 	app.post("/api/branches", async (c) => {
 		const body = await jsonBody(c);
@@ -958,7 +989,20 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 
 	app.post("/api/sync", async (c) => {
 		try {
-			return c.json(await sync(ctx.repoRoot));
+			// #27: under auth the mirror rides the signed-in user's token over
+			// the slug's HTTPS URL; local mode (or a non-GitHub origin) pushes
+			// with the machine's credentials exactly as before.
+			const user = c.get("authUser");
+			const slug =
+				user === undefined ? undefined : await githubSlug(ctx.repoRoot);
+			return c.json(
+				await sync(
+					ctx.repoRoot,
+					user !== undefined && slug !== undefined
+						? { slug, token: user.token }
+						: undefined,
+				),
+			);
 		} catch (e) {
 			// A rejected push (non-fast-forward) is a conflict signal, not a server
 			// error: the next sync's pull --rebase surfaces the real conflict.
@@ -969,6 +1013,267 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 				return c.json({ conflict: true, message: e.stderr.trim() });
 			}
 			return respondGitError(c, e);
+		}
+	});
+
+	// --- #27 b2: the PR routes ------------------------------------------------
+	// Five routes over the typed REST client (core/github.ts), all riding the
+	// auth gate – nothing PR-shaped exists in local mode (auth off answers the
+	// availability shapes) – and the write-guard above covers the POSTs: a
+	// standing merge 409s PR writes like any other write. Production pushes
+	// and the post-merge fast-forward ride the signed-in user's token; the
+	// gitPush/gitFetch seams exist so route tests never run a real push.
+
+	/** The shared precondition of the PR routes – the session user plus a
+	 *  github.com origin. Returns user/slug/gh, or the refusal 400 itself. */
+	const prActor = async (
+		c: Context<AppEnv>,
+	): Promise<
+		{ user: AuthUser; slug: GithubSlug; gh: GhApiOpts } | { refused: Response }
+	> => {
+		const user = c.get("authUser");
+		if (user === undefined)
+			return {
+				refused: Response.json(
+					{ error: "prs are available only with serve --auth" },
+					{ status: 400 },
+				),
+			};
+		const slug = await githubSlug(ctx.repoRoot);
+		if (slug === undefined)
+			return {
+				refused: Response.json(
+					{ error: "this repo's origin is not github.com – prs unavailable" },
+					{ status: 400 },
+				),
+			};
+		return {
+			user,
+			slug,
+			gh: { fetchImpl: ctx.githubFetch, token: user.token },
+		};
+	};
+
+	/** The :n param as a positive integer, or the 400. */
+	const prNumber = (c: Context<AppEnv>): number | Response => {
+		const n = Number(c.req.param("n"));
+		return Number.isInteger(n) && n >= 1
+			? n
+			: Response.json({ error: "invalid pr number" }, { status: 400 });
+	};
+
+	app.get("/api/prs", async (c) => {
+		const user = c.get("authUser");
+		if (user === undefined) return c.json({ enabled: false, prs: [] });
+		const slug = await githubSlug(ctx.repoRoot);
+		if (slug === undefined)
+			return c.json({ enabled: true, slug: null, prs: [], byBranch: {} });
+		try {
+			const { status, body } = await listPulls(slug, {
+				fetchImpl: ctx.githubFetch,
+				token: user.token,
+			});
+			if (status !== 200) return c.json({ error: "github unreachable" }, 502);
+			const byBranch: Record<
+				string,
+				{ number: number; title: string; state: string }
+			> = {};
+			for (const pr of body)
+				byBranch[pr.head.ref] = {
+					number: pr.number,
+					title: pr.title,
+					state: pr.state,
+				};
+			return c.json({
+				enabled: true,
+				slug: { owner: slug.owner, repo: slug.repo },
+				prs: body.map(prSummary),
+				byBranch,
+			});
+		} catch {
+			return c.json({ error: "github unreachable" }, 502);
+		}
+	});
+
+	app.post("/api/prs", async (c) => {
+		const body = await jsonBody(c);
+		if (body === null) return c.json({ error: "invalid request body" }, 400);
+		if (typeof body.branch !== "string" || badBranchName(body.branch))
+			return c.json({ error: "branch is required" }, 400);
+		if (body.body !== undefined && typeof body.body !== "string")
+			return c.json({ error: "body must be a string" }, 400);
+		const actor = await prActor(c);
+		if ("refused" in actor) return actor.refused;
+		const { user, slug, gh } = actor;
+		if (!(await listBranches(ctx.repoRoot)).includes(body.branch))
+			return c.json({ error: "branch not found" }, 404);
+		try {
+			const repo = await repoDefaultBranch(slug, gh);
+			if (repo.status !== 200 || typeof repo.body.default_branch !== "string")
+				return c.json(
+					{ error: ghMessage(repo.body, "default branch unavailable") },
+					502,
+				);
+			try {
+				await (ctx.gitPush ?? pushAs)(
+					ctx.repoRoot,
+					slug,
+					body.branch,
+					user.token,
+				);
+			} catch (e) {
+				if (e instanceof GitError) return c.json({ error: e.message }, 502);
+				throw e;
+			}
+			const created = await createPull(
+				slug,
+				{
+					title: body.branch,
+					head: body.branch,
+					base: repo.body.default_branch,
+					...(body.body === undefined ? {} : { body: body.body }),
+				},
+				gh,
+			);
+			if (created.status === 200 || created.status === 201)
+				return c.json(prSummary(created.body), 201);
+			if (created.status === 422) {
+				// Duplicate – idempotent: the already-open PR for this head.
+				const open = await listPulls(slug, gh);
+				const existing =
+					open.status === 200
+						? open.body.find(
+								(p) => p.head.ref === body.branch && p.state === "open",
+							)
+						: undefined;
+				if (existing) return c.json(prSummary(existing));
+				return c.json(
+					{ error: ghMessage(created.body, "pull request already exists") },
+					502,
+				);
+			}
+			return c.json(
+				{ error: ghMessage(created.body, "github rejected the pull request") },
+				502,
+			);
+		} catch {
+			return c.json({ error: "github unreachable" }, 502);
+		}
+	});
+
+	app.get("/api/prs/:n", async (c) => {
+		const n = prNumber(c);
+		if (n instanceof Response) return n;
+		const page = Number(c.req.query("files_page") ?? 1);
+		if (!Number.isInteger(page) || page < 1)
+			return c.json({ error: "invalid files_page" }, 400);
+		const user = c.get("authUser");
+		if (user === undefined) return c.json({ enabled: false });
+		const slug = await githubSlug(ctx.repoRoot);
+		if (slug === undefined) return c.json({ enabled: true, slug: null });
+		const gh = { fetchImpl: ctx.githubFetch, token: user.token };
+		try {
+			const pr = await getPull(slug, n, gh);
+			if (pr.status === 404) return c.json({ error: "pr not found" }, 404);
+			if (pr.status !== 200)
+				return c.json({ error: ghMessage(pr.body, "github unreachable") }, 502);
+			const files = await getPullFiles(slug, n, page, gh);
+			if (files.status !== 200)
+				return c.json(
+					{ error: ghMessage(files.body, "github unreachable") },
+					502,
+				);
+			return c.json({
+				pr: prSummary(pr.body),
+				files: files.body,
+				filesPage: page,
+			});
+		} catch {
+			return c.json({ error: "github unreachable" }, 502);
+		}
+	});
+
+	app.post("/api/prs/:n/push", async (c) => {
+		const n = prNumber(c);
+		if (n instanceof Response) return n;
+		const body = await jsonBody(c);
+		if (body === null) return c.json({ error: "invalid request body" }, 400);
+		if (typeof body.branch !== "string" || badBranchName(body.branch))
+			return c.json({ error: "branch is required" }, 400);
+		const actor = await prActor(c);
+		if ("refused" in actor) return actor.refused;
+		const { user, slug, gh } = actor;
+		if (!(await listBranches(ctx.repoRoot)).includes(body.branch))
+			return c.json({ error: "branch not found" }, 404);
+		try {
+			const pr = await getPull(slug, n, gh);
+			if (pr.status === 404) return c.json({ error: "pr not found" }, 404);
+			if (pr.status !== 200)
+				return c.json({ error: ghMessage(pr.body, "github unreachable") }, 502);
+			// Commits the local branch has that the PR head lacks – 0 means
+			// GitHub is current (or ahead); never force, git's own refusal
+			// surfaces from the push itself.
+			let ahead: number;
+			try {
+				ahead = Number(
+					await git(ctx.repoRoot, [
+						"rev-list",
+						"--count",
+						`${pr.body.head.sha}..${body.branch}`,
+					]),
+				);
+			} catch {
+				ahead = 1; // head sha unknown locally – push so GitHub sees ours
+			}
+			if (ahead === 0) return c.json({ pushed: false });
+			await (ctx.gitPush ?? pushAs)(
+				ctx.repoRoot,
+				slug,
+				body.branch,
+				user.token,
+			);
+			return c.json({ pushed: true });
+		} catch (e) {
+			if (e instanceof GitError) return c.json({ error: e.message }, 502);
+			throw e;
+		}
+	});
+
+	app.post("/api/prs/:n/merge", async (c) => {
+		const n = prNumber(c);
+		if (n instanceof Response) return n;
+		const actor = await prActor(c);
+		if ("refused" in actor) return actor.refused;
+		const { user, slug, gh } = actor;
+		try {
+			const pr = await getPull(slug, n, gh);
+			if (pr.status === 404) return c.json({ error: "pr not found" }, 404);
+			if (pr.status !== 200)
+				return c.json({ error: ghMessage(pr.body, "github unreachable") }, 502);
+			const merged = await mergePull(slug, n, gh);
+			if (merged.status === 200 && merged.body.merged === true) {
+				// ff local main; a refusal (main checked out, non-ff) is fine –
+				// the next sync handles it, the merge answer stands.
+				try {
+					await (ctx.gitFetch ?? fetchRefs)(
+						ctx.repoRoot,
+						githubPushUrl(slug),
+						"main:main",
+						user.token,
+					);
+				} catch {
+					// swallowed on purpose (above)
+				}
+				return c.json({ merged: true });
+			}
+			if (merged.status === 405)
+				return c.json({ conflicted: true, html_url: pr.body.html_url });
+			return c.json(
+				{ error: ghMessage(merged.body, "github rejected the merge") },
+				502,
+			);
+		} catch {
+			return c.json({ error: "github unreachable" }, 502);
 		}
 	});
 
@@ -1182,6 +1487,30 @@ function respondFileError(c: Context<AppEnv>, e: unknown): Response {
 function respondGitError(c: Context<AppEnv>, e: unknown): Response {
 	if (e instanceof GitError) return c.json({ error: e.message }, 500);
 	throw e;
+}
+
+/** The PR wire shape (#27): GitHub's pull objects carry hundreds of fields –
+ *  the routes pick exactly what the list/detail/review UIs consume, so the
+ *  answers stay small and stable regardless of GitHub's payload drift. */
+function prSummary(pr: PullRequest) {
+	return {
+		number: pr.number,
+		title: pr.title,
+		state: pr.state,
+		draft: pr.draft,
+		mergeable: pr.mergeable,
+		html_url: pr.html_url,
+		head: { ref: pr.head.ref, sha: pr.head.sha },
+		base: { ref: pr.base.ref },
+		user: { login: pr.user.login },
+		changed_files: pr.changed_files,
+	};
+}
+
+/** GitHub's own `message` when the body carries one, else the fallback. */
+function ghMessage(body: unknown, fallback: string): string {
+	const message = (body as { message?: unknown } | null)?.message;
+	return typeof message === "string" ? message : fallback;
 }
 
 /** Cheap reject of branch names git can never accept (empty, spaces, "..", leading "-", control chars). */

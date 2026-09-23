@@ -12,7 +12,7 @@ export const AGENTS_END = "<!-- fragmt:end -->";
 export const AGENTS_BODY = `## fragmt – docs environment for this repo
 These docs are maintained through fragmt (git-native drafting).
 Rules for agents:
-- NEVER edit docs on main directly – main is protected. Run \`fragmt agent draft <doc>\` first; merge when done.
+- NEVER edit docs on main directly – main is protected. Run \`fragmt agent save <doc> --file <body>\` (it drafts automatically) or \`agent draft <doc>\` first; merge when done.
 - NEVER hand-edit \`.docs/comments/*.json\` sidecars – use \`fragmt agent comment\`.
 - ALWAYS pass \`--author "Your Name <you@example.invalid>"\` so your work is attributable.
 - State check: \`fragmt agent status\`. Doc bodies are plain markdown – read them directly.
@@ -47,16 +47,25 @@ Do NOT edit docs in this repo. \`cd ${folder}\` and follow the AGENTS.md there; 
 }
 
 /**
- * Shared marker-splice (b5 discipline): write/refresh a managed block in an
- * AGENTS.md. No file → create it holding only the block; file without the
- * markers → append the block after a blank line; markers present → replace
- * exactly between them. NOTHING outside the markers is ever touched – the
- * rest of the file belongs to the repo.
+ * The frontmatter a freshly CREATED AGENTS.md carries in OKF mode – byte-for-
+ * byte the block fixOkf prepends, so a tool-born file and a --fix'd one share
+ * one conformant shape (creation only: an existing file never gains it, the
+ * flip leaves that to `validate --fix` by design).
  */
-function spliceBlock(file: string, body: string): void {
+const OKF_FRONTMATTER = '---\ntype: concept\nstatus: "draft"\n---\n';
+
+/**
+ * Shared marker-splice (b5 discipline): write/refresh a managed block in an
+ * AGENTS.md. No file → create it holding `frontmatter` (an OKF bundle's
+ * frontmatter; empty otherwise) plus the block; file without the markers →
+ * append the block after a blank line; markers present → replace exactly
+ * between them. NOTHING outside the markers is ever touched – the rest of the
+ * file belongs to the repo, and every existing-file path ignores the prefix.
+ */
+function spliceBlock(file: string, body: string, frontmatter?: string): void {
 	const block = `${AGENTS_BEGIN}\n${body}${AGENTS_END}`;
 	if (!existsSync(file)) {
-		writeFileSync(file, `${block}\n`);
+		writeFileSync(file, `${frontmatter ?? ""}${block}\n`);
 		return;
 	}
 	const text = readFileSync(file, "utf8");
@@ -81,19 +90,25 @@ function spliceBlock(file: string, body: string): void {
  * (initRepo/initNestedRepo writeConfig before their call; the CLI's flips
  * run enableOkf before the refresh), which makes a fresh `init --okf`, an
  * existing-repo flip, and a plain re-run all land the right variant between
- * the same v1 fences. okf.ts imports nothing from this module (nor does
- * anything it imports), so the static okfEnabled import closes no cycle.
+ * the same v1 fences. OKF mode also fronts the block with OKF_FRONTMATTER
+ * when – and only when – the file is being created (a fresh `init --okf` or
+ * a fresh nested bundle is born conformant; the flip's existing file is
+ * not). okf.ts imports nothing from this module (nor does anything it
+ * imports), so the static okfEnabled import closes no cycle.
  */
 export function writeAgentsBlock(repoRoot: string): void {
+	const okf = okfEnabled(repoRoot);
 	spliceBlock(
 		join(repoRoot, "AGENTS.md"),
-		okfEnabled(repoRoot) ? AGENTS_BODY_OKF : AGENTS_BODY,
+		okf ? AGENTS_BODY_OKF : AGENTS_BODY,
+		okf ? OKF_FRONTMATTER : undefined,
 	);
 }
 
 /**
  * Write/refresh the outer repo's redirect block (#16): the nested-init's
- * second call – replaces the standard block the plain init left there.
+ * second call – replaces the standard block the plain init left there. No
+ * frontmatter, ever: the outer repo is not the OKF bundle.
  */
 export function writeOuterAgentsBlock(outerRoot: string, folder: string): void {
 	spliceBlock(join(outerRoot, "AGENTS.md"), AGENTS_OUTER_BODY(folder));

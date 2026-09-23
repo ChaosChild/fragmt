@@ -14,6 +14,7 @@ import {
 	createBranch,
 	currentBranch,
 	listBranches,
+	mergedBranches,
 } from "../src/core/index.js";
 
 // Branch round-trip (M3 spec): create / list / checkout against real git repos.
@@ -66,4 +67,22 @@ test("create, list, checkout round-trip: content follows the branch", async () =
 	expect(readFileSync(join(root, "draft.md"), "utf8")).toBe(
 		"# only on the draft\n",
 	);
+});
+
+test("mergedBranches: merged branches listed, unmerged not (no `*` marker)", async () => {
+	const root = gitRepo();
+	repos.push(root);
+
+	await createBranch(root, "merged"); // at main's tip – merged by definition
+	await createBranch(root, "unmerged");
+	await checkoutBranch(root, "unmerged");
+	writeFileSync(join(root, "u.md"), "# u\n");
+	execFileSync("git", ["add", "-A"], { cwd: root });
+	execFileSync("git", ["commit", "-q", "-m", "unmerged work"], { cwd: root });
+	await checkoutBranch(root, "main");
+
+	const merged = await mergedBranches(root, "main");
+	expect(merged).toContain("main");
+	expect(merged).toContain("merged");
+	expect(merged).not.toContain("unmerged");
 });

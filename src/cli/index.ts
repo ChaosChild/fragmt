@@ -20,6 +20,7 @@ import {
 import {
 	authorsNotice,
 	classifyAuthorEmails,
+	commitInitFiles,
 	configPath,
 	enableOkf,
 	findRepoRoot,
@@ -38,7 +39,7 @@ import {
 } from "../core/index.js";
 import { bundleZip } from "../core/zip.js";
 import { createApp, startServer } from "../server/index.js";
-import { runAgent } from "./agent.js";
+import { agentUsage, runAgent } from "./agent.js";
 
 /** Top-level usage text. Exported so tests can assert on it. */
 export const usage = `\
@@ -51,7 +52,8 @@ Usage:
   fragmt export [--format mermaid|dot|json] [--out <file>] [--bundle]
   fragmt agent [status]
   fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor <who>] [--full]
-  fragmt agent draft <doc> [--merge] [--as-actor <who>]
+  fragmt agent draft <doc> [--merge] [--author <who>] [--as-actor <who>]
+  fragmt agent save <doc> (--file <path> | --stdin) [--author <who>] [--message <text>]
   fragmt agent verify <doc> [--as-actor <who>] [--author <who>]
   fragmt --help
 
@@ -61,7 +63,7 @@ Commands:
   serve    Start the local web server
   validate Check OKF conformance (§11); --fix applies the mechanical repairs in one commit
   export   The OKF reference graph – json (default), mermaid, or dot; --bundle zips the docs working tree
-  agent    The agent surface: status, comment, draft, verify (AXI-conformant)
+  agent    The agent surface: status, save, comment, draft, verify (AXI-conformant)
            --as-actor self-declares the OKF trust actor (default fragmt-agent/unspecified)
 `;
 
@@ -70,6 +72,12 @@ export async function main(argv: string[]): Promise<void> {
 	// The agent namespace carries its own strict flag set (thread/body/…), so
 	// it parses itself – main's parseArgs only knows the operator flags.
 	if (argv[0] === "agent") {
+		// #44: the namespace help answers before the repo lookup – a probing
+		// agent gets the verb list from anywhere, like `fragmt --help`.
+		if (argv[1] === "--help") {
+			process.stdout.write(agentUsage);
+			process.exit(0);
+		}
 		const repoRoot = resolveRepoRoot("agent");
 		process.exit(await runAgent(argv.slice(1), repoRoot));
 	}
@@ -236,6 +244,9 @@ async function runPlainInit(
 	if (result.alreadyInitialized) {
 		write("already initialized\n");
 	} else {
+		// #48: the config commit lands once, here – the OKF adoption commit
+		// (and the flip path, which has an existing config) never re-commit it.
+		await commitInitFiles(repoRoot);
 		const count = result.count ?? 0;
 		const noun = count === 1 ? "file" : "files";
 		write(
@@ -287,9 +298,10 @@ async function adoptOkf(
 	}
 	// The adoption commit's identity: the operator's when git has one, else
 	// the fragmt machine identity (the nested initial commit's author),
-	// materialized as repo-local config so the COMMITTER resolves too —
-	// commitAs passes --author only, and fresh nested bundles / CI runners
-	// ship no identity anywhere git looks.
+	// materialized as repo-local config so the COMMITTER resolves too –
+	// commitAs passes --author and the committer env from the same user
+	// (local mode keeps the machine identity), and fresh nested bundles /
+	// CI runners ship no identity anywhere git looks.
 	let who: { name: string; email: string };
 	try {
 		who = await localUser(repoRoot);
