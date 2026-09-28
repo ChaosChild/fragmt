@@ -281,7 +281,12 @@ export function BranchMenu({
 							>
 								{b}
 							</button>
-							{b !== current && pr && (
+							{/* The PR chip shows on EVERY row, the current branch
+						    included – on the branch being merged it is the one
+						    answer to "what am I merging into main?". Only the
+						    trash stays off the current branch (deleting the
+						    checked-out branch is refused anyway). */}
+							{pr && (
 								<button
 									type="button"
 									className="pr-chip"
