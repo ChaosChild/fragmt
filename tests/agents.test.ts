@@ -107,3 +107,10 @@ test("the taught first rule names agent save – the drafting write path", () =>
 		"Run `fragmt agent save <doc> --file <body>` (it drafts automatically)",
 	);
 });
+
+test("the taught rules demand unwrapped paragraph prose – the edit-mode reflow warning's twin", () => {
+	expect(AGENTS_BODY).toContain(
+		"- Write paragraph prose unwrapped – one line per paragraph. Hard-wrapped text reflows wholesale on the first UI save, drowning that diff.",
+	);
+	expect(AGENTS_BODY_OKF).toContain("Write paragraph prose unwrapped");
+});

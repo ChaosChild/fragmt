@@ -193,9 +193,11 @@ export function UserChip({
  * The sidebar-head branch control: reads as metadata ("on main"), opens a
  * small menu to switch, create, or delete a branch. Performing the action
  * (and the unsaved-changes guard on switches) is App's business.
- * #27 (b3): when prsEnabled, opening also fetches GET /api/prs in parallel –
- * each non-current row gains a PR chip (`PR #n` to view, dashed `open PR` to
- * create, in-menu popover) and the trash gates on the merged list (D7).
+ * #27 (b3), reshaped by the owner round: when prsEnabled, opening also
+ * fetches GET /api/prs in parallel – each non-current row with an open PR
+ * gains a `PR #n` view chip – and the trash gates on the merged list (D7).
+ * Creating a PR left the menu (the dashed chip and its in-menu popover were
+ * confusing on non-current branches); the head-row OpenPRButton owns it.
  */
 export function BranchMenu({
 	current,
@@ -217,17 +219,9 @@ export function BranchMenu({
 		string,
 		{ number: number }
 	> | null>(null);
-	// The open-PR popover's branch (the NewDocButton mode swap) + its form.
-	const [openPrFor, setOpenPrFor] = useState<string | null>(null);
-	const [prBody, setPrBody] = useState("");
-	const [prError, setPrError] = useState<string | null>(null);
 
 	useEffect(() => {
-		if (!menu.open) {
-			setOpenPrFor(null);
-			setPrError(null);
-			return;
-		}
+		if (!menu.open) return;
 		getBranches()
 			.then((r) => {
 				setBranches(r.branches);
@@ -250,23 +244,6 @@ export function BranchMenu({
 		onAction({ kind: "create", name: n });
 	}
 
-	// Branch + optional description only – the title derives server-side.
-	// A failure keeps the form open with the server's error inline.
-	async function submitOpenPr(e: FormEvent) {
-		e.preventDefault();
-		const b = openPrFor;
-		if (!b) return;
-		try {
-			const pr = await openPR(b, prBody.trim() || undefined);
-			menu.close();
-			setOpenPrFor(null);
-			setPrBody("");
-			onAction({ kind: "open-pr-created", number: pr.number });
-		} catch (e2) {
-			setPrError(e2 instanceof Error ? e2.message : String(e2));
-		}
-	}
-
 	const prBy = (b: string) => byBranch?.[b] ?? null;
 	const isMerged = (b: string) => merged?.includes(b) ?? false;
 
@@ -285,110 +262,154 @@ export function BranchMenu({
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				{failed && <p className="menu-empty">branches unavailable</p>}
-				{openPrFor !== null ? (
-					<form className="popover-form" onSubmit={submitOpenPr}>
-						<p className="menu-note">
-							<strong>Open pull request</strong>
-							<br />
-							{openPrFor}
-						</p>
-						<label htmlFor="pr-desc">Description (optional)</label>
-						<textarea
-							id="pr-desc"
-							value={prBody}
-							onChange={(e) => setPrBody(e.target.value)}
-						/>
-						{prError && (
-							<p className="rename-error" role="alert">
-								{prError}
-							</p>
-						)}
-						<div className="popover-actions">
-							<button type="submit" className="iconbtn primary">
-								Open PR
+				{(branches ?? []).map((b) => {
+					const pr = prBy(b);
+					return (
+						// One row, three targets: the name switches, the PR chip views
+						// (non-current rows with an open PR only), the trash deletes
+						// (never offered on the current branch – the server refuses
+						// it; gated on merged, D7 – no force-delete from here).
+						<span key={b} className="menu-row">
+							<button
+								type="button"
+								className="menu-item"
+								aria-current={b === current ? "true" : undefined}
+								onClick={() => {
+									menu.close();
+									if (b !== current) onAction({ kind: "switch", name: b });
+								}}
+							>
+								{b}
 							</button>
-						</div>
-					</form>
-				) : (
-					<>
-						{(branches ?? []).map((b) => {
-							const pr = prBy(b);
-							return (
-								// One row, three targets: the name switches, the PR chip
-								// views/creates (non-current rows only), the trash deletes
-								// (never offered on the current branch – the server refuses
-								// it; gated on merged, D7 – no force-delete from here).
-								<span key={b} className="menu-row">
-									<button
-										type="button"
-										className="menu-item"
-										aria-current={b === current ? "true" : undefined}
-										onClick={() => {
-											menu.close();
-											if (b !== current) onAction({ kind: "switch", name: b });
-										}}
-									>
-										{b}
-									</button>
-									{b !== current && pr && (
-										<button
-											type="button"
-											className="pr-chip"
-											title={`View pull request #${pr.number}`}
-											onClick={() => {
-												menu.close();
-												onAction({ kind: "view-pr", number: pr.number });
-											}}
-										>
-											PR #{pr.number}
-										</button>
-									)}
-									{b !== current && !pr && byBranch !== null && (
-										<button
-											type="button"
-											className="pr-chip open"
-											title="Open a pull request for this branch"
-											onClick={() => setOpenPrFor(b)}
-										>
-											open PR
-										</button>
-									)}
-									{b !== current && (
-										<button
-											type="button"
-											className="tool-btn"
-											disabled={!isMerged(b)}
-											title={isMerged(b) ? "Delete branch" : "Not merged yet"}
-											aria-label={`Delete branch ${b}`}
-											aria-disabled={!isMerged(b) || undefined}
-											onClick={() => {
-												if (!isMerged(b)) return;
-												menu.close();
-												onAction({ kind: "delete", name: b });
-											}}
-										>
-											<Trash2 aria-hidden="true" />
-										</button>
-									)}
-								</span>
-							);
-						})}
-						<form className="popover-form" onSubmit={submit}>
-							<label htmlFor="branch-name">New branch</label>
-							<input
-								id="branch-name"
-								value={name}
-								onChange={(e) => setName(e.target.value)}
-								placeholder="drafts/title"
-							/>
-							<div className="popover-actions">
-								<button type="submit" className="iconbtn primary">
-									Create
+							{b !== current && pr && (
+								<button
+									type="button"
+									className="pr-chip"
+									title={`View pull request #${pr.number}`}
+									onClick={() => {
+										menu.close();
+										onAction({ kind: "view-pr", number: pr.number });
+									}}
+								>
+									PR #{pr.number}
 								</button>
-							</div>
-						</form>
-					</>
-				)}
+							)}
+							{b !== current && (
+								<button
+									type="button"
+									className="tool-btn"
+									disabled={!isMerged(b)}
+									title={isMerged(b) ? "Delete branch" : "Not merged yet"}
+									aria-label={`Delete branch ${b}`}
+									aria-disabled={!isMerged(b) || undefined}
+									onClick={() => {
+										if (!isMerged(b)) return;
+										menu.close();
+										onAction({ kind: "delete", name: b });
+									}}
+								>
+									<Trash2 aria-hidden="true" />
+								</button>
+							)}
+						</span>
+					);
+				})}
+				<form className="popover-form" onSubmit={submit}>
+					<label htmlFor="branch-name">New branch</label>
+					<input
+						id="branch-name"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						placeholder="drafts/title"
+					/>
+					<div className="popover-actions">
+						<button type="submit" className="iconbtn primary">
+							Create
+						</button>
+					</div>
+				</form>
+			</MenuPopover>
+		</span>
+	);
+}
+
+/**
+ * The head-row Open PR button (the owner reshape of #27 b3's in-menu chip):
+ * opens the house popover-form anchored on itself – the "Open pull request"
+ * header, the static `<branch> → <base>` line (the client only knows the
+ * branch; the server resolves the true base, so a null base shows the branch
+ * alone), one optional description – and submits openPR(branch, body).
+ * Branch + optional description only – the title derives server-side. A
+ * failure keeps the form open with the server's error inline; success fires
+ * onCreated (App sets the slideout's PR target and refreshes availability).
+ */
+export function OpenPRButton({
+	branch,
+	base,
+	onCreated,
+}: {
+	branch: string;
+	base: string | null;
+	onCreated: (number: number) => void;
+}) {
+	const menu = useMenu();
+	const [body, setBody] = useState("");
+	const [error, setError] = useState<string | null>(null);
+	useEffect(() => {
+		if (!menu.open) {
+			setBody("");
+			setError(null);
+		}
+	}, [menu.open]);
+
+	async function submit(e: FormEvent) {
+		e.preventDefault();
+		try {
+			const pr = await openPR(branch, body.trim() || undefined);
+			menu.close();
+			setBody("");
+			onCreated(pr.number);
+		} catch (e2) {
+			setError(e2 instanceof Error ? e2.message : String(e2));
+		}
+	}
+
+	return (
+		<span className="menu-wrap" ref={menu.wrapRef}>
+			<button
+				type="button"
+				className="iconbtn"
+				title="Push this branch as the signed-in user and open a GitHub pull request for it"
+				aria-label="Open pull request"
+				aria-expanded={menu.open}
+				onClick={menu.toggle}
+			>
+				Open PR
+			</button>
+			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
+				<form className="popover-form" onSubmit={submit}>
+					<p className="menu-note">
+						<strong>Open pull request</strong>
+						<br />
+						{base ? `${branch} → ${base}` : branch}
+					</p>
+					<label htmlFor="pr-desc">Description (optional)</label>
+					<textarea
+						id="pr-desc"
+						value={body}
+						onChange={(e) => setBody(e.target.value)}
+					/>
+					{error && (
+						<p className="rename-error" role="alert">
+							{error}
+						</p>
+					)}
+					<div className="popover-actions">
+						<button type="submit" className="iconbtn primary">
+							Open PR
+						</button>
+					</div>
+				</form>
 			</MenuPopover>
 		</span>
 	);

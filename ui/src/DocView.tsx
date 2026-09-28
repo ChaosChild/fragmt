@@ -32,6 +32,7 @@ import {
 } from "./display";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 import type { AtDoc } from "./editor/at";
+import { hasHardWraps } from "./hard-wraps";
 import { MenuPopover, useMenu } from "./Menus";
 import { shortDate } from "./Sidebar";
 
@@ -1391,6 +1392,17 @@ export function DocView({
 						Reload
 					</button>
 				</div>
+			)}
+			{/* The hard-wrap warning (owner round): stateless – visible while
+			    editing AND the loaded body still hard-wraps; a save that
+			    reflows (onSaved updates doc.markdown) or leaving edit mode
+			    removes it. No dismiss button by design. */}
+			{editing && doc && hasHardWraps(doc.markdown) && (
+				<p className="hard-wrap-note">
+					This document has hard-wrapped paragraphs. The editor saves each
+					paragraph as a single line, so saving will reflow the document and the
+					diff will show it fully changed – the content itself is unaffected.
+				</p>
 			)}
 			{doc ? (
 				<EditorPane

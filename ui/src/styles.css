@@ -2638,9 +2638,10 @@ button.comment-quote:hover {
 .menu-note strong {
 	font-weight: 600;
 }
-/* #27 (b3): the BranchMenu row's PR chips – the okf-chip recipe (quiet,
-   hairline border), mono and compact; `.open` is the create affordance
-   (dashed). Theme variables only, so light and dark both read. */
+/* #27 (b3): the BranchMenu row's PR view chip – the okf-chip recipe (quiet,
+   hairline border), mono and compact. Theme variables only, so light and
+   dark both read. (The dashed create chip is gone – the head-row Open PR
+   button owns creating, owner reshape.) */
 .pr-chip {
 	flex-shrink: 0;
 	font-family: var(--font-mono);
@@ -2657,12 +2658,17 @@ button.comment-quote:hover {
 	color: var(--accent);
 	border-color: var(--accent);
 }
-.pr-chip.open {
-	border-style: dashed;
-}
 .pr-chip:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);
+}
+/* The hard-wrap notice (owner round): one slim warn line pinned above the
+   editor content while editing a body whose paragraphs are hard-wrapped –
+   stateless, gone after a save that reflows or on leaving edit mode. */
+.hard-wrap-note {
+	margin: 0 0 var(--space-2);
+	font-size: 11px;
+	color: var(--warn);
 }
 .iconbtn.danger {
 	color: var(--danger);
@@ -3367,7 +3373,7 @@ button.comment-quote:hover {
 .gv-toolbar a.iconbtn {
 	text-decoration: none;
 }
-/* Bare legend pinned to the pane's bottom-left corner — no chrome (the
+/* Bare legend pinned to the pane's bottom-left corner – no chrome (the
    operator rejected the boxed card). pointer-events stay off so it never
    eats pan gestures underneath. */
 .gv-legend {

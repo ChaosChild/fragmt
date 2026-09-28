@@ -41,6 +41,7 @@ import {
 	moveDoc,
 	type OkfFinding,
 	type OkfValidate,
+	type PrsResponse,
 	patchComment,
 	type RepoMeta,
 	renameFolder,
@@ -69,6 +70,7 @@ import {
 	BranchMenu,
 	type FileOp,
 	NewDocButton,
+	OpenPRButton,
 } from "./Menus";
 import { PRPane } from "./PRPane";
 import { ReferencesPane } from "./ReferencesPane";
@@ -85,7 +87,8 @@ import { ThemeToggle } from "./ThemeToggle";
 
 /** #27 (b3): the slideout's PR target – the list, or one PR by number.
  *  App owns it; the entry points (brand-row/topbar button, BranchMenu
- *  chips) set it, the slideout's PR mode renders it (PRPane, b4). */
+ *  view chips, the head-row Open PR button's success) set it, the
+ *  slideout's PR mode renders it (PRPane, b4). */
 export type PrView = { kind: "list" } | { kind: "pr"; n: number };
 
 function firstDoc(node: TreeNode): string | null {
@@ -197,14 +200,24 @@ export function App() {
 	const auth = useAuth();
 	const [prAvailable, setPrAvailable] = useState(false);
 	const [prView, setPrView] = useState<PrView | null>(null);
+	// The owner reshape: branch → its open PR, from the same boot fetch –
+	// the head-row Open PR button hides while the current branch has one.
+	const [prByBranch, setPrByBranch] =
+		useState<PrsResponse["byBranch"]>(undefined);
 	// b4: the PR mode's slideout-head line – PRPane reports it (the list's
 	// open count, the detail's "PR #n · title"); until the first report
 	// lands, the head falls back to the plain "Pull requests".
 	const [prTitle, setPrTitle] = useState<string | null>(null);
 	const refreshPrAvailable = useCallback(() => {
 		getPRs()
-			.then((r) => setPrAvailable(r.enabled && (r.slug ?? null) !== null))
-			.catch(() => setPrAvailable(false));
+			.then((r) => {
+				setPrAvailable(r.enabled && (r.slug ?? null) !== null);
+				setPrByBranch(r.byBranch);
+			})
+			.catch(() => {
+				setPrAvailable(false);
+				setPrByBranch(undefined);
+			});
 	}, []);
 	useEffect(() => {
 		if (auth) refreshPrAvailable();
@@ -1248,7 +1261,9 @@ export function App() {
 		/>
 	);
 	// Resolution mode owns the merge act – the button hides until the
-	// standing merge finishes or aborts (both locations).
+	// standing merge finishes or aborts (both locations). The enabled title
+	// spells the local act out (owner round) beside the changed-docs count
+	// it already carried; the disabled titles keep their semantics.
 	const mergeBtn = !inResolution && (
 		<button
 			type="button"
@@ -1258,7 +1273,7 @@ export function App() {
 				canMerge
 					? dirty
 						? "save or discard changes to the open document first"
-						: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
+						: `Merge this draft branch back into main – local, no GitHub involved (${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed)`
 					: undefined
 			}
 			onClick={() => void runMerge()}
@@ -1266,6 +1281,21 @@ export function App() {
 			Merge
 		</button>
 	);
+	// The head-row Open PR button (owner reshape – the BranchMenu's dashed
+	// chip tried head=main and read nonsense): beside Merge in both head
+	// locations, prAvailable like the PR-by-search button, only off main,
+	// and HIDDEN – not disabled – while the current branch already has an
+	// open PR (prByBranch from the boot fetch, refreshed after a create).
+	const openPrBtn = prAvailable &&
+		branch !== null &&
+		branch !== (meta?.main ?? "main") &&
+		!prByBranch?.[branch] && (
+			<OpenPRButton
+				branch={branch}
+				base={meta?.main ?? null}
+				onCreated={(n) => requestBranch({ kind: "open-pr-created", number: n })}
+			/>
+		);
 	const newDocBtn = <NewDocButton onFileOp={runFileOp} />;
 
 	// The OKF banner's payload (#21): findings only once an OKF repo's
@@ -1325,6 +1355,7 @@ export function App() {
 						<span className="brand">fragmt</span>
 						{branchMenu}
 						{mergeBtn}
+						{openPrBtn}
 						{/* The head-control order everywhere (owner, testing
 						    round): search, add, graph, theme – collapse pairs
 						    with it in the sidebar head, expand leads the topbar.
@@ -1391,6 +1422,7 @@ export function App() {
 							<div className="side-head-row side-head-branch">
 								{branchMenu}
 								{mergeBtn}
+								{openPrBtn}
 							</div>
 						</div>
 						<Sidebar

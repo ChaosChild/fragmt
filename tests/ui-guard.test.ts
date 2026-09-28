@@ -34,7 +34,12 @@ import type {
 } from "../ui/src/api.js";
 import { DocView } from "../ui/src/DocView.js";
 import { GraphView } from "../ui/src/GraphView.js";
-import { type BranchAction, BranchMenu } from "../ui/src/Menus.js";
+import { hasHardWraps } from "../ui/src/hard-wraps.js";
+import {
+	type BranchAction,
+	BranchMenu,
+	OpenPRButton,
+} from "../ui/src/Menus.js";
 
 // RTL wraps render/fireEvent/waitFor in act; React 19 requires the flag.
 (
@@ -385,6 +390,56 @@ describe("DocView: the two component contracts", () => {
 	});
 });
 
+describe("DocView: the hard-wrap notice (owner round)", () => {
+	test("entering edit mode on a hard-wrapped body pins the slim reflow notice above the editor", async () => {
+		const doc = docOf("a.md", "first prose line\nsecond prose line");
+		render(createElement(DocView, docViewProps({ doc })));
+		// Read mode: no notice.
+		expect(screen.queryByText(/hard-wrapped paragraphs/)).toBeNull();
+		fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+		await screen.findByRole("button", { name: "Cancel" });
+		expect(screen.getByText(/hard-wrapped paragraphs/)).toBeTruthy();
+	});
+
+	test("an unwrapped body enters edit mode with no notice", async () => {
+		render(createElement(DocView, docViewProps()));
+		fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+		await screen.findByRole("button", { name: "Cancel" });
+		expect(screen.queryByText(/hard-wrapped paragraphs/)).toBeNull();
+	});
+});
+
+// --- the hard-wrap detector (owner round) --------------------------------------
+
+describe("hasHardWraps", () => {
+	test("a wrapped paragraph is true", () => {
+		expect(hasHardWraps("first line of prose\nsecond line of prose")).toBe(
+			true,
+		);
+	});
+
+	test("single-line paragraphs are false", () => {
+		expect(hasHardWraps("one paragraph\n\nanother paragraph")).toBe(false);
+		expect(hasHardWraps("just one line")).toBe(false);
+	});
+
+	test("a wrapped code fence is false", () => {
+		expect(hasHardWraps("```\nwrapped code\nover lines\n```")).toBe(false);
+		expect(hasHardWraps("~~~\nwrapped code\nover lines\n~~~")).toBe(false);
+	});
+
+	test("list lines are false", () => {
+		expect(hasHardWraps("- first\n- second\n- third")).toBe(false);
+		expect(hasHardWraps("1. first\n2. second")).toBe(false);
+	});
+
+	test("a paragraph after a fence is still detected", () => {
+		expect(hasHardWraps("```\ncode\n```\nprose line one\nprose line two")).toBe(
+			true,
+		);
+	});
+});
+
 // --- rung 5 (#21): GraphView + the sidebar's graph entry ----------------------
 
 // A small fixture payload in the exact shape /api/graph answers with.
@@ -552,8 +607,9 @@ const PR_FILE: PrFile = {
 	patch: "@@ -1,2 +1,3 @@\n body\n-old line\n+new line\n+another",
 };
 
-// current = "work": main is merged (trash acts, no PR → the open-PR chip),
-// feat is unmerged (trash disabled, D7) and carries PR #12 (the view chip).
+// current = "work": main is merged (trash acts, no PR → nothing), feat is
+// unmerged (trash disabled, D7) and carries PR #12 (the view chip). The
+// current branch "work" has no PR – the head-row Open PR button shows.
 const BRANCHES_PR = {
 	current: "work",
 	branches: ["main", "work", "feat"],
@@ -566,6 +622,12 @@ function prFetch(
 		openPrAnswer?: Response;
 		/** b4: the list's prs override (the empty-list state). */
 		prs?: PrSummary[];
+		/** Owner reshape: the byBranch override – the current branch's own
+		 *  entry hides the head-row Open PR button. */
+		byBranch?: Record<string, { number: number; title: string; state: string }>;
+		/** Owner reshape: overlays for the on-main and merge-tooltip cases. */
+		meta?: Partial<RepoMeta>;
+		branches?: { current: string; branches: string[]; merged?: string[] };
 		/** b4: the detail answer – `pr` overlays PR12, `files` is page 1,
 		 *  `files2` any later page. */
 		detail?: {
@@ -603,7 +665,9 @@ function prFetch(
 				enabled: true,
 				slug: "slug" in opts ? opts.slug : { owner: "o", repo: "r" },
 				prs: opts.prs ?? [PR12],
-				byBranch: { feat: { number: 12, title: PR12.title, state: "open" } },
+				byBranch: opts.byBranch ?? {
+					feat: { number: 12, title: PR12.title, state: "open" },
+				},
 			});
 		}
 		const detail = url.pathname.match(/^\/api\/prs\/(\d+)$/);
@@ -618,7 +682,10 @@ function prFetch(
 				filesPage: page,
 			});
 		}
-		if (url.pathname === "/api/branches") return jsonResponse(BRANCHES_PR);
+		if (url.pathname === "/api/branches")
+			return jsonResponse(opts.branches ?? BRANCHES_PR);
+		if (url.pathname === "/api/meta")
+			return jsonResponse({ ...META, ...opts.meta });
 		return mockFetch(input);
 	};
 }
@@ -668,7 +735,7 @@ describe("App: the PR entry points (#27 b3)", () => {
 	});
 });
 
-describe("BranchMenu: PR chips + the merged gate (#27 b3)", () => {
+describe("BranchMenu: PR chips + the merged gate (#27 b3, owner reshape)", () => {
 	function openMenu(onAction: (action: BranchAction) => void) {
 		vi.stubGlobal("fetch", vi.fn(prFetch()));
 		render(
@@ -683,15 +750,18 @@ describe("BranchMenu: PR chips + the merged gate (#27 b3)", () => {
 		);
 	}
 
-	test("chip states: PR #n on the PR'd branch, dashed open PR on the rest; the trash gates on merged", async () => {
+	test("PR #n on the PR'd branch only – the dashed create chip and its in-menu popover are GONE; the trash gates on merged", async () => {
 		const onAction = vi.fn();
 		openMenu(onAction);
 
-		// feat has an open PR → the view chip; main doesn't → the create chip.
+		// feat has an open PR → the view chip. Creating is NOT a menu act
+		// anymore (owner reshape – the dashed chip tried head=main and read
+		// "No commits between main and main"): no create chip, no popover.
 		expect(await screen.findByText("PR #12")).toBeTruthy();
 		expect(
-			screen.getByTitle("Open a pull request for this branch"),
-		).toBeTruthy();
+			screen.queryByTitle("Open a pull request for this branch"),
+		).toBeNull();
+		expect(screen.queryByText("Open pull request")).toBeNull();
 
 		// D7: main is merged → the trash acts; feat is not → disabled with the
 		// tooltip, no force-delete affordance.
@@ -710,46 +780,11 @@ describe("BranchMenu: PR chips + the merged gate (#27 b3)", () => {
 		fireEvent.click(screen.getByText("PR #12"));
 		expect(onAction).toHaveBeenCalledWith({ kind: "view-pr", number: 12 });
 	});
+});
 
-	test("the open-PR popover submits openPR with branch + description and fires the success action", async () => {
-		const onAction = vi.fn();
-		openMenu(onAction);
-
-		fireEvent.click(
-			await screen.findByTitle("Open a pull request for this branch"),
-		);
-		expect(await screen.findByText("Open pull request")).toBeTruthy();
-		expect(screen.getByText("main")).toBeTruthy();
-		fireEvent.change(screen.getByLabelText("Description (optional)"), {
-			target: { value: "Adds the a doc" },
-		});
-		fireEvent.click(screen.getByRole("button", { name: "Open PR" }));
-
-		await waitFor(() =>
-			expect(onAction).toHaveBeenCalledWith({
-				kind: "open-pr-created",
-				number: 13,
-			}),
-		);
-		// The client contract: branch + body only – the title derives server-side.
-		const post = vi
-			.mocked(fetch)
-			.mock.calls.find(
-				([u, init]) => String(u) === "/api/prs" && init?.method === "POST",
-			);
-		expect(post).toBeTruthy();
-		expect(JSON.parse(String(post?.[1]?.body))).toEqual({
-			branch: "main",
-			body: "Adds the a doc",
-		});
-		// Close everything: the menu (and its popover form) is gone.
-		await waitFor(() =>
-			expect(screen.queryByText("Open pull request")).toBeNull(),
-		);
-	});
-
+describe("OpenPRButton: the head-row popover (owner reshape)", () => {
 	test("a failed open keeps the form open with the server error inline", async () => {
-		const onAction = vi.fn();
+		const onCreated = vi.fn();
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(
@@ -765,25 +800,114 @@ describe("BranchMenu: PR chips + the merged gate (#27 b3)", () => {
 			),
 		);
 		render(
-			createElement(BranchMenu, {
-				current: "work",
-				prsEnabled: true,
-				onAction,
+			createElement(OpenPRButton, {
+				branch: "work",
+				base: "main",
+				onCreated,
 			}),
 		);
-		fireEvent.click(
-			screen.getByRole("button", { name: "Branch: work. Switch branch" }),
-		);
-		fireEvent.click(
-			await screen.findByTitle("Open a pull request for this branch"),
-		);
+		fireEvent.click(screen.getByRole("button", { name: "Open pull request" }));
 		fireEvent.click(await screen.findByRole("button", { name: "Open PR" }));
 
 		const alert = await screen.findByRole("alert");
 		expect(alert.textContent).toBe("github unreachable");
 		// The form stays open, nothing fired.
 		expect(screen.getByRole("button", { name: "Open PR" })).toBeTruthy();
-		expect(onAction).not.toHaveBeenCalled();
+		expect(onCreated).not.toHaveBeenCalled();
+	});
+
+	test("no default-branch knowledge shows the branch alone in the static line", () => {
+		render(
+			createElement(OpenPRButton, {
+				branch: "work",
+				base: null,
+				onCreated: () => {},
+			}),
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Open pull request" }));
+		expect(screen.getByText("work")).toBeTruthy();
+	});
+});
+
+describe("App: the head-row Open PR button (owner reshape)", () => {
+	const OPEN_BTN = { name: "Open pull request" };
+
+	test("hidden while the PR surface is off (auth off – prAvailable false)", async () => {
+		await renderAppReady();
+		expect(screen.queryByRole("button", OPEN_BTN)).toBeNull();
+	});
+
+	test("hidden on main", async () => {
+		await renderAuthedApp(
+			prFetch({
+				meta: { current: "main" },
+				branches: { current: "main", branches: ["main", "work"], merged: [] },
+			}),
+		);
+		await waitFor(() =>
+			expect(screen.queryByRole("button", OPEN_BTN)).toBeNull(),
+		);
+	});
+
+	test("hidden while the current branch already has an open PR", async () => {
+		await renderAuthedApp(
+			prFetch({
+				byBranch: {
+					work: { number: 12, title: PR12.title, state: "open" },
+				},
+			}),
+		);
+		await waitFor(() =>
+			expect(screen.queryByRole("button", OPEN_BTN)).toBeNull(),
+		);
+	});
+
+	test("visible on a draft branch; the popover submits openPR(branch, description) and opens the new PR", async () => {
+		await renderAuthedApp(prFetch());
+		const open = await screen.findByRole("button", OPEN_BTN);
+		// The owner tooltip on the opener…
+		expect(open.getAttribute("title")).toBe(
+			"Push this branch as the signed-in user and open a GitHub pull request for it",
+		);
+		// …and the popover: header + the static branch line (the server
+		// resolves the true base – the client shows work → main).
+		fireEvent.click(open);
+		expect(await screen.findByText("Open pull request")).toBeTruthy();
+		expect(screen.getByText("work → main")).toBeTruthy();
+		fireEvent.change(screen.getByLabelText("Description (optional)"), {
+			target: { value: "Adds the a doc" },
+		});
+		fireEvent.click(screen.getByRole("button", { name: "Open PR" }));
+
+		// Success: the slideout's PR target is the created PR, availability
+		// (and byBranch) refreshed on the way.
+		await waitFor(() => expect(prviewTarget()).toBe("pr:13"));
+		// The client contract: branch + body only – the title derives server-side.
+		const post = vi
+			.mocked(fetch)
+			.mock.calls.find(
+				([u, init]) => String(u) === "/api/prs" && init?.method === "POST",
+			);
+		expect(post).toBeTruthy();
+		expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+			branch: "work",
+			body: "Adds the a doc",
+		});
+	});
+
+	test("the head tooltips render – Merge spells out the local act beside the count", async () => {
+		await renderAuthedApp(
+			prFetch({
+				meta: { drafts: { "a.md": [{ branch: "work", status: "edited" }] } },
+			}),
+		);
+		const merge = await screen.findByRole("button", { name: "Merge" });
+		expect(merge.getAttribute("title")).toBe(
+			"Merge this draft branch back into main – local, no GitHub involved (1 doc changed)",
+		);
+		expect(screen.getByRole("button", OPEN_BTN).getAttribute("title")).toBe(
+			"Push this branch as the signed-in user and open a GitHub pull request for it",
+		);
 	});
 });
 
