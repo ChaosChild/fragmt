@@ -1756,6 +1756,12 @@ button.comment-quote:hover {
 	flex-direction: column;
 	gap: var(--space-3);
 }
+/* Children hold their content height – without this a lone file card
+   flex-shrinks to the pane instead of overflowing it, and its own
+   overflow: hidden clips the patch with no scrollbar ever appearing. */
+.pr-pane > * {
+	flex-shrink: 0;
+}
 .pr-list {
 	list-style: none;
 	margin: 0;
