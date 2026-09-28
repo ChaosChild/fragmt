@@ -108,7 +108,9 @@ function keepEmptiedFolder(
  * `status: "draft"` (A3) plus the derived `references` when the seed body
  * links existing docs, the linked docs' `referenced-by` lists settle in the
  * same commit, the affected indexes regenerate on it, and a reserved
- * basename is refused (§3.1 – DocPathError, the server's 400).
+ * basename is refused (§3.1 – DocPathError, the server's 400). `opts.message`
+ * (the agent CLI's --message) overrides the commit subject; omitted →
+ * `Create <docPath>`.
  */
 export async function createDoc(
 	repoRoot: string,
@@ -116,6 +118,7 @@ export async function createDoc(
 	docPath: string,
 	body = "",
 	user?: { name: string; email: string },
+	opts: { message?: string } = {},
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
 	if (existsSync(abs)) {
@@ -154,7 +157,7 @@ export async function createDoc(
 	}
 	const sha = await commitAs(
 		who,
-		{ files: [...files], message: `Create ${docPath}` },
+		{ files: [...files], message: opts.message ?? `Create ${docPath}` },
 		repoRoot,
 	);
 	return { sha };

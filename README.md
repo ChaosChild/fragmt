@@ -213,6 +213,23 @@ samples included – see [HOSTING](docs/HOSTING.md). Commit authors are
 recognized by their GitHub avatar – automatically for signed-in users, and
 via a two-line authors map in `.fragmt.json` for everyone else.
 
+### Pull requests
+
+With `serve --auth`, pull requests are part of the editor: draft branches
+push and open PRs as the signed-in user – the review, merge and sync ride
+that user's own GitHub token, never the operator's credentials.
+
+- The branch menu carries a PR chip per draft branch; the review lives in
+  the slideout's Pull requests mode – the open list, paged diffs (20 files
+  per page), and Merge with your own token. A conflicted PR states it and
+  links out to GitHub.
+- Sync mirrors every branch to origin (never force), so no work lives only
+  on the local disk – plain `serve` keeps pushing with machine credentials.
+- Branch delete is gated on merged: an unmerged branch can't be deleted
+  from the menu.
+- None of this exists in local mode – a solo operator wanting PRs runs
+  `serve --auth`.
+
 ## Agents
 
 AI coding agents are first-class users, and the contract is the `fragmt agent`
@@ -245,6 +262,14 @@ block into `AGENTS.md`, teaching any agent the drafting rules; with
 `--okf` the block additionally teaches the OKF rules – the conformance
 contract, the reserved and generated files, which fields fragmt owns, and
 the `verify`/`validate` loop. Nothing outside the markers is touched.
+
+On Windows with git's default `core.autocrlf`, every content commit prints
+`warning: … LF will be replaced by CRLF the next time Git touches it`. That is
+git's working-copy layer talking, not a fragmt problem: fragmt stores doc
+bodies as LF and canonicalizes them on every read and write, so the warning
+never reflects a change to the repository. It is noise – no action is needed.
+If the noise bothers you, `git config core.autocrlf` (user level) is the knob;
+fragmt adds no `.gitattributes` of its own.
 
 ## Configuration
 

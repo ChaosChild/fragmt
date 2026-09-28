@@ -299,9 +299,9 @@ test("a write collaborator's mutation commits under their login", async () => {
 			encoding: "utf8",
 		},
 	).trim();
-	// Author is the signed-in GitHub user (noreply form); committer stays local.
+	// Author AND committer are the signed-in GitHub user (noreply form, #27).
 	expect(fields).toBe(
-		"ada|1+ada@users.noreply.github.com|Local User|local@example.com",
+		"ada|1+ada@users.noreply.github.com|ada|1+ada@users.noreply.github.com",
 	);
 });
 

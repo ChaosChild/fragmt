@@ -1,4 +1,10 @@
-import { ChevronsLeft, ChevronsRight, Search, Waypoints } from "lucide-react";
+import {
+	ChevronsLeft,
+	ChevronsRight,
+	GitPullRequest,
+	Search,
+	Waypoints,
+} from "lucide-react";
 import {
 	type CSSProperties,
 	useCallback,
@@ -7,6 +13,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useAuth } from "./AuthGate";
 import {
 	type CommentFile,
 	type CommentThread,
@@ -27,12 +34,14 @@ import {
 	getComments,
 	getDoc,
 	getMeta,
+	getPRs,
 	getTree,
 	MergeError,
 	mergeDraft,
 	moveDoc,
 	type OkfFinding,
 	type OkfValidate,
+	type PrsResponse,
 	patchComment,
 	type RepoMeta,
 	renameFolder,
@@ -61,7 +70,9 @@ import {
 	BranchMenu,
 	type FileOp,
 	NewDocButton,
+	OpenPRButton,
 } from "./Menus";
+import { PRPane } from "./PRPane";
 import { ReferencesPane } from "./ReferencesPane";
 import { ResolutionView } from "./ResolutionView";
 import { SearchModal } from "./SearchModal";
@@ -73,6 +84,12 @@ import {
 	storeSlideoutShare,
 } from "./slideout-geometry";
 import { ThemeToggle } from "./ThemeToggle";
+
+/** #27 (b3): the slideout's PR target – the list, or one PR by number.
+ *  App owns it; the entry points (brand-row/topbar button, BranchMenu
+ *  view chips, the head-row Open PR button's success) set it, the
+ *  slideout's PR mode renders it (PRPane, b4). */
+export type PrView = { kind: "list" } | { kind: "pr"; n: number };
 
 function firstDoc(node: TreeNode): string | null {
 	for (const child of node.children ?? []) {
@@ -176,6 +193,36 @@ export function App() {
 	// amber word: Saved (committed, not yet synced) vs Synced (green).
 	const [synced, setSynced] = useState(true);
 
+	// --- #27 (b3): the PR surface's boot state. Availability = auth on AND
+	// a github.com origin (enabled && slug non-null); a fetch failure reads
+	// as unavailable. prView is the slideout's PR target (b4 renders it) –
+	// PR actions never navigate the editor, so no dirty-guard/Escape slots.
+	const auth = useAuth();
+	const [prAvailable, setPrAvailable] = useState(false);
+	const [prView, setPrView] = useState<PrView | null>(null);
+	// The owner reshape: branch → its open PR, from the same boot fetch –
+	// the head-row Open PR button hides while the current branch has one.
+	const [prByBranch, setPrByBranch] =
+		useState<PrsResponse["byBranch"]>(undefined);
+	// b4: the PR mode's slideout-head line – PRPane reports it (the list's
+	// open count, the detail's "PR #n · title"); until the first report
+	// lands, the head falls back to the plain "Pull requests".
+	const [prTitle, setPrTitle] = useState<string | null>(null);
+	const refreshPrAvailable = useCallback(() => {
+		getPRs()
+			.then((r) => {
+				setPrAvailable(r.enabled && (r.slug ?? null) !== null);
+				setPrByBranch(r.byBranch);
+			})
+			.catch(() => {
+				setPrAvailable(false);
+				setPrByBranch(undefined);
+			});
+	}, []);
+	useEffect(() => {
+		if (auth) refreshPrAvailable();
+	}, [auth, refreshPrAvailable]);
+
 	// --- comments (M4-5): App owns the sidecar state – the pane's thread
 	// list and DocView's create-notification both read from this one fetch;
 	// every mutation re-runs it through refreshComments.
@@ -192,6 +239,11 @@ export function App() {
 	// its close button and the Escape chain return to comments. It re-targets
 	// with the main doc; a preview still wins over it.
 	const [refsMode, setRefsMode] = useState(false);
+	// #27 (b4): opening the PR surface lifts the ≤1180px sheet like the
+	// references toggle does – the desktop pane is always present anyway.
+	useEffect(() => {
+		if (prView) setRailOpen(true);
+	}, [prView]);
 	const [slideoutShare, setSlideoutShare] = useState(() =>
 		readStoredSlideoutShare(),
 	);
@@ -515,7 +567,9 @@ export function App() {
 	}
 
 	// --- branches: switching reloads tree + open doc from the new branch.
-	async function switchTo(action: BranchAction) {
+	// Only the name-carrying actions ever reach here – the PR actions (#27
+	// b3) and delete are handled before the guard in requestBranch.
+	async function switchTo(action: Extract<BranchAction, { name: string }>) {
 		try {
 			if (action.kind === "create") await createBranch(action.name);
 			else await checkoutBranch(action.name);
@@ -555,37 +609,39 @@ export function App() {
 	}
 
 	// Branch switches pass through the guard; deletion skips it – it never
-	// touches the worktree or the checked-out branch.
+	// touches the worktree or the checked-out branch. The PR actions
+	// (#27 b3) set the slideout's PR target – never an editor navigation,
+	// so they skip the guard by design.
 	function requestBranch(action: BranchAction) {
 		if (action.kind === "delete") {
 			void runDeleteBranch(action.name);
 			return;
 		}
+		if (action.kind === "view-pr") {
+			setPrView({ kind: "pr", n: action.number });
+			return;
+		}
+		if (action.kind === "open-pr-created") {
+			setPrView({ kind: "pr", n: action.number });
+			refreshPrAvailable();
+			return;
+		}
 		guardAction(`Switch to ${action.name}`, () => void switchTo(action));
 	}
 
-	// Branch deletion (M4-3): confirm → DELETE; an unmerged 409 asks again
-	// before the force delete. The server refuses the current branch, so the
-	// worktree is never touched – no dirty guard. BranchMenu refetches its
-	// list on open; meta and the branch line refresh here.
+	// Branch deletion (M4-3, #27 D7): confirm → normal DELETE only. The
+	// unmerged trash is disabled in BranchMenu (the merged gate), so the
+	// force-delete affordance is gone from the UI – the server keeps the
+	// capability. The server refuses the current branch, so the worktree is
+	// never touched – no dirty guard. BranchMenu refetches its list on open;
+	// meta and the branch line refresh here.
 	async function runDeleteBranch(name: string) {
 		if (!window.confirm(`Delete branch "${name}"?`)) return;
 		try {
 			await deleteBranch(name);
 		} catch (e) {
-			if (e instanceof SaveError && e.status === 409) {
-				if (!window.confirm(`"${name}" has unmerged commits. Force-delete?`))
-					return;
-				try {
-					await deleteBranch(name, true);
-				} catch (e2) {
-					setError(e2 instanceof Error ? e2.message : String(e2));
-					return;
-				}
-			} else {
-				setError(e instanceof Error ? e.message : String(e));
-				return;
-			}
+			setError(e instanceof Error ? e.message : String(e));
+			return;
 		}
 		setError(null);
 		refreshMeta();
@@ -998,9 +1054,11 @@ export function App() {
 	// editor preventDefaults every Escape it sees; read mode's Escapes arrive
 	// here by design, PM being keydown-inert on a non-editable view – the
 	// bubble's capture listener eats the selection-clearing ones). Modal
-	// first, then the preview, then the References mode (#33): the modal
-	// usually closes itself (focus sits in its input), so this leg mostly
-	// covers focus escaping its trap.
+	// first, then the preview, then the PR mode (#27 b4 – slotted to match
+	// the render precedence: a preview wins over it, it wins over
+	// references), then the References mode (#33): the modal usually closes
+	// itself (focus sits in its input), so this leg mostly covers focus
+	// escaping its trap.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: closePreview is re-created per render on purpose – its sidebar restore reads autoCollapsed (a ref), so the two open flags are the only state this listener branches on.
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -1011,6 +1069,9 @@ export function App() {
 			} else if (previewPath !== null) {
 				e.preventDefault();
 				closePreview();
+			} else if (prView !== null) {
+				e.preventDefault();
+				setPrView(null);
 			} else if (refsMode) {
 				e.preventDefault();
 				setRefsMode(false);
@@ -1018,7 +1079,7 @@ export function App() {
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [searchOpen, previewPath, refsMode]);
+	}, [searchOpen, previewPath, prView, refsMode]);
 
 	// The preview's fetch – the main doc's read client, cancel-guarded like
 	// the sidecar fetch. Quiet both ways: DocPreview's skeleton while
@@ -1179,9 +1240,31 @@ export function App() {
 			<Search aria-hidden="true" />
 		</button>
 	);
-	const branchMenu = <BranchMenu current={branch} onAction={requestBranch} />;
+	// #27 (b3): the PR list's entry, beside ⌕ in both head locations.
+	// Availability (auth on + github origin) drives the hiding everywhere.
+	const prBtn = prAvailable && (
+		<button
+			type="button"
+			className="tool-btn"
+			title="Pull requests"
+			aria-label="Pull requests"
+			onClick={() => setPrView({ kind: "list" })}
+		>
+			<GitPullRequest aria-hidden="true" />
+		</button>
+	);
+	const branchMenu = (
+		<BranchMenu
+			current={branch}
+			prsEnabled={prAvailable}
+			mainName={meta?.main ?? null}
+			onAction={requestBranch}
+		/>
+	);
 	// Resolution mode owns the merge act – the button hides until the
-	// standing merge finishes or aborts (both locations).
+	// standing merge finishes or aborts (both locations). The enabled title
+	// spells the local act out (owner round) beside the changed-docs count
+	// it already carried; the disabled titles keep their semantics.
 	const mergeBtn = !inResolution && (
 		<button
 			type="button"
@@ -1191,7 +1274,7 @@ export function App() {
 				canMerge
 					? dirty
 						? "save or discard changes to the open document first"
-						: `${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed`
+						: `Merge this draft branch back into main – local, no GitHub involved (${changedDocs} ${changedDocs === 1 ? "doc" : "docs"} changed)`
 					: undefined
 			}
 			onClick={() => void runMerge()}
@@ -1199,6 +1282,21 @@ export function App() {
 			Merge
 		</button>
 	);
+	// The head-row Open PR button (owner reshape – the BranchMenu's dashed
+	// chip tried head=main and read nonsense): beside Merge in both head
+	// locations, prAvailable like the PR-by-search button, only off main,
+	// and HIDDEN – not disabled – while the current branch already has an
+	// open PR (prByBranch from the boot fetch, refreshed after a create).
+	const openPrBtn = prAvailable &&
+		branch !== null &&
+		branch !== (meta?.main ?? "main") &&
+		!prByBranch?.[branch] && (
+			<OpenPRButton
+				branch={branch}
+				base={meta?.main ?? null}
+				onCreated={(n) => requestBranch({ kind: "open-pr-created", number: n })}
+			/>
+		);
 	const newDocBtn = <NewDocButton onFileOp={runFileOp} />;
 
 	// The OKF banner's payload (#21): findings only once an OKF repo's
@@ -1227,7 +1325,18 @@ export function App() {
 	return (
 		<>
 			<div className="ambient" aria-hidden="true" />
-			<div className="app-frame">
+			<div
+				className="app-frame"
+				// #27 (b3): the PR target, mirrored for the guard tests
+				// ("list" | "pr:<n>" – absent = closed).
+				data-prview={
+					prView
+						? prView.kind === "list"
+							? "list"
+							: `pr:${prView.n}`
+						: undefined
+				}
+			>
 				{/* Collapsed chrome (#15): while the sidebar is tucked away, the
 				    topbar carries what its head held – expand, brand, branch,
 				    Merge, new doc, search, theme, sync LED. The fixed actions
@@ -1247,12 +1356,14 @@ export function App() {
 						<span className="brand">fragmt</span>
 						{branchMenu}
 						{mergeBtn}
+						{openPrBtn}
 						{/* The head-control order everywhere (owner, testing
 						    round): search, add, graph, theme – collapse pairs
 						    with it in the sidebar head, expand leads the topbar.
 						    The sync LED lives in the rail head alone (redundant
 						    here). */}
 						{searchBtn}
+						{prBtn}
 						{newDocBtn}
 						{graphBtn}
 						<ThemeToggle />
@@ -1261,15 +1372,16 @@ export function App() {
 				)}
 				<div
 					className="layout"
-					// Without a preview the pane is a fixed 316px column, so main
-					// must claim ALL free space – flex-grow 1. The 55/45 share
-					// only applies while the pane is flexed (preview open): per
-					// spec §9.7.1 a grow < 1 takes just grow × free-space, so a
-					// lone 0.55 grower leaves 45% of the layout dead.
+					// Without a wide state (a preview, or the PR mode – #27 b4 rides
+					// the same split) the pane is a fixed 316px column, so main must
+					// claim ALL free space – flex-grow 1. The 55/45 share only
+					// applies while the pane is flexed: per spec §9.7.1 a grow < 1
+					// takes just grow × free-space, so a lone 0.55 grower leaves
+					// 45% of the layout dead.
 					style={
 						{
 							"--slideout-share": String(
-								previewPath !== null ? slideoutShare : 1,
+								previewPath !== null || prView !== null ? slideoutShare : 1,
 							),
 						} as CSSProperties
 					}
@@ -1289,6 +1401,7 @@ export function App() {
 								<span className="brand">fragmt</span>
 								<div className="side-head-spacer" />
 								{searchBtn}
+								{prBtn}
 								{newDocBtn}
 								{graphBtn}
 								{/* Moved from the rail head (#15) – the sidebar head is
@@ -1310,6 +1423,7 @@ export function App() {
 							<div className="side-head-row side-head-branch">
 								{branchMenu}
 								{mergeBtn}
+								{openPrBtn}
 							</div>
 						</div>
 						<Sidebar
@@ -1464,21 +1578,25 @@ export function App() {
 								onDeleteDoc={requestDeleteDoc}
 								onRenamed={onRenamed}
 								okf={meta?.okf === true}
-								referencesOpen={refsMode && previewPath === null}
+								referencesOpen={
+									refsMode && previewPath === null && prView === null
+								}
 								onOpenReferences={openReferences}
 							/>
 						)}
 					</main>
 					{/* The right pane (#15, testing round): the v0.5.0 comments rail
 					    again – permanent, 316px, the open doc's threads – until a
-					    preview opens and widens it into the split. Hidden in
-					    resolution mode (the doc pane is taken over, its comments
-					    mid-merge) and while the graph lens is up – it reads the
-					    same selection, not a doc. */}
+					    preview opens and widens it into the split (the PR mode, #27
+					    b4, rides the same wide split). Hidden in resolution mode
+					    (the doc pane is taken over, its comments mid-merge) and
+					    while the graph lens is up – it reads the same selection,
+					    not a doc. */}
 					{selected && !inResolution && !graphOpen && (
 						<Slideout
 							open={railOpen}
 							preview={previewPath !== null}
+							prTitle={prView !== null ? (prTitle ?? "Pull requests") : null}
 							references={refsMode}
 							commentCount={threads.length}
 							previewTitle={previewTitle}
@@ -1488,14 +1606,39 @@ export function App() {
 							onClose={
 								previewPath !== null
 									? closePreview
-									: refsMode
-										? () => setRefsMode(false)
-										: closeSheet
+									: prView !== null
+										? () => setPrView(null)
+										: refsMode
+											? () => setRefsMode(false)
+											: closeSheet
 							}
 							onShare={applySlideoutShare}
 						>
+							{/* Render precedence (#27 b4): a preview wins over the PR
+							    mode exactly as it wins over references – App renders
+							    DocPreview when previewPath is set, whatever prView
+							    holds; the PR mode yields and returns when the preview
+							    closes. */}
 							{previewPath === null ? (
-								refsMode ? (
+								prView !== null ? (
+									<PRPane
+										prView={prView}
+										setPrView={setPrView}
+										onHead={setPrTitle}
+										/* A landed PR merge ends the branch's work: switch to
+										   main so the tree/doc state reads post-merge. Rides
+										   the save-or-discard guard – a dirty buffer parks,
+										   never silently drops. */
+										onMerged={() => {
+											const m = meta?.main;
+											if (m)
+												guardAction(
+													"Switch to main",
+													() => void switchTo({ kind: "switch", name: m }),
+												);
+										}}
+									/>
+								) : refsMode ? (
 									<ReferencesPane
 										references={doc?.frontmatter.references ?? []}
 										referencedBy={doc?.frontmatter["referenced-by"] ?? []}

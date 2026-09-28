@@ -6,7 +6,9 @@ import {
 	addReply,
 	type CommentThread,
 	commitAs,
+	createDoc,
 	currentBranch,
+	docHash,
 	GitIdentityError,
 	inMerge,
 	loadConfig,
@@ -16,12 +18,14 @@ import {
 	populateOkf,
 	type RepoMeta,
 	readComments,
+	readDoc,
 	repoMeta,
 	resolveDocPath,
 	setResolved,
 	stampGenerated,
 	startDraft,
 	verifyDoc,
+	writeDoc,
 } from "../core/index.js";
 import { nestedDocsRedirect } from "./index.js";
 
@@ -61,6 +65,32 @@ export function parseAuthor(who: string): { name: string; email: string } {
 		return { name: withAddress[1].trim(), email: withAddress[2].trim() };
 	const name = who.trim();
 	return { name, email: `${authorSlug(name)}@users.noreply.fragmt` };
+}
+
+/**
+ * The merge commit's identity seam (#43): mergeToMain commits through git's
+ * own `merge --no-edit`, which takes no author – but env outranks config, and
+ * env is how commitAs already carries identity. Set process-wide for the one
+ * call, restored after: the CLI is one-shot and the tests run sequentially.
+ * Undefined passes through untouched (the machine identity, as before).
+ */
+async function mergeAs<T>(
+	user: { name: string; email: string } | undefined,
+	run: () => Promise<T>,
+): Promise<T> {
+	if (user === undefined) return run();
+	const env = {
+		GIT_AUTHOR_NAME: user.name,
+		GIT_AUTHOR_EMAIL: user.email,
+		GIT_COMMITTER_NAME: user.name,
+		GIT_COMMITTER_EMAIL: user.email,
+	};
+	Object.assign(process.env, env);
+	try {
+		return await run();
+	} finally {
+		for (const k of Object.keys(env)) delete process.env[k];
+	}
 }
 
 /** The status block: summary line + draft rows (empty state: none). */
@@ -145,7 +175,12 @@ function statusHints(meta: RepoMeta): string[] {
 			"fragmt serve – finish or abort the standing merge in the UI",
 			"fragmt agent status – re-check merge state",
 		];
-	const doc = Object.keys(meta.docs)[0];
+	// #47: git-log order is "whatever committed last" – pick alphabetically,
+	// and never AGENTS.md: the contract file is not a drafting target (if it
+	// is the only doc, doc stays undefined and the hint is skipped).
+	const doc = Object.keys(meta.docs)
+		.sort()
+		.find((d) => d.split("/").pop() !== "AGENTS.md");
 	const draft = Object.entries(meta.drafts).flatMap(([d, es]) =>
 		es.map((e) => ({ doc: d, branch: e.branch })),
 	)[0];
@@ -170,10 +205,13 @@ type AgentValues = {
 	"as-actor"?: string;
 	full?: boolean;
 	merge?: boolean;
+	file?: string;
+	stdin?: boolean;
+	message?: string;
 };
 
 function parseVerb(
-	verb: "status" | "comment" | "draft" | "verify",
+	verb: "status" | "comment" | "draft" | "verify" | "save",
 	args: string[],
 ): { values: AgentValues; positionals: string[] } {
 	const asActor = { "as-actor": { type: "string" } } as const;
@@ -188,10 +226,21 @@ function parseVerb(
 					...asActor,
 				}
 			: verb === "draft"
-				? { merge: { type: "boolean", default: false }, ...asActor }
+				? {
+						merge: { type: "boolean", default: false },
+						author: { type: "string" },
+						...asActor,
+					}
 				: verb === "verify"
 					? { author: { type: "string" }, ...asActor }
-					: {};
+					: verb === "save"
+						? {
+								file: { type: "string" },
+								stdin: { type: "boolean", default: false },
+								author: { type: "string" },
+								message: { type: "string" },
+							}
+						: {};
 	const { values, positionals } = parseArgs({
 		args,
 		options,
@@ -217,6 +266,7 @@ async function runStatus(
 
 async function runComment(
 	repoRoot: string,
+	docsRoot: string,
 	parsed: { values: AgentValues; positionals: string[] },
 	out: (s: string) => void,
 ): Promise<number> {
@@ -224,6 +274,14 @@ async function runComment(
 	const doc = positionals[0];
 	if (doc === undefined) {
 		out("error: comment needs a doc path (docsRoot-relative .md)");
+		return 1;
+	}
+	// #46: a missing doc used to list as "no threads" with exit 0 – the same
+	// resolve-and-refuse as draft/verify, once here for the listing and the
+	// thread paths alike (a nonexistent doc has neither).
+	const abs = resolveDocPath(repoRoot, docsRoot, doc);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		out(`error: no doc ${doc}`);
 		return 1;
 	}
 	if (
@@ -319,8 +377,28 @@ async function runDraft(
 		out("error: draft needs a doc path (docsRoot-relative .md)");
 		return 1;
 	}
+	// #42: a draft of an absent doc used to answer ok and then silently skip
+	// the pre-merge stamp – refuse and point at the creation verb instead
+	// (runVerify's guard, plus the pointer).
+	const abs = resolveDocPath(repoRoot, docsRoot, doc);
+	if (!existsSync(abs) || !statSync(abs).isFile()) {
+		out(
+			`error: no doc ${doc} – create it with: fragmt agent save ${doc} --file <body>`,
+		);
+		return 1;
+	}
 	if (inMerge(repoRoot)) {
 		out(IN_MERGE);
+		return 1;
+	}
+	// #43: --author is optional like save/comment/verify's – resolved only
+	// when passed, since a plain draft commits nothing and a machine with no
+	// git identity may still draft. When passed it rides every commit this
+	// verb makes: the OKF stamp below and the merge itself.
+	const user =
+		values.author !== undefined ? parseAuthor(values.author) : undefined;
+	if (user !== undefined && (!user.name || !user.email)) {
+		out("error: --author needs a display name and an address");
 		return 1;
 	}
 	if (values.merge !== true) {
@@ -331,34 +409,24 @@ async function runDraft(
 	}
 	const branch = await currentBranch(repoRoot);
 	// D4: OKF mode stamps the draft's doc on the DRAFT branch pre-merge – a
-	// tiny commit that rides into main with the merge. A doc path that does
-	// not resolve (or a doc deleted in the draft) skips the stamp; the merge
-	// itself proceeds exactly as before.
+	// tiny commit that rides into main with the merge. The doc's presence is
+	// the guard at the top (#42), so the stamp can no longer skip silently.
 	if (okfEnabled(repoRoot)) {
 		const actor = values["as-actor"] ?? AGENT_DEFAULT;
-		let abs: string | null = null;
-		try {
-			const a = resolveDocPath(repoRoot, docsRoot, doc);
-			abs = existsSync(a) && statSync(a).isFile() ? a : null;
-		} catch {
-			abs = null;
-		}
-		if (abs !== null) {
-			const next = stampGenerated(readFileSync(abs, "utf8"), actor);
-			if (next !== null) {
-				writeFileSync(abs, next);
-				await commitAs(
-					await localUser(repoRoot),
-					{
-						files: [relative(repoRoot, abs).split(sep).join("/")],
-						message: `OKF: stamp ${doc} as ${actor}`,
-					},
-					repoRoot,
-				);
-			}
+		const next = stampGenerated(readFileSync(abs, "utf8"), actor);
+		if (next !== null) {
+			writeFileSync(abs, next);
+			await commitAs(
+				user ?? (await localUser(repoRoot)),
+				{
+					files: [relative(repoRoot, abs).split(sep).join("/")],
+					message: `OKF: stamp ${doc} as ${actor}`,
+				},
+				repoRoot,
+			);
 		}
 	}
-	const result = await mergeToMain(repoRoot, docsRoot);
+	const result = await mergeAs(user, () => mergeToMain(repoRoot, docsRoot));
 	if (result.merged) {
 		// The server's conclude seam's twin: a clean merge regenerates the
 		// references graph and indexes on main.
@@ -377,6 +445,77 @@ async function runDraft(
 		`error: merge conflict – aborted, unresolvable files: ${result.files.join(", ")}`,
 	);
 	return 1;
+}
+
+/**
+ * `fragmt agent save <doc> (--file <path> | --stdin) [--author <who>]
+ * [--message <text>]` – the content verb (#41): the same writeDoc/createDoc
+ * paths the server's PUT/POST ride, so a CLI save gets every save-time
+ * semantic in its ONE commit – the OKF `generated` stamp, `references`
+ * settlement, `referenced-by` propagation – instead of leaving them for
+ * merge-time healing, and a new doc is born conformant. Branch discipline
+ * is the server's model: on main the startDraft dance (POST /api/draft)
+ * runs first; any other branch writes directly. The stale check hashes the
+ * body the agent just superseded – PUT's discipline, honestly.
+ */
+async function runSave(
+	repoRoot: string,
+	docsRoot: string,
+	parsed: { values: AgentValues; positionals: string[] },
+	out: (s: string) => void,
+): Promise<number> {
+	const { values, positionals } = parsed;
+	const doc = positionals[0];
+	if (doc === undefined) {
+		out("error: save needs a doc path (docsRoot-relative .md)");
+		return 1;
+	}
+	// Exactly one body source; a usage error like an unknown flag (exit 2).
+	const fromFile = values.file !== undefined;
+	const fromStdin = values.stdin === true;
+	if (fromFile === fromStdin) {
+		out("error: save needs exactly one body source – --file <path> or --stdin");
+		return 2;
+	}
+	if (fromFile && !existsSync(values.file as string)) {
+		out(`error: --file not found: ${values.file}`);
+		return 1;
+	}
+	const body = readFileSync(fromFile ? (values.file as string) : 0, "utf8");
+	if (inMerge(repoRoot)) {
+		out(IN_MERGE);
+		return 1;
+	}
+	const user =
+		values.author !== undefined
+			? parseAuthor(values.author)
+			: await localUser(repoRoot);
+	if (!user.name || !user.email) {
+		out("error: --author needs a display name and an address");
+		return 1;
+	}
+	// The server's write model: on main, draft first (the POST /api/draft
+	// dance); a branch switch is the auto-draft note's trigger.
+	const before = await currentBranch(repoRoot);
+	const { current } = await startDraft(repoRoot, doc, docsRoot);
+	const message = values.message ?? `agent save ${doc}`;
+	const abs = resolveDocPath(repoRoot, docsRoot, doc);
+	const { sha } =
+		existsSync(abs) && statSync(abs).isFile()
+			? await writeDoc(
+					repoRoot,
+					docsRoot,
+					doc,
+					body,
+					docHash(readDoc(repoRoot, docsRoot, doc).markdown),
+					user,
+					{ message },
+				)
+			: await createDoc(repoRoot, docsRoot, doc, body, user, { message });
+	const note = current !== before ? " · auto-drafted from main" : "";
+	out(`ok: saved ${doc} on ${current} (${sha.slice(0, 7)})${note}`);
+	helpBlock(out, [`fragmt agent draft ${doc} --merge – merge back to main`]);
+	return 0;
 }
 
 /**
@@ -428,8 +567,32 @@ async function runVerify(
 }
 
 /**
- * `fragmt agent [status] | comment <doc> […] | draft <doc> [--merge] |
- * verify <doc> [--as-actor <string>] [--author <who>]`.
+ * The namespace help (#44): `fragmt agent --help` – index.ts usage's
+ * register in miniature, every verb with its flags and a one-line purpose.
+ * Exported so tests assert on it.
+ */
+export const agentUsage = `\
+fragmt agent – the agent surface: status, save, comment, draft, verify
+
+Usage:
+  fragmt agent [status]
+  fragmt agent save <doc> (--file <path> | --stdin) [--author <who>] [--message <text>]
+  fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor <who>] [--full]
+  fragmt agent draft <doc> [--merge] [--author <who>] [--as-actor <who>]
+  fragmt agent verify <doc> [--as-actor <who>] [--author <who>]
+
+Commands:
+  status  Branch, draft rows, merge state (bare fragmt agent is status)
+  save    Create or overwrite a doc in one conformant commit – new docs on main auto-draft
+  comment List threads, or reply/resolve one – new threads start from a text selection in the UI
+  draft   Start or join the doc's draft branch; --merge merges it back to main
+  verify  Record the doc's verified event as the self-declared --as-actor
+`;
+
+/**
+ * `fragmt agent [status] | comment <doc> […] | draft <doc> [--merge]
+ * [--author <who>] | save <doc> (--file <path> | --stdin) […] | verify <doc>
+ * [--as-actor <string>] [--author <who>]`.
  * Returns the exit code: 0 ok, 1 runtime error (`error: …` on stdout, one
  * line), 2 unknown flag/verb. `write` is injectable for tests; stdout live.
  */
@@ -442,11 +605,18 @@ export async function runAgent(
 ): Promise<number> {
 	const out = (s: string) => write(`${s}\n`);
 	const verb = argv[0] ?? "status";
+	// #44: the namespace help answers before any verb parsing – stdout, exit
+	// 0, the same contract as `fragmt --help`.
+	if (verb === "--help") {
+		write(agentUsage);
+		return 0;
+	}
 	if (
 		verb !== "status" &&
 		verb !== "comment" &&
 		verb !== "draft" &&
-		verb !== "verify"
+		verb !== "verify" &&
+		verb !== "save"
 	) {
 		out("error: unknown flag or verb");
 		return 2;
@@ -461,9 +631,11 @@ export async function runAgent(
 	try {
 		const docsRoot = loadConfig(repoRoot).docsRoot;
 		if (verb === "status") return await runStatus(repoRoot, docsRoot, out);
-		if (verb === "comment") return await runComment(repoRoot, parsed, out);
+		if (verb === "comment")
+			return await runComment(repoRoot, docsRoot, parsed, out);
 		if (verb === "verify")
 			return await runVerify(repoRoot, docsRoot, parsed, out);
+		if (verb === "save") return await runSave(repoRoot, docsRoot, parsed, out);
 		return await runDraft(repoRoot, docsRoot, parsed, out);
 	} catch (e) {
 		// #16: run from the outer repo of a nested setup – the shared redirect

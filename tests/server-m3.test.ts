@@ -138,7 +138,11 @@ test("folder lifecycle via /api/folders carries its docs along; .gitkeep never l
 test("branch endpoints: list, create+switch (with base), switch back", async () => {
 	const list = await api("GET", "/api/branches");
 	expect(list.status).toBe(200);
-	expect(await list.json()).toEqual({ current: "main", branches: ["main"] });
+	expect(await list.json()).toEqual({
+		current: "main",
+		branches: ["main"],
+		merged: ["main"],
+	});
 
 	const created = await api("POST", "/api/branches", { name: "drafts/x" });
 	expect(created.status).toBe(200);
@@ -146,6 +150,7 @@ test("branch endpoints: list, create+switch (with base), switch back", async () 
 	expect(await (await api("GET", "/api/branches")).json()).toEqual({
 		current: "drafts/x",
 		branches: ["drafts/x", "main"],
+		merged: ["drafts/x", "main"],
 	});
 
 	const based = await api("POST", "/api/branches", {

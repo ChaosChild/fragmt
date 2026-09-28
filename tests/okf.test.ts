@@ -190,6 +190,43 @@ test("generateIndexes: D2 shape – sections, descriptions, Subdirectories last,
 	expect(read("sub/index.md")).toBe("# Playbook\n\n* [d](/sub/d.md)\n");
 });
 
+test("#50: the root AGENTS.md is never catalog content; a subdirectory's lists", async () => {
+	write(
+		"AGENTS.md",
+		'---\ntype: concept\nstatus: "draft"\n---\n## fragmt – docs environment\n',
+	);
+	write("a.md", "---\ntype: Metric\n---\n# A\n");
+	write(
+		"sub/AGENTS.md",
+		'---\ntype: concept\nstatus: "draft"\n---\n## sub rules\n',
+	);
+	write("sub/b.md", "---\ntype: Playbook\n---\n# B\n");
+	const written = await generateIndexes(root, ".");
+	expect(written.sort()).toEqual(["index.md", "sub/index.md"].sort());
+	expect(read("index.md")).toBe(
+		[
+			"---",
+			'okf_version: "0.2"',
+			"---",
+			"",
+			"# Metric",
+			"",
+			"* [a](/a.md)",
+			"",
+			"# Subdirectories",
+			"",
+			"* [sub](/sub/index.md)",
+			"",
+		].join("\n"),
+	);
+	expect(read("sub/index.md")).toBe(
+		"# concept\n\n* [AGENTS](/sub/AGENTS.md)\n\n# Playbook\n\n* [b](/sub/b.md)\n",
+	);
+	// Out of the catalog only – the contract file still validates as a doc.
+	const check = await validateOkf(root, ".");
+	expect(check.conformant).toBe(true);
+});
+
 test("generateIndexes: an unchanged index is not rewritten", async () => {
 	write("a.md", "---\ntype: Metric\n---\n# A\n");
 	await generateIndexes(root, ".");

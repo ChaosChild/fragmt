@@ -19,10 +19,19 @@ export class GitError extends Error {
 /**
  * The whole git layer: `execFile("git", args, { cwd })`, no shell, ever.
  * Resolves trimmed stdout; rejects with GitError on non-zero exit.
+ * `opts.env` merges over process.env for this spawn only – the seam for
+ * credentials that must never reach argv or config.
  */
-export async function git(repoRoot: string, args: string[]): Promise<string> {
+export async function git(
+	repoRoot: string,
+	args: string[],
+	opts?: { env?: Record<string, string> },
+): Promise<string> {
 	try {
-		const { stdout } = await execFileAsync("git", args, { cwd: repoRoot });
+		const { stdout } = await execFileAsync("git", args, {
+			cwd: repoRoot,
+			env: opts?.env ? { ...process.env, ...opts.env } : undefined,
+		});
 		return stdout.trim();
 	} catch (e) {
 		const err = e as {
@@ -50,6 +59,20 @@ export async function listBranches(repoRoot: string): Promise<string[]> {
 	const out = await git(repoRoot, [
 		"for-each-ref",
 		"refs/heads",
+		"--format=%(refname:short)",
+	]);
+	return out ? out.split("\n") : [];
+}
+
+/** Branch names already merged into `base` (one `git branch --merged` spawn). */
+export async function mergedBranches(
+	repoRoot: string,
+	base: string,
+): Promise<string[]> {
+	const out = await git(repoRoot, [
+		"branch",
+		"--merged",
+		base,
 		"--format=%(refname:short)",
 	]);
 	return out ? out.split("\n") : [];

@@ -675,10 +675,16 @@ export async function propagateRefs(
 	return batch.map((b) => repoRel(repoRoot, b.abs));
 }
 
-/** A dir node's direct concept docs (reserved basenames excluded). */
+/** A dir node's direct concept docs (reserved basenames excluded, and at the
+ *  bundle root the contract AGENTS.md too – #50: it stays validated and
+ *  linkable, it just never lists as catalog content; a subdirectory's
+ *  AGENTS.md is the owner's own doc and lists normally). */
 function dirDocs(node: TreeNode): TreeNode[] {
 	return (node.children ?? []).filter(
-		(c) => c.type === "doc" && !isReservedBase(c.name),
+		(c) =>
+			c.type === "doc" &&
+			!isReservedBase(c.name) &&
+			!(node.path === "" && c.name.toLowerCase() === "agents.md"),
 	);
 }
 

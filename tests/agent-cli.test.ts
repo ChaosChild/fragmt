@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import {
+	agentUsage,
 	detailLines,
 	parseAuthor,
 	runAgent,
@@ -24,6 +25,7 @@ import {
 	type CommentThread,
 	initRepo,
 	readComments,
+	readDoc,
 } from "../src/core/index.js";
 
 // M4-4 b4: the pure AXI formatters directly, then runAgent end-to-end on temp
@@ -205,6 +207,10 @@ async function agent(
 
 test("usage advertises the agent namespace", () => {
 	expect(usage).toMatch(/fragmt agent/);
+	// #43: the draft line advertises --author now.
+	expect(usage).toContain(
+		"fragmt agent draft <doc> [--merge] [--author <who>] [--as-actor <who>]",
+	);
 });
 
 test("status: one-block summary, draft rows, help hints; bare agent = status", async () => {
@@ -240,6 +246,38 @@ test("status: empty draft model is definitive, hints still concrete", async () =
 	expect(r.out[4]).toBe("  fragmt agent draft a.md");
 });
 
+test("status hints: alphabetical pick, stable across commit order, never AGENTS.md (#47)", async () => {
+	const root = seeded();
+	const first = await agent(root, ["status"]);
+	expect(first.out.at(-2)).toBe("  fragmt agent comment a.md");
+
+	// b.md commits later – git-log order would put it first; the hint stays a.md.
+	write(root, "docs/b.md", "# b\n");
+	commit(root, "add b");
+	const second = await agent(root, ["status"]);
+	expect(second.out.at(-2)).toBe("  fragmt agent comment a.md");
+
+	// AGENTS.md adopted as a doc never becomes the hint, whatever the order.
+	write(root, "docs/AGENTS.md", "# contract\n");
+	commit(root, "adopt agents as a doc");
+	const withAgents = await agent(root, ["status"]);
+	expect(withAgents.out.at(-2)).toBe("  fragmt agent comment a.md");
+	expect(withAgents.out.join("\n")).not.toContain("AGENTS.md");
+
+	// AGENTS.md as the only doc: the doc hint is skipped entirely.
+	const only = repo();
+	write(only, "docs/AGENTS.md", "# contract\n");
+	commit(only, "seed");
+	initRepo(only, "docs");
+	commit(only, "adopt docs root");
+	const agentsOnly = await agent(only, ["status"]);
+	// One hint only, so it is the last line.
+	expect(agentsOnly.out.at(-1)).toBe(
+		"  fragmt serve – create the first doc in the UI",
+	);
+	expect(agentsOnly.out.join("\n")).not.toContain("AGENTS.md");
+});
+
 test("comment: listing rows + aggregate; empty sidecar state", async () => {
 	const root = seeded();
 	await addThread(root, "a.md", "t1", "the marked text", "looks wrong");
@@ -253,9 +291,28 @@ test("comment: listing rows + aggregate; empty sidecar state", async () => {
 	]);
 	expect(r.out[3]).toBe("  fragmt agent comment a.md --thread t1 --full");
 
-	const none = await agent(root, ["comment", "missing.md"]);
+	// #46 control: a real doc with zero threads still reads as the empty state.
+	write(root, "docs/empty.md", "# empty\n");
+	commit(root, "add empty");
+	const none = await agent(root, ["comment", "empty.md"]);
 	expect(none.code).toBe(0);
 	expect(none.out[0]).toBe("threads[0]: none – 0 of 0 total, 0 open");
+
+	// #46: a nonexistent doc is refused, not an empty listing.
+	const ghost = await agent(root, ["comment", "missing.md"]);
+	expect(ghost.code).toBe(1);
+	expect(ghost.out[0]).toBe("error: no doc missing.md");
+	// The thread path shares the guard – a missing doc has no threads either.
+	const ghostThread = await agent(root, [
+		"comment",
+		"missing.md",
+		"--thread",
+		"t1",
+		"--body",
+		"x",
+	]);
+	expect(ghostThread.code).toBe(1);
+	expect(ghostThread.out[0]).toBe("error: no doc missing.md");
 });
 
 test("comment --thread: detail truncates at 120; --full untruncates", async () => {
@@ -440,6 +497,93 @@ test("draft: missing doc and missing repo config are one-line errors", async () 
 	);
 });
 
+test("draft: a nonexistent doc is refused with the save pointer, no branch", async () => {
+	const root = seeded();
+	const r = await agent(root, ["draft", "guides/missing.md"]);
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe(
+		"error: no doc guides/missing.md – create it with: fragmt agent save guides/missing.md --file <body>",
+	);
+	// The useless draft branch is never created.
+	expect(run(root, ["branch", "--list", "drafts/missing"])).toBe("");
+
+	// An existing doc drafts exactly as before.
+	const ok = await agent(root, ["draft", "a.md"]);
+	expect(ok.code).toBe(0);
+	expect(ok.out[0]).toBe("ok: on draft drafts/a (created)");
+});
+
+test("draft --author: rides the stamp and merge commits on --merge", async () => {
+	const root = okfSeeded();
+	const start = await agent(root, [
+		"draft",
+		"a.md",
+		"--author",
+		"QA Bot <qa@example.invalid>",
+	]);
+	expect(start.code).toBe(0);
+	expect(start.out[0]).toBe("ok: on draft drafts/a (created)");
+	write(root, "docs/a.md", "---\ntype: concept\n---\n\n# A v2\n");
+	commit(root, "edit a on the draft");
+	// Diverge main – a fast-forward merge creates no merge commit at all.
+	run(root, ["checkout", "-q", "main"]);
+	write(root, "docs/b.md", "---\ntype: concept\n---\n\n# B v2\n");
+	commit(root, "edit b on main");
+	run(root, ["checkout", "-q", "drafts/a"]);
+
+	const merged = await agent(root, [
+		"draft",
+		"a.md",
+		"--merge",
+		"--author",
+		"QA Bot <qa@example.invalid>",
+	]);
+	expect(merged.code).toBe(0);
+	// The pre-merge OKF stamp commit AND the merge commit carry the passed
+	// identity as author AND committer.
+	expect(run(root, ["log", "--format=%an %cn", "--grep=OKF: stamp"])).toBe(
+		"QA Bot QA Bot",
+	);
+	expect(run(root, ["log", "--format=%an %cn", "--merges", "-1"])).toBe(
+		"QA Bot QA Bot",
+	);
+});
+
+test("draft without --author: stamp and merge commits keep the machine identity", async () => {
+	const root = okfSeeded();
+	await agent(root, ["draft", "b.md"]);
+	write(root, "docs/b.md", "---\ntype: concept\n---\n\n# B v2\n");
+	commit(root, "edit b on the draft");
+	run(root, ["checkout", "-q", "main"]);
+	write(root, "docs/a.md", "---\ntype: concept\n---\n\n# A v2\n");
+	commit(root, "edit a on main");
+	run(root, ["checkout", "-q", "drafts/b"]);
+
+	const merged = await agent(root, ["draft", "b.md", "--merge"]);
+	expect(merged.code).toBe(0);
+	expect(run(root, ["log", "--format=%an %cn", "--grep=OKF: stamp"])).toBe(
+		"Agent Test Agent Test",
+	);
+	expect(run(root, ["log", "--format=%an %cn", "--merges", "-1"])).toBe(
+		"Agent Test Agent Test",
+	);
+});
+
+test("agent --help: the namespace usage on stdout, exit 0, all five verbs", async () => {
+	const r = await agent(seeded(), ["--help"]);
+	expect(r.code).toBe(0);
+	const text = r.out.join("\n");
+	// The blob arrives newline-trimmed through the line-based writer.
+	expect(text).toBe(agentUsage.replace(/\n$/, ""));
+	expect(text).toContain("fragmt agent – the agent surface");
+	for (const verb of ["status", "save", "comment", "draft", "verify"]) {
+		expect(text).toMatch(new RegExp(`^  ${verb}\\b`, "m")); // Commands rows
+	}
+	expect(text).toContain(
+		"fragmt agent draft <doc> [--merge] [--author <who>] [--as-actor <who>]",
+	);
+});
+
 test("exit 2: unknown verb, unknown flag, flag foreign to the verb", async () => {
 	const root = seeded();
 	for (const args of [
@@ -550,6 +694,17 @@ test("mid-merge: comment and draft mutations are refused with the guard text", a
 	expect(draft.out[0]).toBe(
 		"error: a merge is in progress – finish or abort it first",
 	);
+
+	const save = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("# mid-merge\n"),
+	]);
+	expect(save.code).toBe(1);
+	expect(save.out[0]).toBe(
+		"error: a merge is in progress – finish or abort it first",
+	);
 });
 
 test("unresolvable conflict: aborted fallback lists the files", async () => {
@@ -572,6 +727,141 @@ test("unresolvable conflict: aborted fallback lists the files", async () => {
 	// Aborted: back on the draft, nothing standing.
 	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("drafts/r");
 	expect(run(root, ["branch", "--list", "drafts/r"])).not.toBe("");
+});
+
+// --- save: the content verb (#41) ----------------------------------------------
+
+/** A --file body fixture outside the repo (never pollutes the tree). */
+function bodyFile(content: string): string {
+	const dir = mkdtempSync(join(tmpdir(), "fragmt-savebody-"));
+	dirs.push(dir);
+	const abs = join(dir, "body.md");
+	writeFileSync(abs, content);
+	return abs;
+}
+
+/** seeded() with the OKF flag on and a.md/b.md born conformant. */
+function okfSeeded(): string {
+	const root = repo();
+	write(root, "docs/a.md", "---\ntype: concept\n---\n\n# A\n");
+	write(root, "docs/b.md", "---\ntype: concept\n---\n\n# B\n");
+	commit(root, "seed");
+	initRepo(root, "docs", true);
+	commit(root, "adopt docs root");
+	return root;
+}
+
+test("save on main auto-drafts: lands on drafts/<slug>, main untouched", async () => {
+	const root = seeded();
+	const r = await agent(root, ["save", "a.md", "--file", bodyFile("# a v2\n")]);
+	expect(r.code).toBe(0);
+	expect(r.out[0]).toMatch(
+		/^ok: saved a\.md on drafts\/a \([0-9a-f]{7}\) · auto-drafted from main$/,
+	);
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("drafts/a");
+	expect(readFileSync(join(root, "docs/a.md"), "utf8")).toBe("# a v2\n");
+	expect(run(root, ["show", "main:docs/a.md"])).toBe("# a");
+	// The honest default message names the verb and the doc.
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe("agent save a.md");
+});
+
+test("save while already on the doc's draft branch: lands directly, no new branch", async () => {
+	const root = seeded();
+	run(root, ["checkout", "-q", "-b", "drafts/a"]);
+	const r = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("# direct\n"),
+	]);
+	expect(r.code).toBe(0);
+	expect(r.out[0]).toMatch(/^ok: saved a\.md on drafts\/a \([0-9a-f]{7}\)$/);
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("drafts/a");
+	expect(
+		run(root, [
+			"for-each-ref",
+			"--format=%(refname:short)",
+			"refs/heads/drafts",
+		]),
+	).toBe("drafts/a"); // the one that already existed – nothing was created
+	expect(readFileSync(join(root, "docs/a.md"), "utf8")).toBe("# direct\n");
+});
+
+test("save of a new doc in an OKF repo: born with type concept and status draft", async () => {
+	const root = okfSeeded();
+	const r = await agent(root, [
+		"save",
+		"new-doc.md",
+		"--file",
+		bodyFile("# New\n"),
+	]);
+	expect(r.code).toBe(0);
+	expect(r.out[0]).toMatch(
+		/^ok: saved new-doc\.md on drafts\/new-doc \([0-9a-f]{7}\) · auto-drafted from main$/,
+	);
+	const doc = readDoc(root, "docs", "new-doc.md");
+	expect(doc.frontmatter.type).toBe("concept");
+	expect(doc.frontmatter.status).toBe("draft");
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe(
+		"drafts/new-doc",
+	);
+});
+
+test("OKF save semantics ride the commit: refs settled, generated stamped, author carried", async () => {
+	const root = okfSeeded();
+	const r = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("# A\n\nSee [B](/b.md).\n"),
+		"--author",
+		"Zed Agent",
+		"--message",
+		"docs: rewrite a",
+	]);
+	expect(r.code).toBe(0);
+	const a = readDoc(root, "docs", "a.md");
+	expect(a.frontmatter.references).toEqual(["b.md"]);
+	expect((a.frontmatter.generated as { by: string }).by).toBe(
+		"human:zed-agent",
+	);
+	expect(readDoc(root, "docs", "b.md").frontmatter["referenced-by"]).toEqual([
+		"a.md",
+	]);
+	// ONE commit carries doc + target – nothing left for merge-time healing.
+	expect(
+		run(root, ["show", "--name-only", "--format=", "HEAD"]).split("\n"),
+	).toEqual(["docs/a.md", "docs/b.md"]);
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe("docs: rewrite a");
+	// --author is the commit author AND committer (this round's commitAs).
+	expect(run(root, ["log", "-1", "--format=%an"])).toBe("Zed Agent");
+	expect(run(root, ["log", "-1", "--format=%cn"])).toBe("Zed Agent");
+	expect(run(root, ["log", "-1", "--format=%ce"])).toBe(
+		"zed-agent@users.noreply.fragmt",
+	);
+});
+
+test("save: missing doc/body source and a nonexistent --file are one-line errors", async () => {
+	const root = seeded();
+	const noDoc = await agent(root, ["save"]);
+	expect(noDoc.code).toBe(1);
+	expect(noDoc.out[0]).toBe(
+		"error: save needs a doc path (docsRoot-relative .md)",
+	);
+
+	// Zero or two body sources is a usage error, like an unknown flag.
+	const neither = await agent(root, ["save", "a.md"]);
+	expect(neither.code).toBe(2);
+	expect(neither.out[0]).toBe(
+		"error: save needs exactly one body source – --file <path> or --stdin",
+	);
+	const both = await agent(root, ["save", "a.md", "--file", "x.md", "--stdin"]);
+	expect(both.code).toBe(2);
+
+	const missing = join(root, "nope.md");
+	const bad = await agent(root, ["save", "a.md", "--file", missing]);
+	expect(bad.code).toBe(1);
+	expect(bad.out[0]).toBe(`error: --file not found: ${missing}`);
 });
 
 // --- init: the avatar-path notice (rung B) -----------------------------------

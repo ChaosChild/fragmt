@@ -2,7 +2,8 @@ import { git } from "./git.js";
 
 /**
  * THE mutation seam (ARCHITECTURE §5). Every write in fragmt ends here –
- * v1 commits as the local git identity; v2 will pass the authenticated user.
+ * `user` is the commit author AND the committer; local mode passes
+ * localUser(), the machine identity.
  *
  * `files` are repo-root-relative POSIX paths, staged and committed together.
  * Resolves the new commit sha. An identical-content save is not an error:
@@ -27,13 +28,25 @@ export async function commitAs(
 		return git(repoRoot, ["rev-parse", "HEAD"]);
 	}
 
-	await git(repoRoot, [
-		"commit",
-		`--author=${user.name} <${user.email}>`,
-		"-m",
-		message,
-		"--",
-		...files,
-	]);
+	await git(
+		repoRoot,
+		[
+			"commit",
+			`--author=${user.name} <${user.email}>`,
+			"-m",
+			message,
+			"--",
+			...files,
+		],
+		{
+			// #27: the same identity carries the committer, per-spawn env –
+			// never written to config. Local mode passes localUser(), which IS
+			// the machine identity, so its commits are byte-for-byte unchanged.
+			env: {
+				GIT_COMMITTER_NAME: user.name,
+				GIT_COMMITTER_EMAIL: user.email,
+			},
+		},
+	);
 	return git(repoRoot, ["rev-parse", "HEAD"]);
 }

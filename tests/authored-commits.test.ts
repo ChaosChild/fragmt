@@ -6,8 +6,8 @@ import { afterEach, expect, test } from "vitest";
 import { createDoc, docHash, readDoc, writeDoc } from "../src/core/index.js";
 
 // #20 batch 1: the optional trailing `user` on the core write ops – a
-// signed-in user becomes the commit AUTHOR (committer stays the machine
-// identity); omitted → exactly the old localUser() behavior.
+// signed-in user becomes the commit author AND committer (#27); omitted →
+// exactly the old localUser() behavior.
 
 const ADA = { name: "Ada Lovelace", email: "ada@example.com" };
 
@@ -36,12 +36,12 @@ function commitField(root: string, format: string): string {
 		.trim();
 }
 
-test("createDoc with an explicit user: user is the author, committer stays local", async () => {
+test("createDoc with an explicit user: user is the author AND committer", async () => {
 	const root = gitRepo();
 	repos.push(root);
 	await createDoc(root, ".", "a.md", "# a", ADA);
 	expect(commitField(root, "%an|%ae")).toBe("Ada Lovelace|ada@example.com");
-	expect(commitField(root, "%cn|%ce")).toBe("Local User|local@example.com");
+	expect(commitField(root, "%cn|%ce")).toBe("Ada Lovelace|ada@example.com");
 });
 
 test("writeDoc with an explicit user authors the edit commit", async () => {
@@ -52,7 +52,7 @@ test("writeDoc with an explicit user authors the edit commit", async () => {
 	const grace = { name: "Grace Hopper", email: "grace@example.com" };
 	await writeDoc(root, ".", "a.md", "# edited\n", docHash(doc.markdown), grace);
 	expect(commitField(root, "%an|%ae")).toBe("Grace Hopper|grace@example.com");
-	expect(commitField(root, "%cn|%ce")).toBe("Local User|local@example.com");
+	expect(commitField(root, "%cn|%ce")).toBe("Grace Hopper|grace@example.com");
 });
 
 test("no user → the repo's configured identity (unchanged behavior)", async () => {
