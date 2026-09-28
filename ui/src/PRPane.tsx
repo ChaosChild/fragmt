@@ -1,4 +1,9 @@
-import { ChevronLeft, SquareArrowOutUpRight } from "lucide-react";
+import {
+	ChevronDown,
+	ChevronLeft,
+	ChevronRight,
+	SquareArrowOutUpRight,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import type { PrView } from "./App";
 import {
@@ -287,11 +292,23 @@ function PrDetail({
 
 /** One file card: mono filename (truncated, full in the title attr), the
  *  colored +/− counts, then the patch rows – or the quiet no-patch note
- *  (binary or too large for GitHub to send). */
+ *  (binary or too large for GitHub to send). The head toggles the body
+ *  (GitHub-style) so a long review can be scanned collapsed. */
 function PrFileBlock({ file }: { file: PrFile }) {
+	const [open, setOpen] = useState(true);
 	return (
-		<section className="pr-file">
-			<header className="pr-file-head">
+		<section className={`pr-file${open ? "" : " collapsed"}`}>
+			<button
+				type="button"
+				className="pr-file-head"
+				aria-expanded={open}
+				onClick={() => setOpen((v) => !v)}
+			>
+				{open ? (
+					<ChevronDown aria-hidden="true" />
+				) : (
+					<ChevronRight aria-hidden="true" />
+				)}
 				<span className="pr-file-name" title={file.filename}>
 					{file.filename}
 				</span>
@@ -299,12 +316,13 @@ function PrFileBlock({ file }: { file: PrFile }) {
 					<span className="pr-add">+{file.additions}</span>{" "}
 					<span className="pr-del">−{file.deletions}</span>
 				</span>
-			</header>
-			{file.patch ? (
-				<PatchRows patch={file.patch} />
-			) : (
-				<p className="pr-note">no patch</p>
-			)}
+			</button>
+			{open &&
+				(file.patch ? (
+					<PatchRows patch={file.patch} />
+				) : (
+					<p className="pr-note">no patch</p>
+				))}
 		</section>
 	);
 }

@@ -1866,6 +1866,32 @@ button.comment-quote:hover {
 	padding: var(--space-2) var(--space-3);
 	border-bottom: 1px solid var(--border-soft);
 }
+/* As a toggle button the head keeps its exact look: full-width, left-
+   aligned, no button chrome – the chevron is the affordance. */
+button.pr-file-head {
+	width: 100%;
+	background: none;
+	border: none;
+	border-bottom: 1px solid var(--border-soft);
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+button.pr-file-head:hover {
+	background: var(--accent-tint);
+}
+button.pr-file-head svg {
+	flex-shrink: 0;
+	align-self: center;
+	width: 14px;
+	height: 14px;
+	color: var(--muted);
+}
+/* Collapsed: the head IS the card – no inner divider against the border. */
+.pr-file.collapsed button.pr-file-head {
+	border-bottom: none;
+}
 .pr-file-name {
 	font-family: var(--font-mono);
 	font-size: 12px;
