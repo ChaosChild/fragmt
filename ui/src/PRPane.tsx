@@ -30,19 +30,23 @@ const MAX_PATCH_ROWS = 500;
  * language. Merge and Push commits attempt and surface the server's answer
  * (permissions are enforced server-side, never guessed here); a conflicted
  * merge swaps the button for the resolve-on-GitHub state – the one
- * defer-to-GitHub moment. Nothing here navigates the editor: no dirty-guard
- * slot, no selection changes, no Escape handler of its own.
+ * defer-to-GitHub moment. The pane itself never navigates the editor; the
+ * one exception rides a callback: a landed merge reports onMerged and App
+ * switches to main through the save-or-discard guard.
  */
 export function PRPane({
 	prView,
 	setPrView,
 	onHead,
+	onMerged,
 }: {
 	prView: PrView;
 	setPrView: (v: PrView | null) => void;
 	/** Reports the slideout head's title line (App holds it): the list's
 	 *  "Pull requests · N open", the detail's "PR #n · title". */
 	onHead: (title: string) => void;
+	/** Fired once a merge lands (owner round): App switches to main, guarded. */
+	onMerged?: () => void;
 }) {
 	// The line while a fetch is out – the subviews' reports land when data
 	// does, so the head never shows the previous view's title past a switch.
@@ -56,6 +60,7 @@ export function PRPane({
 			n={prView.n}
 			onBack={() => setPrView({ kind: "list" })}
 			onHead={onHead}
+			onMerged={onMerged}
 		/>
 	);
 }
@@ -131,10 +136,12 @@ function PrDetail({
 	n,
 	onBack,
 	onHead,
+	onMerged,
 }: {
 	n: number;
 	onBack: () => void;
 	onHead: (title: string) => void;
+	onMerged?: () => void;
 }) {
 	const [pr, setPr] = useState<PrSummary | null>(null);
 	const [files, setFiles] = useState<PrFile[]>([]);
@@ -183,8 +190,10 @@ function PrDetail({
 	const merge = () =>
 		run(async () => {
 			const r = await mergePR(n);
-			if ("merged" in r) setRefresh((x) => x + 1);
-			else setConflicted(true);
+			if ("merged" in r) {
+				setRefresh((x) => x + 1);
+				onMerged?.();
+			} else setConflicted(true);
 		});
 
 	const push = () => {

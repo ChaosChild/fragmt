@@ -58,6 +58,7 @@ import {
 	localUser,
 	MANAGED_FRONTMATTER_KEYS,
 	MergeUnresolvedError,
+	mainBranch,
 	mergedBranches,
 	mergeState,
 	mergeToMain,
@@ -738,6 +739,10 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		if (badBranchName(name))
 			return c.json({ error: "invalid branch name" }, 400);
 		try {
+			// The resolved main (main/master per repo) is the drafting model's
+			// landing base – never deletable, merged or not, from anywhere.
+			if (name === (await mainBranch(ctx.repoRoot)))
+				return c.json({ error: "the main branch is protected" }, 400);
 			if (name === (await currentBranch(ctx.repoRoot)))
 				return c.json({ error: "switch away first" }, 400);
 			await deleteBranch(

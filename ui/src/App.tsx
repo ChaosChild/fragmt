@@ -1257,6 +1257,7 @@ export function App() {
 		<BranchMenu
 			current={branch}
 			prsEnabled={prAvailable}
+			mainName={meta?.main ?? null}
 			onAction={requestBranch}
 		/>
 	);
@@ -1624,6 +1625,18 @@ export function App() {
 										prView={prView}
 										setPrView={setPrView}
 										onHead={setPrTitle}
+										/* A landed PR merge ends the branch's work: switch to
+										   main so the tree/doc state reads post-merge. Rides
+										   the save-or-discard guard – a dirty buffer parks,
+										   never silently drops. */
+										onMerged={() => {
+											const m = meta?.main;
+											if (m)
+												guardAction(
+													"Switch to main",
+													() => void switchTo({ kind: "switch", name: m }),
+												);
+										}}
 									/>
 								) : refsMode ? (
 									<ReferencesPane

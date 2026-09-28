@@ -202,10 +202,14 @@ export function UserChip({
 export function BranchMenu({
 	current,
 	prsEnabled,
+	mainName,
 	onAction,
 }: {
 	current: string | null;
 	prsEnabled: boolean;
+	/** The repo's main branch (meta.main): the drafting model's landing base –
+	 *  never offered a delete, merged or not (the server refuses it too). */
+	mainName: string | null;
 	onAction: (action: BranchAction) => void;
 }) {
 	const menu = useMenu();
@@ -299,7 +303,7 @@ export function BranchMenu({
 									PR #{pr.number}
 								</button>
 							)}
-							{b !== current && (
+							{b !== current && b !== mainName && (
 								<button
 									type="button"
 									className="tool-btn"

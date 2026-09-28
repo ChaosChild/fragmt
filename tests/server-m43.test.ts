@@ -107,12 +107,22 @@ test("DELETE /api/branches: merged branch gone, still on current; slashed names 
 	expect(gitOut(["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main");
 });
 
-test("DELETE /api/branches: current branch → 400 switch away first", async () => {
+test("DELETE /api/branches: main is protected → 400, current or not", async () => {
 	const res = await api("DELETE", "/api/branches/main");
 	expect(res.status).toBe(400);
 	const body = (await res.json()) as { error: string };
-	expect(body.error).toBe("switch away first");
+	expect(body.error).toBe("the main branch is protected");
 	expect(gitOut(["branch", "--list", "main"])).not.toBe("");
+});
+
+test("DELETE /api/branches: current non-main branch → 400 switch away first", async () => {
+	gitOut(["branch", "topic"]);
+	gitOut(["checkout", "topic"]);
+	const res = await api("DELETE", "/api/branches/topic");
+	expect(res.status).toBe(400);
+	const body = (await res.json()) as { error: string };
+	expect(body.error).toBe("switch away first");
+	gitOut(["checkout", "main"]);
 });
 
 test("DELETE /api/branches: bad name → 400", async () => {

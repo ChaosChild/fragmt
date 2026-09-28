@@ -607,8 +607,8 @@ const PR_FILE: PrFile = {
 	patch: "@@ -1,2 +1,3 @@\n body\n-old line\n+new line\n+another",
 };
 
-// current = "work": main is merged (trash acts, no PR → nothing), feat is
-// unmerged (trash disabled, D7) and carries PR #12 (the view chip). The
+// current = "work": main is protected (no trash at all, owner round), feat
+// is unmerged (trash disabled, D7) and carries PR #12 (the view chip). The
 // current branch "work" has no PR – the head-row Open PR button shows.
 const BRANCHES_PR = {
 	current: "work",
@@ -742,6 +742,7 @@ describe("BranchMenu: PR chips + the merged gate (#27 b3, owner reshape)", () =>
 			createElement(BranchMenu, {
 				current: "work",
 				prsEnabled: true,
+				mainName: "main",
 				onAction,
 			}),
 		);
@@ -763,15 +764,14 @@ describe("BranchMenu: PR chips + the merged gate (#27 b3, owner reshape)", () =>
 		).toBeNull();
 		expect(screen.queryByText("Open pull request")).toBeNull();
 
-		// D7: main is merged → the trash acts; feat is not → disabled with the
-		// tooltip, no force-delete affordance.
-		const mainTrash = screen.getByRole("button", {
-			name: "Delete branch main",
-		}) as HTMLButtonElement;
+		// D7: main never gets a trash at all (protected base, owner round);
+		// feat is unmerged → disabled with the tooltip, no force-delete.
+		expect(
+			screen.queryByRole("button", { name: "Delete branch main" }),
+		).toBeNull();
 		const featTrash = screen.getByRole("button", {
 			name: "Delete branch feat",
 		}) as HTMLButtonElement;
-		expect(mainTrash.disabled).toBe(false);
 		expect(featTrash.disabled).toBe(true);
 		expect(featTrash.title).toBe("Not merged yet");
 		expect(featTrash.getAttribute("aria-disabled")).toBe("true");
@@ -1069,6 +1069,7 @@ describe("App: the PR review pane (#27 b4)", () => {
 	test("a successful merge refreshes the detail (the closed answer replaces the button)", async () => {
 		let merged = false;
 		const base = prFetch();
+		const checkouts: string[] = [];
 		const s = await openPrDetail(async (input, init) => {
 			const url = new URL(String(input), "http://localhost");
 			if (url.pathname === "/api/prs/12/merge") {
@@ -1081,6 +1082,11 @@ describe("App: the PR review pane (#27 b4)", () => {
 					files: [PR_FILE],
 					filesPage: 1,
 				});
+			// The post-merge switch (owner round): App checks out main.
+			if (url.pathname === "/api/checkout" && init?.method === "POST") {
+				checkouts.push(String(init.body));
+				return jsonResponse({ current: "main" });
+			}
 			return base(input, init);
 		});
 		fireEvent.click(within(s).getByRole("button", { name: "Merge" }));
@@ -1090,6 +1096,7 @@ describe("App: the PR review pane (#27 b4)", () => {
 			.mocked(fetch)
 			.mock.calls.filter(([u]) => String(u).startsWith("/api/prs/12?")).length;
 		expect(detailGets).toBeGreaterThanOrEqual(2);
+		expect(checkouts).toContain('{"name":"main"}');
 	});
 
 	test("a push with nothing to push answers with the quiet up-to-date note", async () => {
