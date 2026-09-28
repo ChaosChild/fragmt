@@ -248,7 +248,7 @@ export function BranchMenu({
 	const isMerged = (b: string) => merged?.includes(b) ?? false;
 
 	return (
-		<span className="menu-wrap" ref={menu.wrapRef}>
+		<span className="menu-wrap branch-menu-wrap" ref={menu.wrapRef}>
 			<button
 				type="button"
 				className="branch-dd"
