@@ -314,6 +314,27 @@ test("create: a 422 duplicate answers the already-open PR, 200", async () => {
 	expect(calls).toEqual(["GET repo", "git push", "POST pulls", "GET pulls"]);
 });
 
+test("create: a 422 with no duplicate surfaces GitHub's errors[] reason", async () => {
+	const root = gitRepo("https://github.com/o/r.git");
+	execFileSync("git", ["branch", "feature"], { cwd: root });
+	const { app } = prApp(root, {
+		create: {
+			status: 422,
+			body: {
+				message: "Validation Failed",
+				errors: [{ message: "No commits between main and feature" }],
+			},
+		},
+		pulls: [],
+	});
+	const session = await signIn(app, "ada");
+	const res = await post(app, "/api/prs", { branch: "feature" }, session);
+	expect(res.status).toBe(502);
+	expect(((await res.json()) as { error: string }).error).toBe(
+		"Validation Failed – No commits between main and feature",
+	);
+});
+
 test("detail: one 20-file page, per_page and page passed through", async () => {
 	const { app, calls } = prApp(gitRepo("https://github.com/o/r.git"), {
 		pull: pr(5, "feature", { mergeable: false }),

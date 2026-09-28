@@ -1507,10 +1507,21 @@ function prSummary(pr: PullRequest) {
 	};
 }
 
-/** GitHub's own `message` when the body carries one, else the fallback. */
+/** GitHub's own `message` (plus its errors[] detail, where GitHub states the
+ *  actual validation reason – dropping it showed bare "Validation Failed"). */
 function ghMessage(body: unknown, fallback: string): string {
-	const message = (body as { message?: unknown } | null)?.message;
-	return typeof message === "string" ? message : fallback;
+	const b = body as { message?: unknown; errors?: unknown } | null;
+	const message = typeof b?.message === "string" ? b.message : fallback;
+	const details = Array.isArray(b?.errors)
+		? b.errors.flatMap((e) =>
+				typeof e === "object" &&
+				e !== null &&
+				typeof (e as { message?: unknown }).message === "string"
+					? [(e as { message: string }).message]
+					: [],
+			)
+		: [];
+	return details.length > 0 ? `${message} – ${details.join("; ")}` : message;
 }
 
 /** Cheap reject of branch names git can never accept (empty, spaces, "..", leading "-", control chars). */
