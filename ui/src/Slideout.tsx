@@ -47,26 +47,18 @@ function SlideoutDivider({
 }
 
 /**
- * The right pane (#15, dogfooded 2026-08-26): the v0.5.0 comments rail,
- * restored as the default – a permanent 316px margin column with the open
- * doc's threads – that widens into the draggable split only while a preview
- * is open (the head row, with the previewed title, open-in-main, and close,
- * exists in that state alone). No mode tabs: the states are previewPath's
- * presence and the PR mode – nothing to switch beyond those. `open`
- * matters only where the CSS turns the pane into the bottom sheet
- * (≤1180px); the head row in the comments state is that sheet's
- * affordance – desktop CSS hides it with the whole head. The PR mode
- * (#27 b4) rides the same wide split as a preview (the shared .preview
- * class + divider), its head line supplied by App (PRPane reports it).
- * Precedence: a preview wins over the PR mode; closing either returns to
- * the rail. (The References mode left with ui v1 – Connections live on
- * the sheet.)
+ * The right pane (#15): the draggable split beside main, mounted only for
+ * a preview or the PR mode (#27 b4) – the comment threads moved into the
+ * sheet's margin with ui v1 (phase 5), and the References mode left for
+ * the sheet's Connections. The head row carries the previewed title or the
+ * PR line App supplies (PRPane reports it), open-in-main, and close. `open`
+ * matters only ≤1180px, where the CSS turns the pane into the bottom
+ * sheet. Precedence: a preview wins over the PR mode.
  */
 export function Slideout({
 	open,
 	preview,
 	prTitle,
-	commentCount,
 	previewTitle,
 	onPromote,
 	onClose,
@@ -82,8 +74,6 @@ export function Slideout({
 	 *  "Pull requests" fallback). Non-null = the fourth state, riding the
 	 *  same wide split as a preview. */
 	prTitle: string | null;
-	/** The comments head's "Comments · N" (the sheet's title line). */
-	commentCount: number;
 	/** The previewed doc's display title – the head's "Preview · <title>"
 	 *  line (null with nothing previewed). */
 	previewTitle: string | null;
@@ -103,9 +93,7 @@ export function Slideout({
 			{wide && <SlideoutDivider onShare={onShare} />}
 			<aside
 				className={`slideout${open ? " open" : ""}${wide ? " preview" : ""}`}
-				aria-label={
-					preview ? "Preview" : prTitle !== null ? "Pull requests" : "Comments"
-				}
+				aria-label={preview ? "Preview" : "Pull requests"}
 			>
 				<div className="slideout-head">
 					{preview ? (
@@ -114,12 +102,10 @@ export function Slideout({
 								Preview · {previewTitle}
 							</span>
 						)
-					) : prTitle !== null ? (
-						<span className="slideout-title" title={prTitle}>
+					) : (
+						<span className="slideout-title" title={prTitle ?? undefined}>
 							{prTitle}
 						</span>
-					) : (
-						<span className="slideout-title">Comments · {commentCount}</span>
 					)}
 					<span className="slideout-spacer" />
 					{/* Open in main pane (#15): the previewed doc becomes the
@@ -139,13 +125,7 @@ export function Slideout({
 					<button
 						type="button"
 						className="slideout-close"
-						aria-label={
-							preview
-								? "Close preview"
-								: prTitle !== null
-									? "Close pull requests"
-									: "Close comments"
-						}
+						aria-label={preview ? "Close preview" : "Close pull requests"}
 						onClick={onClose}
 					>
 						<X aria-hidden="true" />

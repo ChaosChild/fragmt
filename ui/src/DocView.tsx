@@ -9,7 +9,7 @@ import {
 	TriangleAlert,
 	X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
 	addComment,
 	type DocMeta,
@@ -179,6 +179,8 @@ export function DocView({
 	okf,
 	docMetas,
 	repo,
+	margin,
+	marginOpen = false,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
@@ -262,6 +264,11 @@ export function DocView({
 	docMetas: Record<string, DocMeta>;
 	/** The repo identity (meta.repo) – the history line's GitHub link. */
 	repo?: RepoMeta["repo"];
+	/** The margin column's content – App's comment threads (ui v1, phase
+	 *  5). Absent = no margin column. */
+	margin?: ReactNode;
+	/** ≤1180px the margin is the bottom sheet – App's open state. */
+	marginOpen?: boolean;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -1318,7 +1325,7 @@ export function DocView({
 					))}
 			</CommandBar>
 			<div className="desk">
-				<div className="page">
+				<div className={`page${margin ? " has-margin" : ""}`}>
 					<article
 						className={`sheet${editing ? " editing" : ""}`}
 						ref={paneRef}
@@ -1559,6 +1566,14 @@ export function DocView({
 							</p>
 						)}
 					</article>
+					{margin && (
+						<aside
+							className={`margin${marginOpen ? " open" : ""}`}
+							aria-label="Comments"
+						>
+							{margin}
+						</aside>
+					)}
 				</div>
 			</div>
 		</div>

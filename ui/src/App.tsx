@@ -1522,58 +1522,12 @@ export function App() {
 									okf={meta?.okf === true}
 									docMetas={meta?.docs ?? {}}
 									repo={meta?.repo}
-								/>
-							)}
-						</main>
-						{/* The right pane (#15, testing round): the v0.5.0 comments rail
-					    again – permanent, 316px, the open doc's threads – until a
-					    preview opens and widens it into the split (the PR mode, #27
-					    b4, rides the same wide split). Hidden in resolution mode
-					    (the doc pane is taken over, its comments mid-merge) and
-					    while the graph lens is up – it reads the same selection,
-					    not a doc. */}
-						{selected && !inResolution && !graphOpen && (
-							<Slideout
-								open={railOpen}
-								preview={previewPath !== null}
-								prTitle={prView !== null ? (prTitle ?? "Pull requests") : null}
-								commentCount={threads.length}
-								previewTitle={previewTitle}
-								onPromote={previewPath ? promotePreview : undefined}
-								onClose={
-									previewPath !== null
-										? closePreview
-										: prView !== null
-											? () => setPrView(null)
-											: closeSheet
-								}
-								onShare={applySlideoutShare}
-							>
-								{/* Render precedence (#27 b4): a preview wins over the PR
-							    mode – App renders
-							    DocPreview when previewPath is set, whatever prView
-							    holds; the PR mode yields and returns when the preview
-							    closes. */}
-								{previewPath === null ? (
-									prView !== null ? (
-										<PRPane
-											prView={prView}
-											setPrView={setPrView}
-											onHead={setPrTitle}
-											/* A landed PR merge ends the branch's work: switch to
-										   main so the tree/doc state reads post-merge. Rides
-										   the save-or-discard guard – a dirty buffer parks,
-										   never silently drops. */
-											onMerged={() => {
-												const m = meta?.main;
-												if (m)
-													guardAction(
-														"Switch to main",
-														() => void switchTo({ kind: "switch", name: m }),
-													);
-											}}
-										/>
-									) : (
+									// The margin (ui v1, phase 5): the open doc's threads
+									// beside the sheet; ≤1180px it is the bottom sheet.
+									marginOpen={
+										railOpen && previewPath === null && prView === null
+									}
+									margin={
 										<CommentsRail
 											threads={threads}
 											liveIds={liveIds}
@@ -1588,25 +1542,78 @@ export function App() {
 											docs={docs}
 											onOpenDoc={setSelected}
 										/>
-									)
-								) : (
-									<DocPreview
-										path={previewPath}
-										doc={previewDoc}
-										error={previewError}
-										deadLink={previewDeadLink}
-										anchor={previewAnchor}
-										onAnchorConsumed={clearPreviewAnchor}
-										docs={docs}
-										folders={treeFolders}
-										onSelectDoc={onPreviewDocLink}
-										onSelectFolder={onPreviewFolderLink}
-										onLinkNotFound={setPreviewDeadLink}
-										spanTitleFor={previewTitleFor}
-									/>
-								)}
-							</Slideout>
-						)}
+									}
+								/>
+							)}
+						</main>
+						{/* The right pane (#15): the draggable split, only for a
+					    preview or the PR mode (#27 b4) – the comment threads live
+					    in the sheet's margin since ui v1. Hidden in resolution mode
+					    and under the graph lens. */}
+						{selected &&
+							!inResolution &&
+							!graphOpen &&
+							(previewPath !== null || prView !== null) && (
+								<Slideout
+									open={railOpen}
+									preview={previewPath !== null}
+									prTitle={
+										prView !== null ? (prTitle ?? "Pull requests") : null
+									}
+									previewTitle={previewTitle}
+									onPromote={previewPath ? promotePreview : undefined}
+									onClose={
+										previewPath !== null
+											? closePreview
+											: prView !== null
+												? () => setPrView(null)
+												: closeSheet
+									}
+									onShare={applySlideoutShare}
+								>
+									{/* Render precedence (#27 b4): a preview wins over the PR
+							    mode – App renders
+							    DocPreview when previewPath is set, whatever prView
+							    holds; the PR mode yields and returns when the preview
+							    closes. */}
+									{previewPath === null ? (
+										prView !== null ? (
+											<PRPane
+												prView={prView}
+												setPrView={setPrView}
+												onHead={setPrTitle}
+												/* A landed PR merge ends the branch's work: switch to
+										   main so the tree/doc state reads post-merge. Rides
+										   the save-or-discard guard – a dirty buffer parks,
+										   never silently drops. */
+												onMerged={() => {
+													const m = meta?.main;
+													if (m)
+														guardAction(
+															"Switch to main",
+															() => void switchTo({ kind: "switch", name: m }),
+														);
+												}}
+											/>
+										) : null
+									) : (
+										<DocPreview
+											path={previewPath}
+											doc={previewDoc}
+											error={previewError}
+											deadLink={previewDeadLink}
+											anchor={previewAnchor}
+											onAnchorConsumed={clearPreviewAnchor}
+											docs={docs}
+											folders={treeFolders}
+											onSelectDoc={onPreviewDocLink}
+											onSelectFolder={onPreviewFolderLink}
+											onLinkNotFound={setPreviewDeadLink}
+											spanTitleFor={previewTitleFor}
+										/>
+									)}
+								</Slideout>
+							)}
 					</div>
 					<StatusBar
 						led={led}

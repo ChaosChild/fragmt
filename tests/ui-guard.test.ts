@@ -560,6 +560,59 @@ describe("DocView: the sheet (ui v1)", () => {
 	});
 });
 
+describe("App: marginalia (ui v1 phase 5)", () => {
+	test("two anchored threads render two notes; clicking the second span focuses the second note", async () => {
+		const thread = (id: string, quote: string) => ({
+			id,
+			quote,
+			author: "Tester",
+			createdAt: "2026-09-01T00:00:00Z",
+			resolved: false,
+			replies: [
+				{
+					author: "Tester",
+					body: `note on ${quote}`,
+					at: "2026-09-01T00:00:00Z",
+				},
+			],
+		});
+		const body =
+			'One <span data-c="t1">first</span> line.\n\nTwo <span data-c="t2">second</span> line.';
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = new URL(String(input), "http://localhost");
+				if (url.pathname === "/api/docs/a.md/comments")
+					return jsonResponse({
+						comments: { t1: thread("t1", "first"), t2: thread("t2", "second") },
+					});
+				if (url.pathname === "/api/docs/a.md")
+					return jsonResponse(docOf("a.md", body));
+				return mockFetch(input);
+			}),
+		);
+		await renderAppReady();
+		const margin = screen.getByRole("complementary", { name: "Comments" });
+		await waitFor(() =>
+			expect(margin.querySelectorAll(".note").length).toBe(2),
+		);
+		const span = await waitFor(() => {
+			const el = document.querySelector<HTMLElement>('.sheet [data-c="t2"]');
+			if (!el) throw new Error("span not rendered yet");
+			return el;
+		});
+		fireEvent.click(span);
+		await waitFor(() =>
+			expect(
+				margin.querySelector('.note[data-note="t2"]')?.classList.contains("on"),
+			).toBe(true),
+		);
+		expect(
+			margin.querySelector('.note[data-note="t1"]')?.classList.contains("on"),
+		).toBe(false);
+	});
+});
+
 describe("hasHardWraps", () => {
 	test("a wrapped paragraph is true", () => {
 		expect(hasHardWraps("first line of prose\nsecond line of prose")).toBe(
@@ -1348,6 +1401,13 @@ describe("App: the PR review pane (#27 b4)", () => {
 		expect(prviewTarget()).toBe("list");
 		fireEvent.keyDown(window, { key: "Escape" });
 		expect(prviewTarget()).toBeNull();
-		expect(await screen.findByText("Comments · 0")).toBeTruthy();
+		// ui v1: the threads live in the sheet's margin, not the slideout – the
+		// pane unmounts and the margin's Notes header is what remains.
+		await waitFor(() => expect(document.querySelector(".slideout")).toBeNull());
+		expect(
+			within(screen.getByRole("complementary", { name: "Comments" })).getByText(
+				"Notes",
+			),
+		).toBeTruthy();
 	});
 });
