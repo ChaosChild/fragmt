@@ -949,14 +949,15 @@ describe("GraphView: the fixture mount (component harness)", () => {
 				onClose: () => {},
 			}),
 		);
-		expect(screen.getByText("3 docs · 1 links")).toBeTruthy();
+		expect(document.querySelector(".gv-count")?.textContent).toBe("3 docs");
+		expect(screen.getByText("1 links · 1 isolated")).toBeTruthy();
 		expect(document.querySelectorAll(".gv-node")).toHaveLength(3);
 		expect(screen.getByText("A")).toBeTruthy();
 		expect(screen.getByText("B")).toBeTruthy();
 		expect(screen.getByText("C")).toBeTruthy();
 	});
 
-	test("clicking a node invokes onOpenDoc with that path", () => {
+	test("a click selects (inspector, neighbours lit); Open or a double-click navigates", () => {
 		const onOpenDoc = vi.fn();
 		render(
 			createElement(GraphView, { graph: GRAPH, onOpenDoc, onClose: () => {} }),
@@ -964,8 +965,73 @@ describe("GraphView: the fixture mount (component harness)", () => {
 		const node = document.querySelectorAll(".gv-node")[0];
 		if (!node) throw new Error("no graph nodes rendered");
 		fireEvent.click(node);
-		expect(onOpenDoc).toHaveBeenCalledTimes(1);
+		expect(onOpenDoc).not.toHaveBeenCalled();
+		const insp = screen.getByRole("complementary", {
+			name: "Selected document",
+		});
+		expect(within(insp).getByText("a.md")).toBeTruthy();
+		// a.md → b.md: b is a neighbour, c (isolated) dims.
+		expect(within(insp).getByText("References · 1")).toBeTruthy();
+		const groups = document.querySelectorAll(".gv-n");
+		expect(groups[2].classList.contains("dim")).toBe(true);
+		expect(groups[1].classList.contains("dim")).toBe(false);
+		fireEvent.click(within(insp).getByRole("button", { name: "Open" }));
 		expect(onOpenDoc).toHaveBeenCalledWith("a.md");
+		fireEvent.doubleClick(document.querySelectorAll(".gv-node")[1]);
+		expect(onOpenDoc).toHaveBeenLastCalledWith("b.md");
+	});
+
+	test("keyboard: Enter selects a node, Shift+Enter opens it", () => {
+		const onOpenDoc = vi.fn();
+		render(
+			createElement(GraphView, { graph: GRAPH, onOpenDoc, onClose: () => {} }),
+		);
+		const b = document.querySelectorAll<HTMLElement>(".gv-n")[1];
+		expect(b.getAttribute("tabindex")).toBe("0");
+		fireEvent.keyDown(b, { key: "Enter" });
+		expect(b.getAttribute("aria-pressed")).toBe("true");
+		fireEvent.keyDown(b, { key: "Enter", shiftKey: true });
+		expect(onOpenDoc).toHaveBeenCalledWith("b.md");
+	});
+
+	test("grouping draws a hull per folder; folding one collapses it into a folder node and back", () => {
+		localStorage.removeItem("fragmt.graphGroup");
+		const node = (path: string) => ({
+			path,
+			title: path,
+			type: null,
+			status: null,
+			tier: "unverified" as const,
+			stale: false,
+		});
+		const graph: DocGraph = {
+			nodes: [node("a.md"), node("ref/x.md"), node("ref/api/y.md")],
+			edges: [
+				{ from: "a.md", to: "ref/x.md" },
+				{ from: "a.md", to: "ref/api/y.md" },
+			],
+		};
+		render(
+			createElement(GraphView, {
+				graph,
+				onOpenDoc: () => {},
+				onClose: () => {},
+			}),
+		);
+		// Default: 2 levels – ref and ref/api.
+		expect(document.querySelectorAll(".gv-hull")).toHaveLength(2);
+		fireEvent.click(screen.getByRole("button", { name: "1 level" }));
+		expect(document.querySelectorAll(".gv-hull")).toHaveLength(1);
+		expect(localStorage.getItem("fragmt.graphGroup")).toBe("1");
+		fireEvent.click(screen.getByRole("button", { name: "Fold ref" }));
+		expect(document.querySelectorAll(".gv-node")).toHaveLength(1);
+		const folder = screen.getByRole("button", { name: "Unfold ref" });
+		expect(folder.textContent).toContain("ref/ · 2 docs");
+		// The two links into ref merge into one edge of weight 2.
+		expect(document.querySelector(".gv-weight")?.textContent).toBe("2");
+		fireEvent.click(folder);
+		expect(document.querySelectorAll(".gv-node")).toHaveLength(3);
+		localStorage.removeItem("fragmt.graphGroup");
 	});
 
 	// The regression the early return fixes: the svg's pointerdown used to
@@ -981,8 +1047,9 @@ describe("GraphView: the fixture mount (component harness)", () => {
 		if (!node) throw new Error("no graph nodes rendered");
 		fireEvent.pointerDown(node);
 		fireEvent.click(node);
-		expect(onOpenDoc).toHaveBeenCalledTimes(1);
-		expect(onOpenDoc).toHaveBeenCalledWith("a.md");
+		expect(
+			screen.getByRole("complementary", { name: "Selected document" }),
+		).toBeTruthy();
 	});
 });
 
@@ -1089,7 +1156,7 @@ describe("App: the graph entry + lens (rung 5)", () => {
 		expect(screen.queryByText(/non-conformant/)).toBeNull();
 		fireEvent.click(screen.getByRole("button", { name: "Reference graph" }));
 
-		expect(await screen.findByText("3 docs · 1 links")).toBeTruthy();
+		expect(await screen.findByText("1 links · 1 isolated")).toBeTruthy();
 		expect(document.querySelector(".gv-pane")).toBeTruthy();
 
 		// Exiting is always safe – no guard on close.

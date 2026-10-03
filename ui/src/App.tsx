@@ -1495,6 +1495,12 @@ export function App() {
 										}}
 										// Exiting is always safe – no guard on close.
 										onClose={() => setGraphOpen(false)}
+										// A read beside the current doc: leave the lens, open
+										// the preview (a read – no guard, like search's ⇧↵).
+										onPreview={(path) => {
+											setGraphOpen(false);
+											openPreviewDoc(path);
+										}}
 									/>
 								) : (
 									<div className="doc-pane">
