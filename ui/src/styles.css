@@ -253,80 +253,16 @@ body {
 	border-radius: 3px;
 }
 
-/* Search – exact word, filters the list live */
-.side-search {
-	position: relative;
-	padding: 0 var(--space-4) var(--space-3);
-}
-.side-search > svg {
-	position: absolute;
-	left: calc(var(--space-4) + 11px);
-	top: 50%;
-	transform: translateY(calc(-50% - 6px));
-	width: 14px;
-	height: 14px;
-	color: var(--muted);
-	pointer-events: none;
-}
-.side-search input {
-	width: 100%;
-	font-family: var(--font-body);
-	font-size: 13px;
-	color: var(--fg);
-	background: var(--glass-inner);
-	border: 1px solid var(--glass-border);
-	border-radius: var(--radius);
-	padding: 8px 30px 8px 32px;
-	outline: none;
-	transition:
-		border-color var(--motion-fast) var(--ease-standard),
-		background var(--motion-fast) var(--ease-standard);
-}
-.side-search input::placeholder {
-	color: var(--muted);
-}
-.side-search input::-webkit-search-cancel-button {
-	display: none;
-}
-.side-search input:focus {
-	border-color: var(--accent);
-	box-shadow: var(--focus-ring);
-}
-.side-search .clear-btn {
-	position: absolute;
-	right: calc(var(--space-4) + 6px);
-	top: 50%;
-	transform: translateY(calc(-50% - 6px));
-	width: 20px;
-	height: 20px;
-	border: none;
-	background: none;
-	color: var(--muted);
-	cursor: pointer;
-	display: none;
-	align-items: center;
-	justify-content: center;
-	border-radius: 50%;
-}
-.side-search .clear-btn:hover {
-	color: var(--fg);
-}
-.side-search .clear-btn svg {
-	width: 12px;
-	height: 12px;
-	pointer-events: none;
-}
-.side-search.has-term .clear-btn {
-	display: flex;
-}
-
-/* Doc list – Gmail rows, not XP tree. Horizontal scroll (not clip): deep
-   nesting keeps a readable row minimum (M4-3 b3), so the list scrolls. */
+/* The tree – a calm list of titles. Long names ellipsize (full path in the
+   row title), so it never scrolls sideways. */
 .doc-list {
 	flex: 1;
 	overflow-y: auto;
-	overflow-x: auto;
-	padding: var(--space-1) var(--space-3) var(--space-4);
+	overflow-x: hidden;
+	padding: 4px 8px 16px;
+	list-style: none;
+}
+.doc-list ul {
 	list-style: none;
 }
 
@@ -425,177 +361,6 @@ body {
 .okf-chip.warn {
 	color: var(--warn);
 	border-color: color-mix(in srgb, var(--warn) 45%, transparent);
-}
-
-.doc-card {
-	display: block;
-	width: 100%;
-	text-align: left;
-	text-decoration: none;
-	color: inherit;
-	padding: var(--space-2) var(--space-3);
-	border-radius: 10px;
-	border: 1px solid transparent;
-	cursor: pointer;
-	margin: 2px 0;
-	font-family: inherit;
-	background: transparent;
-	transition:
-		background var(--motion-fast) var(--ease-standard),
-		border-color var(--motion-fast) var(--ease-standard),
-		box-shadow var(--motion-base) var(--ease-standard),
-		transform var(--motion-base) var(--ease-standard);
-}
-.doc-card:hover {
-	background: var(--glass-inner);
-}
-.doc-card:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-/* Selected = physically raised off the glass, not a flat tint */
-.doc-card.active {
-	background: var(--glass-bg-strong);
-	border-color: var(--glass-border);
-	box-shadow: var(--card-shadow);
-	transform: translateY(-1px);
-}
-.doc-card.active .dc-title {
-	color: var(--accent);
-}
-.dc-top {
-	display: flex;
-	align-items: baseline;
-	gap: var(--space-2);
-}
-.dc-title {
-	font-size: 14px;
-	font-weight: 600;
-	color: var(--fg);
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.dc-ver {
-	font-family: var(--font-mono);
-	font-size: 10px;
-	color: var(--muted);
-	letter-spacing: 0.04em;
-	flex-shrink: 0;
-}
-.dc-meta {
-	font-family: var(--font-mono);
-	font-size: 10.5px;
-	color: var(--muted);
-	letter-spacing: 0.02em;
-	margin-top: 1px;
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	flex-wrap: wrap; /* #33: the badge chips wrap, never force a second line */
-}
-.dc-draft {
-	font-size: 9px;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
-	color: var(--warn);
-	border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
-	border-radius: 3px;
-	padding: 0 4px;
-	line-height: 1.5;
-}
-.dc-snippet {
-	font-family: var(--font-serif);
-	font-size: 12.5px;
-	line-height: 1.45;
-	color: var(--muted);
-	margin-top: 3px;
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
-	overflow: hidden;
-}
-.doc-card mark {
-	background: color-mix(in srgb, var(--accent) 22%, transparent);
-	color: inherit;
-	border-radius: 2px;
-	padding: 0 1px;
-}
-
-/* Folder groups – expand in place, children are the same cards */
-.folder-row {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-	width: 100%;
-	padding: var(--space-2) var(--space-3);
-	border: none;
-	background: none;
-	cursor: pointer;
-	border-radius: 8px;
-	font-family: var(--font-mono);
-	font-size: 11px;
-	font-weight: 500;
-	text-transform: uppercase;
-	letter-spacing: var(--track-label);
-	color: var(--muted);
-	margin-top: var(--space-2);
-	transition: color var(--motion-fast) var(--ease-standard);
-}
-.folder-row:hover {
-	color: var(--accent);
-}
-.folder-row:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-.folder-row .disclosure {
-	width: 12px;
-	height: 12px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	transition: transform var(--motion-fast) var(--ease-standard);
-}
-.folder-row .disclosure svg {
-	width: 12px;
-	height: 12px;
-}
-.folder-row[aria-expanded="true"] .disclosure {
-	transform: rotate(90deg);
-}
-.folder-row .count {
-	flex-shrink: 0;
-	font-size: 10px;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	padding: 0 6px;
-	line-height: 1.6;
-	letter-spacing: 0;
-}
-/* Guide-line indent (M4-3 b3): padding + border only – 16px per level. */
-.folder-children {
-	list-style: none;
-	padding-left: var(--space-4);
-	border-left: 1px solid var(--glass-border);
-}
-.folder-children.collapsed {
-	display: none;
-}
-
-.no-results {
-	display: none;
-	padding: var(--space-6) var(--space-4);
-	font-size: 13px;
-	color: var(--muted);
-	text-align: center;
-}
-.no-results strong {
-	color: var(--fg);
-}
-.no-results.visible {
-	display: block;
 }
 
 /* ═══ MAIN – the page itself ═══════════════════════════════════ */
@@ -2426,28 +2191,6 @@ button.pr-file-head svg {
 }
 
 /* ── M3: branches, file ops, sync LED ─────────────────────────── */
-/* Tree row = full-width select target (M4-3 b4: the corner-icon overlay is
-   gone – the file actions live on the doc head's breadcrumb line now). */
-.tree-row {
-	display: flex;
-	align-items: center;
-	position: relative;
-	/* Readable row minimum at any depth (M4-3 b3): rows narrower than this
-	   overflow visibly and the .doc-list scrolls instead of crushing the
-	   title. */
-	min-width: 220px;
-}
-.tree-row .doc-card,
-.tree-row .folder-row {
-	flex: 1;
-	min-width: 0;
-}
-.tree-row .folder-row {
-	margin-top: 0;
-}
-.folder-group > .tree-row {
-	margin-top: var(--space-2);
-}
 /* Visible-but-subtle square icon button (new doc, branch delete, doc-head
    file actions) – 32px target */
 .tool-btn {
@@ -2618,8 +2361,34 @@ button.pr-file-head svg {
    the same right edge, Restore all right-aligned beneath them. */
 .recycle-bin {
 	flex-shrink: 0;
-	padding: var(--space-2) var(--space-3) var(--space-3);
-	border-top: 1px solid var(--glass-border);
+	padding: 10px 18px 12px;
+	border-top: 1px solid var(--line-soft);
+}
+.bin-toggle {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-height: 32px;
+	font: 12.5px var(--sans);
+	color: var(--ink-2);
+	background: none;
+	border: 0;
+	cursor: pointer;
+	border-radius: var(--r-sm);
+}
+.bin-toggle svg {
+	width: 15px;
+	height: 15px;
+}
+.bin-toggle:hover {
+	color: var(--ink);
+}
+.bin-toggle:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+}
+.recycle-bin.drop-target .bin-toggle {
+	color: var(--danger);
 }
 .recycle-bin .folder-row {
 	margin-top: 0;
@@ -2681,24 +2450,26 @@ button.pr-file-head svg {
 }
 
 /* ── M4-3 b5: navbar drag & drop ──────────────────────────────── */
-/* Drag sources: the row dims while its item is in flight. */
-.doc-card.dragging,
-.folder-row.dragging {
+/* Drag sources dim while in flight; grab at rest, grabbing once pressed
+   (the drag itself owns the cursor via dropEffect). Folder targets wear the
+   accent tint + inset ring – shadow, not border, so nothing shifts. */
+.row.dragging,
+.fold-h.dragging,
+.frow.dragging {
 	opacity: 0.45;
 }
-/* Cheap drag affordance – grab at rest, grabbing once pressed (the drag
-   itself owns the cursor via dropEffect). */
-.doc-card[draggable="true"],
-.folder-row[draggable="true"] {
+.row[draggable="true"],
+.fold-h[draggable="true"],
+.frow .fn[draggable="true"] {
 	cursor: grab;
 }
-.doc-card[draggable="true"]:active,
-.folder-row[draggable="true"]:active {
+.row[draggable="true"]:active,
+.fold-h[draggable="true"]:active,
+.frow .fn[draggable="true"]:active {
 	cursor: grabbing;
 }
-/* Folder-row target: the accent tint + inset ring – the same shadow-not-
-   border family as focus-visible/hover, so nothing shifts layout. */
-.folder-row.drop-target {
+.fold-h.drop-target,
+.frow.drop-target {
 	color: var(--accent);
 	background: var(--accent-tint);
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
@@ -2714,9 +2485,6 @@ button.pr-file-head svg {
 	background: color-mix(in srgb, var(--danger) 10%, transparent);
 	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 45%, transparent);
 	border-radius: var(--radius);
-}
-.recycle-bin.drop-target .folder-row {
-	color: var(--danger);
 }
 
 /* ── M4-4 b3: merge resolution – the main-pane takeover ───────── */
@@ -3693,4 +3461,165 @@ button.pr-file-head svg {
 }
 .tr.s {
 	border: 1.5px dashed var(--amber);
+}
+
+/* The navigator tree (ui v1). Text on the navigator tint uses --ink-2:
+   light --ink-3 is under 4.5:1 there. */
+.fold {
+	margin-top: 14px;
+}
+/* Root-level docs after a section start their own group. */
+.fold + li:not(.fold) {
+	margin-top: 14px;
+}
+.fold-h {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	width: 100%;
+	min-height: 32px;
+	padding: 2px 10px 6px;
+	font: italic 500 15px var(--serif);
+	color: var(--ink-2);
+	text-align: left;
+	background: none;
+	border: 0;
+	border-radius: 7px;
+	cursor: pointer;
+}
+.fold-h:hover {
+	color: var(--ink);
+}
+.fold-h .fn,
+.frow .fn {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.fold-h .n,
+.frow .n {
+	font: 400 11px var(--mono);
+	color: var(--ink-2);
+	margin-left: auto;
+	flex-shrink: 0;
+}
+.row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	min-height: 32px;
+	padding: 6px 10px;
+	border-radius: 7px;
+	font: 13.5px var(--sans);
+	color: var(--ink);
+	text-align: left;
+	position: relative;
+	background: none;
+	border: 0;
+	cursor: pointer;
+	transition: background 0.12s;
+}
+.row:hover {
+	background: var(--line-soft);
+}
+.row[aria-current="page"] {
+	background: var(--sheet);
+	box-shadow:
+		0 1px 2px rgba(28, 38, 54, 0.07),
+		0 0 0 1px var(--line-soft);
+	font-weight: 500;
+}
+.row[aria-current="page"]::before {
+	content: "";
+	position: absolute;
+	left: -8px;
+	top: 8px;
+	bottom: 8px;
+	width: 3px;
+	border-radius: 0 3px 3px 0;
+	background: var(--accent);
+}
+.row .t {
+	flex: 1;
+	min-width: 0;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+/* Ghost rows: a doc that exists only on a draft branch. */
+.row.ghost .t {
+	color: var(--ink-2);
+	font-style: italic;
+}
+.row .chg {
+	width: 6px;
+	height: 6px;
+	border-radius: 2px;
+	background: var(--amber);
+	flex-shrink: 0;
+}
+.frow {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	width: 100%;
+	padding: 0 10px 0 2px;
+	border-radius: 7px;
+	font: 500 13px var(--sans);
+	color: var(--ink-2);
+}
+.frow:hover {
+	background: var(--line-soft);
+	color: var(--ink);
+}
+.frow .chev {
+	width: 20px;
+	height: 20px;
+	display: grid;
+	place-items: center;
+	border-radius: 5px;
+	color: var(--ink-2);
+	background: none;
+	border: 0;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+.frow .chev:hover {
+	background: var(--line);
+}
+.frow .chev svg {
+	width: 15px;
+	height: 15px;
+	transition: transform 0.15s var(--ease);
+}
+.frow[data-open="true"] .chev svg {
+	transform: rotate(90deg);
+}
+.frow .fn {
+	min-height: 32px;
+	text-align: left;
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+.sub {
+	margin-left: 12px;
+	padding-left: 6px;
+	border-left: 1px solid var(--line);
+	position: relative;
+}
+.sub.cur {
+	border-left-color: var(--accent-mid);
+}
+.row:focus-visible,
+.fold-h:focus-visible,
+.frow .chev:focus-visible,
+.frow .fn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
 }

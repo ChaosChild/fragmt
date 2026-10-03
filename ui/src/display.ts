@@ -223,3 +223,31 @@ export function wordCount(markdown: string): number {
 		.replace(/<[^>]+>/g, " ");
 	return prose.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
 }
+
+/** The navigator's trust mark (ui v1): `u` unverified (hollow ring), `m`
+ *  machine-confirmed (half-filled), `h` human-reviewed (filled), `s` stale
+ *  (dashed amber ring – wins over the tier: a reviewed doc past its
+ *  stale_after needs eyes again). null = no OKF data (non-OKF repo,
+ *  reserved file). */
+export function trustClass(
+	// Structural (DocMeta["okf"]'s shape): node-side tests import this file
+	// under nodenext, where ui's extensionless imports don't resolve.
+	okf?: { tier: string; staleAfter: string | null },
+	now = Date.now(),
+): "u" | "m" | "h" | "s" | null {
+	if (!okf) return null;
+	if (isStaleIso(okf.staleAfter, now)) return "s";
+	return okf.tier === "human-reviewed"
+		? "h"
+		: okf.tier === "machine-confirmed"
+			? "m"
+			: "u";
+}
+
+/** The trust mark's spoken word – its title and aria-label. */
+export const TRUST_WORD = {
+	u: "unverified",
+	m: "machine-confirmed",
+	h: "human-reviewed",
+	s: "stale",
+} as const;

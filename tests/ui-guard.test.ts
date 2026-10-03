@@ -215,10 +215,11 @@ function breadcrumbText(): string {
 	return document.querySelector(".breadcrumb")?.textContent ?? "";
 }
 
-/** The sidebar's doc card (its title attribute is the tree path). */
+/** The navigator's doc row (ui v1: data-path carries the tree path – the
+ *  title attribute is now the multi-line hover card). */
 function cardButton(path: string): HTMLElement {
 	const card = document.querySelector<HTMLElement>(
-		`button.doc-card[title="${path}"]`,
+		`button.row[data-path="${path}"]`,
 	);
 	if (!card) throw new Error(`no sidebar card for "${path}"`);
 	return card;
