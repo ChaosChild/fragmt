@@ -1311,7 +1311,7 @@ export function App() {
 			<div
 				// The graph and a PR review take the whole stage (ui v1): the
 				// navigator steps aside without touching its collapse state.
-				className={`app-frame${graphOpen || prView?.kind === "pr" ? " stage-only" : ""}`}
+				className={`app-frame${inResolution || graphOpen || prView?.kind === "pr" ? " stage-only" : ""}`}
 				// #27 (b3): the PR target, mirrored for the guard tests
 				// ("list" | "pr:<n>" – absent = closed).
 				data-prview={

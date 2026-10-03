@@ -209,6 +209,10 @@ test("stood merge: 409 shape, write guard, GET detail, resolve both kinds, concl
 				path: "docs/a.md",
 				kind: "doc",
 				parts: [{ ours: "# main\n", theirs: "# draft\n" }],
+				sides: {
+					ours: expect.objectContaining({ ref: "main" }),
+					theirs: expect.objectContaining({ ref: "drafts/c" }),
+				},
 			},
 		],
 	});

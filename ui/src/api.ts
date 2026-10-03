@@ -471,8 +471,21 @@ export interface SidecarMergeSummary {
 	resolvedCarried: number;
 	repliesMerged: number;
 }
+/** One side of a conflicted doc (ui v1): its branch and the last commit
+ *  touching the path there (null when git couldn't say). */
+export interface MergeSide {
+	ref: string;
+	author: string | null;
+	date: string | null;
+}
 export type MergeFile =
-	| { path: string; kind: "doc"; parts: ConflictPart[] }
+	| {
+			path: string;
+			kind: "doc";
+			parts: ConflictPart[];
+			/** Absent from pre-v1 servers. */
+			sides?: { ours: MergeSide; theirs: MergeSide };
+	  }
 	| { path: string; kind: "sidecar"; summary: SidecarMergeSummary }
 	| { path: string; kind: "other" };
 export type MergeState =
