@@ -9,7 +9,7 @@ import {
 	useState,
 } from "react";
 import { mapRangesToBlocks, sourceBlockSpans } from "./draft-gutter";
-import type { AtDoc, AtMenuState } from "./editor/at";
+import { type AtDoc, type AtMenuState, applyAtReference } from "./editor/at";
 import { BubbleToolbar } from "./editor/BubbleToolbar";
 import { editorExtensions } from "./editor/extensions";
 import { ImagePopover } from "./editor/ImageForm";
@@ -19,6 +19,11 @@ import type { SlashMenuState } from "./editor/slash";
 
 export interface EditorPaneHandle {
 	getMarkdown(): string;
+	/** Link `doc` at the current selection (ui v1, "Link at cursor"): the
+	 *  `@` reference's own insert, so the references field follows on save
+	 *  exactly as for a typed `@`. A selection is replaced; the editor keeps
+	 *  its last selection while blurred. False when not editable. */
+	insertDocLink(doc: AtDoc): boolean;
 }
 
 /** Scroll a heading id into view – the anchor dispatch's one action (M4-3
@@ -129,6 +134,10 @@ export function EditorPane({
 	// A getter over the ref keeps the @ menu's doc list live across tree
 	// refreshes – the extension captured it once at plugin creation.
 	const docsRef = useRef(docs);
+	// The linking doc's path for @ / Link-at-cursor hrefs – read at insert
+	// time, so a doc switch never needs the extensions rebuilt.
+	const docPathRef = useRef(docPath);
+	docPathRef.current = docPath;
 	docsRef.current = docs;
 	const knownDocPaths = new Set(docs.map((d) => d.path));
 	const knownFolderPaths = new Set(folders);
@@ -142,6 +151,7 @@ export function EditorPane({
 			},
 			{
 				docs: () => docsRef.current,
+				docPath: () => docPathRef.current,
 				onState: setAtState,
 				onKeyDown: (event) => atKeydown.current(event),
 			},
@@ -265,6 +275,12 @@ export function EditorPane({
 		ref,
 		() => ({
 			getMarkdown: () => editor?.storage.markdown.getMarkdown() ?? "",
+			insertDocLink: (doc: AtDoc) => {
+				if (!editor?.isEditable) return false;
+				const { from, to } = editor.state.selection;
+				applyAtReference(editor, { from, to }, doc, docPathRef.current);
+				return true;
+			},
 		}),
 		[editor],
 	);

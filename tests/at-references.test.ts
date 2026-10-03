@@ -6,12 +6,14 @@
 // editing-controls.test.ts.
 import { Editor } from "@tiptap/core";
 import { describe, expect, test } from "vitest";
+import { extractRefs } from "../src/core/okf.js";
 import { displayTitle } from "../ui/src/display.js";
 import {
 	type AtDoc,
 	AtReferences,
 	applyAtReference,
 	filterAtDocs,
+	relativeDocHref,
 } from "../ui/src/editor/at.js";
 import { editorExtensions } from "../ui/src/editor/extensions.js";
 import { resolveLinkTarget, slugifyHeading } from "../ui/src/editor/links.js";
@@ -74,6 +76,15 @@ describe("@ reference insertion", () => {
 		expect(out).not.toContain("@plan");
 		// In place, mid-sentence – not appended at the doc's end.
 		expect(out).toContain("(docs/plan.md) here");
+		editor.destroy();
+	});
+
+	test("with the linking doc's path the href is relative to its folder", () => {
+		const editor = atEditor();
+		editor.commands.setContent("see @plan here");
+		applyAtReference(editor, { from: 5, to: 10 }, docs[0], "guides/how.md");
+		const out: string = editor.storage.markdown.getMarkdown();
+		expect(out).toContain("[Plan](../docs/plan.md)");
 		editor.destroy();
 	});
 
@@ -313,5 +324,34 @@ describe("slugifyHeading", () => {
 		expect(slugifyHeading("Notes", seen)).toBe("notes");
 		expect(slugifyHeading("Notes", seen)).toBe("notes-1");
 		expect(slugifyHeading("notes", seen)).toBe("notes-2");
+	});
+});
+
+describe("relativeDocHref", () => {
+	test("cross-folder, same-folder, into and out of the root", () => {
+		expect(relativeDocHref("concepts/a.md", "reference/cli.md")).toBe(
+			"../reference/cli.md",
+		);
+		expect(relativeDocHref("concepts/a.md", "concepts/b.md")).toBe("b.md");
+		expect(relativeDocHref("a.md", "x/y/z.md")).toBe("x/y/z.md");
+		expect(relativeDocHref("x/y/z.md", "a.md")).toBe("../../a.md");
+		expect(relativeDocHref("x/y/z.md", "x/w.md")).toBe("../w.md");
+		// A folder named like the target file is not a shared prefix.
+		expect(relativeDocHref("x/a.md", "x")).toBe("../x");
+	});
+
+	test("round-trips through the server's references walk and the client resolver", () => {
+		const all = ["concepts/a.md", "reference/cli.md", "x/y/z.md", "a.md"];
+		for (const [from, to] of [
+			["concepts/a.md", "reference/cli.md"],
+			["x/y/z.md", "a.md"],
+			["a.md", "x/y/z.md"],
+		]) {
+			const href = relativeDocHref(from, to);
+			expect(extractRefs(`[t](${href})`, from, all)).toEqual([to]);
+			expect(
+				resolveLinkTarget(href, from, new Set(all), new Set()),
+			).toMatchObject({ kind: "doc", path: to });
+		}
 	});
 });

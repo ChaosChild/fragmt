@@ -1,18 +1,22 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { basename, resolve } from "node:path";
+import { basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getRequestListener } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
+import matter from "gray-matter";
 import { type Context, Hono } from "hono";
 import {
 	createPull,
 	type GhApiOpts,
+	getFileRaw,
 	getPull,
+	getPullCommits,
 	getPullFiles,
 	listPulls,
 	mergePull,
 	type PullRequest,
+	type PullRequestFile,
 	repoDefaultBranch,
 } from "../core/github.js";
 import {
@@ -27,6 +31,8 @@ import {
 	addReply,
 	addThread,
 	addThreadWithDoc,
+	badBranchName,
+	branchStatus,
 	checkoutBranch,
 	concludeMerge,
 	createBranch,
@@ -51,6 +57,7 @@ import {
 	gitAllowList,
 	githubPushUrl,
 	githubSlug,
+	InvalidBranchNameError,
 	inMerge,
 	isFrontmatterKey,
 	listBranches,
@@ -693,6 +700,29 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		});
 	});
 
+	// ui v1 (phase 7): every local branch's standing against main – ahead /
+	// behind, would-conflict, tip date. Called when the branch menu opens,
+	// never on boot; read-only (rev-list + merge-tree touch no ref, index or
+	// worktree). Names come from for-each-ref, and branchStatus re-checks
+	// them before spawning.
+	app.get("/api/branches/status", async (c) => {
+		const main = await mainBranch(ctx.repoRoot);
+		if (!main) return c.json({ branches: [] });
+		try {
+			const names = (await listBranches(ctx.repoRoot)).filter(
+				(b) => b !== main && !badBranchName(b),
+			);
+			const branches = await Promise.all(
+				names.map((b) => branchStatus(ctx.repoRoot, main, b)),
+			);
+			return c.json({ branches });
+		} catch (e) {
+			if (e instanceof InvalidBranchNameError)
+				return c.json({ error: e.message }, 400);
+			return respondGitError(c, e);
+		}
+	});
+
 	app.post("/api/branches", async (c) => {
 		const body = await jsonBody(c);
 		if (body === null) return c.json({ error: "invalid request body" }, 400);
@@ -771,11 +801,25 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 
 	app.get("/api/meta", async (c) => {
 		const meta = await repoMeta(ctx.repoRoot, ctx.docsRoot);
+		// The navigator head's identity (ui v1): the GitHub repo name when
+		// origin is github.com, else the checkout's folder name. Behind the
+		// /api gate like the rest of meta – the sign-in page never shows it.
+		const slug = (await githubSlug(ctx.repoRoot)) ?? null;
 		// Explicit .fragmt.json authors entries override derived mappings; the
 		// merge happens server-side so core/meta stays free of auth state.
 		return c.json({
 			...meta,
 			authors: { ...verifiedEmailLogins(), ...meta.authors },
+			repo: {
+				name: slug?.repo ?? basename(resolve(ctx.repoRoot)),
+				slug,
+				// Repo-relative POSIX, "" for the repo root – the sheet's
+				// "History on GitHub" link joins it with the doc path.
+				docsRoot: relative(
+					resolve(ctx.repoRoot),
+					resolve(ctx.repoRoot, ctx.docsRoot),
+				).replaceAll("\\", "/"),
+			},
 		});
 	});
 
@@ -1068,22 +1112,28 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 	};
 
 	app.get("/api/prs", async (c) => {
+		// ui v1: ?state=closed lists the Merged/Closed tabs; open (the default)
+		// also feeds the branch→PR map.
+		const state = c.req.query("state") ?? "open";
+		if (state !== "open" && state !== "closed")
+			return c.json({ error: "state must be open or closed" }, 400);
 		const user = c.get("authUser");
 		if (user === undefined) return c.json({ enabled: false, prs: [] });
 		const slug = await githubSlug(ctx.repoRoot);
 		if (slug === undefined)
 			return c.json({ enabled: true, slug: null, prs: [], byBranch: {} });
 		try {
-			const { status, body } = await listPulls(slug, {
-				fetchImpl: ctx.githubFetch,
-				token: user.token,
-			});
+			const { status, body } = await listPulls(
+				slug,
+				{ fetchImpl: ctx.githubFetch, token: user.token },
+				state,
+			);
 			if (status !== 200) return c.json({ error: "github unreachable" }, 502);
 			const byBranch: Record<
 				string,
 				{ number: number; title: string; state: string }
 			> = {};
-			for (const pr of body)
+			for (const pr of state === "open" ? body : [])
 				byBranch[pr.head.ref] = {
 					number: pr.number,
 					title: pr.title,
@@ -1182,17 +1232,117 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 			if (pr.status === 404) return c.json({ error: "pr not found" }, 404);
 			if (pr.status !== 200)
 				return c.json({ error: ghMessage(pr.body, "github unreachable") }, 502);
-			const files = await getPullFiles(slug, n, page, gh);
+			const [files, commits] = await Promise.all([
+				getPullFiles(slug, n, page, gh),
+				getPullCommits(slug, n, gh),
+			]);
 			if (files.status !== 200)
 				return c.json(
 					{ error: ghMessage(files.body, "github unreachable") },
 					502,
 				);
+			// Is the local branch of the same name where GitHub's head is? null =
+			// no such local branch (or an unusable name).
+			let localUpToDate: boolean | null = null;
+			const head = pr.body.head.ref;
+			if (
+				!badBranchName(head) &&
+				(await listBranches(ctx.repoRoot)).includes(head)
+			) {
+				try {
+					localUpToDate =
+						(await git(ctx.repoRoot, [
+							"rev-parse",
+							"--verify",
+							`refs/heads/${head}`,
+						])) === pr.body.head.sha;
+				} catch {
+					localUpToDate = null;
+				}
+			}
 			return c.json({
 				pr: prSummary(pr.body),
 				files: files.body,
 				filesPage: page,
+				commits:
+					commits.status === 200
+						? commits.body.map((k) => ({
+								sha: k.sha,
+								message: k.commit.message.split("\n")[0],
+								author: k.author?.login ?? k.commit.author?.name ?? "",
+							}))
+						: [],
+				localUpToDate,
 			});
+		} catch {
+			return c.json({ error: "github unreachable" }, 502);
+		}
+	});
+
+	// ui v1 (phase 9): one changed doc's two sides – the rendered diff's
+	// input. Never an arbitrary file: `path` must be one of the PR's own
+	// files (checked against GitHub's file list) and a .md; both sides come
+	// through the signed-in user's token at the PR's base/head shas, parsed
+	// server-side (gray-matter, as readDoc). A side over 1 MB answers
+	// tooLarge – the UI falls back to the Source tab.
+	app.get("/api/prs/:n/doc", async (c) => {
+		const n = prNumber(c);
+		if (n instanceof Response) return n;
+		const path = c.req.query("path");
+		if (typeof path !== "string" || path === "" || !/\.md$/i.test(path))
+			return c.json(
+				{ error: "path must be a .md file of the pull request" },
+				400,
+			);
+		const actor = await prActor(c);
+		if ("refused" in actor) return actor.refused;
+		const { slug, gh } = actor;
+		try {
+			const pr = await getPull(slug, n, gh);
+			if (pr.status === 404) return c.json({ error: "pr not found" }, 404);
+			if (pr.status !== 200)
+				return c.json({ error: ghMessage(pr.body, "github unreachable") }, 502);
+			// Membership: walk the PR's file pages (GitHub caps a PR at 3000
+			// files – 150 pages of 20).
+			let file: PullRequestFile | undefined;
+			for (let page = 1; page <= 150 && !file; page++) {
+				const files = await getPullFiles(slug, n, page, gh);
+				if (files.status !== 200)
+					return c.json(
+						{ error: ghMessage(files.body, "github unreachable") },
+						502,
+					);
+				file = files.body.find((f) => f.filename === path);
+				if (files.body.length < 20) break;
+			}
+			if (!file)
+				return c.json(
+					{ error: "path is not a file of this pull request" },
+					404,
+				);
+			const MAX = 1024 * 1024;
+			const side = async (p: string, ref: string) => {
+				const r = await getFileRaw(slug, p, ref, gh);
+				if (r.status === 404) return null;
+				if (r.status !== 200) throw new Error("github unreachable");
+				if (Buffer.byteLength(r.text) > MAX) return "tooLarge" as const;
+				const parsed = matter(r.text, {});
+				return { frontmatter: parsed.data, body: parsed.content };
+			};
+			const base =
+				file.status === "added"
+					? null
+					: await side(
+							file.previous_filename ?? file.filename,
+							pr.body.base.sha,
+						);
+			const head =
+				file.status === "removed"
+					? null
+					: await side(file.filename, pr.body.head.sha);
+			if (base === "tooLarge" || head === "tooLarge")
+				return c.json({ tooLarge: true });
+			return c.json({ base, head });
 		} catch {
 			return c.json({ error: "github unreachable" }, 502);
 		}
@@ -1509,6 +1659,10 @@ function prSummary(pr: PullRequest) {
 		base: { ref: pr.base.ref },
 		user: { login: pr.user.login },
 		changed_files: pr.changed_files,
+		created_at: pr.created_at,
+		merged_at: pr.merged_at ?? null,
+		additions: pr.additions,
+		deletions: pr.deletions,
 	};
 }
 
@@ -1527,17 +1681,6 @@ function ghMessage(body: unknown, fallback: string): string {
 			)
 		: [];
 	return details.length > 0 ? `${message} – ${details.join("; ")}` : message;
-}
-
-/** Cheap reject of branch names git can never accept (empty, spaces, "..", leading "-", control chars). */
-function badBranchName(name: string): boolean {
-	return (
-		name === "" ||
-		name.startsWith("-") ||
-		name.includes("..") ||
-		// biome-ignore lint/suspicious/noControlCharactersInRegex: the point – control chars can never be branch names
-		/[\s\u0000-\u001f\u007f]/.test(name)
-	);
 }
 
 /**

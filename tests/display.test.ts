@@ -6,12 +6,15 @@
 import { describe, expect, test } from "vitest";
 import {
 	avatarUser,
+	collapseCrumb,
 	extensionRows,
 	isoToLocal,
 	isReservedDoc,
 	isStaleIso,
 	metaViewRows,
+	readMinutes,
 	toIsoUtc,
+	wordCount,
 } from "../ui/src/display.js";
 
 describe("avatarUser", () => {
@@ -168,5 +171,53 @@ describe("metaViewRows (the metadata view block)", () => {
 			{ key: "generated", value: "fragmt-agent/x" },
 			{ key: "verified", value: "1 event · latest by human:b" },
 		]);
+	});
+});
+
+describe("wordCount (status bar)", () => {
+	test("counts prose words, skipping code fences, comment spans and bare punctuation", () => {
+		const body = [
+			"# The title",
+			"",
+			'A <span data-c="c1">marked phrase</span> here – and more.',
+			"",
+			"```ts",
+			"const notCounted = true;",
+			"```",
+			"",
+			"- one",
+			"- two",
+		].join("\n");
+		// The, title, A, marked, phrase, here, and, more., one, two
+		expect(wordCount(body)).toBe(10);
+		expect(wordCount("")).toBe(0);
+	});
+});
+
+describe("collapseCrumb + readMinutes (the sheet's command bar and byline)", () => {
+	test("a 5-segment path keeps first folder, last folder and the name", () => {
+		expect(collapseCrumb(["a", "b", "c", "d", "name"])).toEqual([
+			"a",
+			"…",
+			"d",
+			"name",
+		]);
+		expect(collapseCrumb(["a", "b", "c", "name"])).toEqual([
+			"a",
+			"…",
+			"c",
+			"name",
+		]);
+	});
+
+	test("3 segments or fewer stay whole", () => {
+		expect(collapseCrumb(["a", "b", "name"])).toEqual(["a", "b", "name"]);
+		expect(collapseCrumb(["name"])).toEqual(["name"]);
+	});
+
+	test("230 words a minute, rounded up, at least one", () => {
+		expect(readMinutes(1150)).toBe(5);
+		expect(readMinutes(1151)).toBe(6);
+		expect(readMinutes(0)).toBe(1);
 	});
 });

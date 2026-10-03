@@ -19,14 +19,18 @@ export function ThemeToggle() {
 	}, [theme]);
 
 	return (
+		// A rail button (ui v1) – the rail is its one home.
 		<button
 			type="button"
-			className="tool-btn"
+			className="rbtn"
 			title="Toggle theme"
 			aria-label="Toggle theme"
 			onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
 		>
 			<Moon aria-hidden="true" />
+			<span className="tip" aria-hidden="true">
+				Theme
+			</span>
 		</button>
 	);
 }

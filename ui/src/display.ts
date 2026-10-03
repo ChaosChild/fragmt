@@ -212,3 +212,56 @@ export function metaViewRows(
 	}
 	return rows;
 }
+
+/** Words in a doc body for the status bar (ui v1): fenced code and inline
+ *  HTML (the `<span data-c>` comment anchors) don't count; markdown
+ *  punctuation tokens with no letter or digit don't either. The body arrives
+ *  without its frontmatter (DocResponse.markdown). */
+export function wordCount(markdown: string): number {
+	const prose = markdown
+		.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, " ")
+		.replace(/<[^>]+>/g, " ");
+	return prose.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+}
+
+/** The navigator's trust mark (ui v1): `u` unverified (hollow ring), `m`
+ *  machine-confirmed (half-filled), `h` human-reviewed (filled), `s` stale
+ *  (dashed amber ring – wins over the tier: a reviewed doc past its
+ *  stale_after needs eyes again). null = no OKF data (non-OKF repo,
+ *  reserved file). */
+export function trustClass(
+	// Structural (DocMeta["okf"]'s shape): node-side tests import this file
+	// under nodenext, where ui's extensionless imports don't resolve.
+	okf?: { tier: string; staleAfter: string | null },
+	now = Date.now(),
+): "u" | "m" | "h" | "s" | null {
+	if (!okf) return null;
+	if (isStaleIso(okf.staleAfter, now)) return "s";
+	return okf.tier === "human-reviewed"
+		? "h"
+		: okf.tier === "machine-confirmed"
+			? "m"
+			: "u";
+}
+
+/** The trust mark's spoken word – its title and aria-label. */
+export const TRUST_WORD = {
+	u: "unverified",
+	m: "machine-confirmed",
+	h: "human-reviewed",
+	s: "stale",
+} as const;
+
+/** The command bar's breadcrumb (ui v1): folder segments then the doc name;
+ *  past 3 segments the middle collapses to "…" – first folder, last folder,
+ *  name stay (the full path rides the crumb's title). */
+export function collapseCrumb(segments: string[]): string[] {
+	return segments.length > 3
+		? [segments[0], "…", ...segments.slice(-2)]
+		: segments;
+}
+
+/** The byline's "N min read": 230 words a minute, rounded up, never 0. */
+export function readMinutes(words: number): number {
+	return Math.max(1, Math.ceil(words / 230));
+}

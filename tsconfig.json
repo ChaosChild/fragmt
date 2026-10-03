@@ -10,5 +10,11 @@
 		"types": ["node"]
 	},
 	"include": ["src", "tests"],
-	"exclude": ["ui", "spikes", "dist", "tests/ui-guard.test.ts"]
+	"exclude": [
+		"ui",
+		"spikes",
+		"dist",
+		"tests/ui-guard.test.ts",
+		"tests/sidebar.test.ts"
+	]
 }

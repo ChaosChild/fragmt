@@ -1,4 +1,4 @@
-import { GitBranch, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, GitBranch, Plus, Trash2 } from "lucide-react";
 import {
 	type FormEvent,
 	type MouseEvent as ReactMouseEvent,
@@ -11,7 +11,13 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { getBranches, getPRs, openPR } from "./api";
+import {
+	type BranchState,
+	getBranches,
+	getBranchStatus,
+	getPRs,
+	openPR,
+} from "./api";
 import { popoverPosition } from "./popover-position";
 
 /** Every file operation the sidebar menus / doc head can request (App performs it). */
@@ -84,12 +90,24 @@ export function useMenu() {
 		const el = e.currentTarget; // currentTarget is null after dispatch
 		setAnchor((a) => (a ? null : el));
 	};
-	return { open: anchor !== null, anchor, wrapRef, popRef, toggle, close };
+	// Open from code (ui v1: the search palette's "New document" action).
+	const openAt = useCallback((el: HTMLButtonElement | null) => {
+		if (el) setAnchor(el);
+	}, []);
+	return {
+		open: anchor !== null,
+		anchor,
+		wrapRef,
+		popRef,
+		toggle,
+		close,
+		openAt,
+	};
 }
 
 /**
- * Fixed glass popover portalled to document.body – the sidebar's
- * backdrop-filter is a containing block for fixed descendants and would
+ * Fixed popover portalled to document.body – an ancestor's transform or
+ * filter is a containing block for fixed descendants and would
  * otherwise clip/misplace it. Positioned from the anchor's rect plus the
  * popover's own measured size (useLayoutEffect, before paint; re-measures on
  * any re-render while open, which is idempotent while the anchor stands still).
@@ -134,11 +152,10 @@ export function MenuPopover({
 }
 
 /**
- * The signed-in user chip (#20, auth batch): avatar + login, opens the
- * one-item sign-out menu. Lives at the end of the doc head (owner round –
- * moved out of the sidebar head's brand row). canWrite=false adds the warn
- * read-only pill so a read collaborator reads the coming 403s before
- * hitting one.
+ * The signed-in user chip (#20, auth batch): the rail's avatar square (ui
+ * v1), opening the one-item sign-out menu. canWrite=false swaps the corner
+ * mark and says "read-only" in the title, so a read collaborator reads the
+ * coming 403s before hitting one.
  */
 export function UserChip({
 	login,
@@ -150,28 +167,30 @@ export function UserChip({
 	onSignOut: () => void;
 }) {
 	const menu = useMenu();
+	// The rail's avatar square (ui v1): initials under the GitHub avatar, so
+	// a blocked or failed image still reads as someone. Read-only access is
+	// the amber corner mark plus the title – never colour alone.
 	return (
-		<span className="menu-wrap user-chip-wrap">
-			{!canWrite && <span className="readonly-pill">read-only</span>}
+		<span className="menu-wrap user-chip-wrap" ref={menu.wrapRef}>
 			<button
 				type="button"
-				className="user-chip"
-				title={`${login} – sign out`}
+				className={`me${canWrite ? "" : " readonly"}`}
+				title={`${login} · ${canWrite ? "write access" : "read-only"} – sign out`}
 				aria-label={`Signed in as ${login}. Sign out`}
 				aria-expanded={menu.open}
 				onClick={menu.toggle}
 			>
+				<span aria-hidden="true">{login.slice(0, 2).toUpperCase()}</span>
 				<img
-					className="chip-avatar"
-					src={`https://avatars.githubusercontent.com/${encodeURIComponent(login)}?s=64`}
+					className="me-avatar"
+					src={`https://avatars.githubusercontent.com/${encodeURIComponent(login)}?s=68`}
 					alt=""
-					width={18}
-					height={18}
+					width={34}
+					height={34}
 					onError={(e) => {
 						e.currentTarget.style.visibility = "hidden";
 					}}
 				/>
-				<span className="chip-login">{login}</span>
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				<button
@@ -203,10 +222,17 @@ export function BranchMenu({
 	current,
 	prsEnabled,
 	mainName,
+	led,
+	syncedAgo,
 	onAction,
 }: {
 	current: string | null;
 	prsEnabled: boolean;
+	/** "synced N min ago" for the main row (App's last clean sync). */
+	syncedAgo?: string;
+	/** The navigator trigger's sync LED (ui v1) – App's led colour; absent
+	 *  renders no dot. The status bar carries the word. */
+	led?: string;
 	/** The repo's main branch (meta.main): the drafting model's landing base –
 	 *  never offered a delete, merged or not (the server refuses it too). */
 	mainName: string | null;
@@ -223,9 +249,17 @@ export function BranchMenu({
 		string,
 		{ number: number }
 	> | null>(null);
+	// ui v1 (phase 7): ahead/behind and the conflict hint per draft – fetched
+	// when the menu opens, never on boot; a failure just drops the lines.
+	const [status, setStatus] = useState<Record<string, BranchState>>({});
 
 	useEffect(() => {
 		if (!menu.open) return;
+		getBranchStatus()
+			.then((r) =>
+				setStatus(Object.fromEntries(r.branches.map((b) => [b.name, b]))),
+			)
+			.catch(() => setStatus({}));
 		getBranches()
 			.then((r) => {
 				setBranches(r.branches);
@@ -262,67 +296,115 @@ export function BranchMenu({
 				onClick={menu.toggle}
 			>
 				<GitBranch aria-hidden="true" />
-				<span className="branch-name">on {current ?? "…"}</span>
+				<span className="branch-name">{current ?? "…"}</span>
+				{led && <span className={`led ${led}`} aria-hidden="true" />}
+				<ChevronDown className="branch-chev" aria-hidden="true" />
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				{failed && <p className="menu-empty">branches unavailable</p>}
-				{(branches ?? []).map((b) => {
-					const pr = prBy(b);
-					return (
-						// One row, three targets: the name switches, the PR chip views
-						// (non-current rows with an open PR only), the trash deletes
-						// (never offered on the current branch – the server refuses
-						// it; gated on merged, D7 – no force-delete from here).
-						<span key={b} className="menu-row">
-							<button
-								type="button"
-								className="menu-item"
-								aria-current={b === current ? "true" : undefined}
-								onClick={() => {
-									menu.close();
-									if (b !== current) onAction({ kind: "switch", name: b });
-								}}
-							>
-								{b}
-							</button>
-							{/* The PR chip shows on EVERY row, the current branch
+				<p className="ph">Branches</p>
+				{/* main first – the landing base reads as the list's anchor. */}
+				{[...(branches ?? [])]
+					.sort((a, b) => Number(b === mainName) - Number(a === mainName))
+					.map((b) => {
+						const pr = prBy(b);
+						const st = status[b];
+						const isMain = b === mainName;
+						// The row's second line: main says when it last synced; a
+						// draft its standing against main (amber when a merge would
+						// conflict).
+						const line: ReactNode[] = [];
+						if (isMain && b === current && syncedAgo) line.push(syncedAgo);
+						if (st) {
+							const counts = [
+								st.ahead > 0 && `${st.ahead} ahead`,
+								st.behind > 0 && `${st.behind} behind`,
+							].filter(Boolean);
+							line.push(
+								counts.length > 0 ? counts.join(" · ") : "level with main",
+							);
+							if (st.conflicts)
+								line.push(
+									<span key="conflict" className="br-conflict">
+										conflicts with main
+									</span>,
+								);
+						}
+						return (
+							// One row, three targets: the name switches, the PR chip views
+							// (rows with an open PR), the trash deletes (never offered on
+							// the current branch – the server refuses it; gated on
+							// merged, D7 – no force-delete from here).
+							<span key={b} className="menu-row br">
+								<button
+									type="button"
+									className="menu-item br-main"
+									aria-current={b === current ? "true" : undefined}
+									onClick={() => {
+										menu.close();
+										if (b !== current) onAction({ kind: "switch", name: b });
+									}}
+								>
+									<span className="br-mark" aria-hidden="true">
+										{b === current && <Check />}
+									</span>
+									<span className="bn">{b}</span>
+									{isMain && b === current && led && (
+										<span className={`led ${led}`} aria-hidden="true" />
+									)}
+									{line.length > 0 && (
+										<span className="bm">
+											{line.map((part, i) => (
+												// biome-ignore lint/suspicious/noArrayIndexKey: a fixed, ordered list of parts
+												<span key={i}>
+													{i > 0 && " · "}
+													{part}
+												</span>
+											))}
+										</span>
+									)}
+								</button>
+								{/* The PR chip shows on EVERY row, the current branch
 						    included – on the branch being merged it is the one
-						    answer to "what am I merging into main?". Only the
-						    trash stays off the current branch (deleting the
-						    checked-out branch is refused anyway). */}
-							{pr && (
-								<button
-									type="button"
-									className="pr-chip"
-									title={`View pull request #${pr.number}`}
-									onClick={() => {
-										menu.close();
-										onAction({ kind: "view-pr", number: pr.number });
-									}}
-								>
-									PR #{pr.number}
-								</button>
-							)}
-							{b !== current && b !== mainName && (
-								<button
-									type="button"
-									className="tool-btn"
-									disabled={!isMerged(b)}
-									title={isMerged(b) ? "Delete branch" : "Not merged yet"}
-									aria-label={`Delete branch ${b}`}
-									aria-disabled={!isMerged(b) || undefined}
-									onClick={() => {
-										if (!isMerged(b)) return;
-										menu.close();
-										onAction({ kind: "delete", name: b });
-									}}
-								>
-									<Trash2 aria-hidden="true" />
-								</button>
-							)}
-						</span>
-					);
-				})}
+						    answer to "what am I merging into main?". Drafts
+						    without one say so (when the PR surface is on). */}
+								{pr ? (
+									<button
+										type="button"
+										className="pr-chip"
+										title={`View pull request #${pr.number}`}
+										onClick={() => {
+											menu.close();
+											onAction({ kind: "view-pr", number: pr.number });
+										}}
+									>
+										PR #{pr.number}
+									</button>
+								) : (
+									prsEnabled &&
+									byBranch !== null &&
+									!isMain && <span className="chip no-pr">no PR</span>
+								)}
+								{b !== current && !isMain && (
+									<button
+										type="button"
+										className="tool-btn"
+										disabled={!isMerged(b)}
+										title={isMerged(b) ? "Delete branch" : "Not merged yet"}
+										aria-label={`Delete branch ${b}`}
+										aria-disabled={!isMerged(b) || undefined}
+										onClick={() => {
+											if (!isMerged(b)) return;
+											menu.close();
+											onAction({ kind: "delete", name: b });
+										}}
+									>
+										<Trash2 aria-hidden="true" />
+									</button>
+								)}
+							</span>
+						);
+					})}
 				<form className="popover-form" onSubmit={submit}>
 					<label htmlFor="branch-name">New branch</label>
 					<input
@@ -337,6 +419,9 @@ export function BranchMenu({
 						</button>
 					</div>
 				</form>
+				<p className="br-foot">
+					Editing on main starts a draft branch for you.
+				</p>
 			</MenuPopover>
 		</span>
 	);
@@ -429,9 +514,24 @@ export function OpenPRButton({
  * existing path form) or New folder (same form, the create-folder op; the
  * folder appears in the tree, nothing gets selected).
  */
-export function NewDocButton({ onFileOp }: { onFileOp: (op: FileOp) => void }) {
+export function NewDocButton({
+	onFileOp,
+	openDocRequest = 0,
+}: {
+	onFileOp: (op: FileOp) => void;
+	/** Bump to open straight into the new-document form (ui v1: the search
+	 *  palette's action) – the same form and submit as the + button's. */
+	openDocRequest?: number;
+}) {
 	const menu = useMenu();
 	const [mode, setMode] = useState<"choice" | "doc" | "folder">("choice");
+	const buttonRef = useRef<HTMLButtonElement>(null);
+	const { openAt } = menu;
+	useEffect(() => {
+		if (openDocRequest === 0) return;
+		setMode("doc");
+		openAt(buttonRef.current);
+	}, [openDocRequest, openAt]);
 	const [path, setPath] = useState("");
 	const pathRef = useRef<HTMLInputElement>(null);
 	// Land focus in the form when one opens; reset to the choice menu on close.
@@ -460,6 +560,7 @@ export function NewDocButton({ onFileOp }: { onFileOp: (op: FileOp) => void }) {
 	return (
 		<span className="menu-wrap" ref={menu.wrapRef}>
 			<button
+				ref={buttonRef}
 				type="button"
 				className="tool-btn"
 				title="New document or folder"

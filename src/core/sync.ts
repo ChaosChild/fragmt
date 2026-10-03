@@ -8,7 +8,7 @@ async function hasRemote(repoRoot: string): Promise<boolean> {
 }
 
 /**
- * `git pull --rebase`. A repo with no remote, or a branch with no upstream
+ * `git pull --rebase=merges`. A repo with no remote, or a branch with no upstream
  * tracking, is a no-op success – many dogfood repos are local-only. On a
  * rebase conflict the rebase is aborted (HEAD and working tree back to the
  * pre-pull state) and `{conflict: true}` is returned; any other failure
@@ -17,7 +17,11 @@ async function hasRemote(repoRoot: string): Promise<boolean> {
 export async function pullRebase(repoRoot: string): Promise<SyncResult> {
 	if (!(await hasRemote(repoRoot))) return { conflict: false };
 	try {
-		await git(repoRoot, ["pull", "--rebase"]);
+		// =merges: a local merge commit not yet pushed (the in-app merge, before
+		// the next sync's push) stays a merge. Plain --rebase flattens it and
+		// replays the draft's commits onto main – a conflict the merge already
+		// resolved, so the merge would never reach origin.
+		await git(repoRoot, ["pull", "--rebase=merges"]);
 		return { conflict: false };
 	} catch (e) {
 		if (!(e instanceof GitError)) throw e;

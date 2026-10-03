@@ -330,8 +330,44 @@ async function sidecarStages(
 	return { ours: await stage(2), theirs: await stage(3) };
 }
 
+/** One side of a conflicted doc (ui v1): the branch and the last commit
+ *  that touched the path there; author/date null when git can't say. */
+export interface MergeSide {
+	ref: string;
+	author: string | null;
+	date: string | null;
+}
+
+/** The last commit touching `path` on `rev` – through git.ts, failure-
+ *  tolerant (a side's history is decoration, never a blocker). */
+async function lastTouch(
+	repoRoot: string,
+	rev: "HEAD" | "MERGE_HEAD",
+	path: string,
+): Promise<{ author: string | null; date: string | null }> {
+	try {
+		const out = await git(repoRoot, [
+			"log",
+			"-1",
+			"--format=%an%x00%aI",
+			rev,
+			"--",
+			path,
+		]);
+		const [author, date] = out.split("\u0000");
+		return { author: author || null, date: date || null };
+	} catch {
+		return { author: null, date: null };
+	}
+}
+
 export type MergeFile =
-	| { path: string; kind: "doc"; parts: ConflictPart[] }
+	| {
+			path: string;
+			kind: "doc";
+			parts: ConflictPart[];
+			sides: { ours: MergeSide; theirs: MergeSide };
+	  }
 	| { path: string; kind: "sidecar"; summary: SidecarMergeSummary }
 	| { path: string; kind: "other" };
 
@@ -355,6 +391,8 @@ export async function mergeState(
 	if (!inMerge(repoRoot)) return { inMerge: false };
 	const prefix = docsPrefix(docsRoot);
 	const files: MergeFile[] = [];
+	const branch = mergeBranchFromMsg(repoRoot);
+	const ours = await currentBranch(repoRoot).catch(() => "HEAD");
 	for (const path of await unmergedPaths(repoRoot)) {
 		const kind = classifyPath(path, prefix);
 		if (kind === "doc") {
@@ -364,6 +402,13 @@ export async function mergeState(
 				parts: parseConflicts(
 					readFileSync(join(repoRoot, ...path.split("/")), "utf8"),
 				),
+				sides: {
+					ours: { ref: ours, ...(await lastTouch(repoRoot, "HEAD", path)) },
+					theirs: {
+						ref: branch ?? "MERGE_HEAD",
+						...(await lastTouch(repoRoot, "MERGE_HEAD", path)),
+					},
+				},
 			});
 		} else if (kind === "sidecar") {
 			const { ours, theirs } = await sidecarStages(repoRoot, path);
@@ -378,7 +423,7 @@ export async function mergeState(
 	}
 	return {
 		inMerge: true,
-		branch: mergeBranchFromMsg(repoRoot),
+		branch,
 		files,
 		remaining: files.length,
 	};
