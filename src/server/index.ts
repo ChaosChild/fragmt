@@ -27,6 +27,8 @@ import {
 	addReply,
 	addThread,
 	addThreadWithDoc,
+	badBranchName,
+	branchStatus,
 	checkoutBranch,
 	concludeMerge,
 	createBranch,
@@ -51,6 +53,7 @@ import {
 	gitAllowList,
 	githubPushUrl,
 	githubSlug,
+	InvalidBranchNameError,
 	inMerge,
 	isFrontmatterKey,
 	listBranches,
@@ -691,6 +694,29 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 			branches: await listBranches(ctx.repoRoot),
 			merged,
 		});
+	});
+
+	// ui v1 (phase 7): every local branch's standing against main – ahead /
+	// behind, would-conflict, tip date. Called when the branch menu opens,
+	// never on boot; read-only (rev-list + merge-tree touch no ref, index or
+	// worktree). Names come from for-each-ref, and branchStatus re-checks
+	// them before spawning.
+	app.get("/api/branches/status", async (c) => {
+		const main = await mainBranch(ctx.repoRoot);
+		if (!main) return c.json({ branches: [] });
+		try {
+			const names = (await listBranches(ctx.repoRoot)).filter(
+				(b) => b !== main && !badBranchName(b),
+			);
+			const branches = await Promise.all(
+				names.map((b) => branchStatus(ctx.repoRoot, main, b)),
+			);
+			return c.json({ branches });
+		} catch (e) {
+			if (e instanceof InvalidBranchNameError)
+				return c.json({ error: e.message }, 400);
+			return respondGitError(c, e);
+		}
 	});
 
 	app.post("/api/branches", async (c) => {
@@ -1541,17 +1567,6 @@ function ghMessage(body: unknown, fallback: string): string {
 			)
 		: [];
 	return details.length > 0 ? `${message} – ${details.join("; ")}` : message;
-}
-
-/** Cheap reject of branch names git can never accept (empty, spaces, "..", leading "-", control chars). */
-function badBranchName(name: string): boolean {
-	return (
-		name === "" ||
-		name.startsWith("-") ||
-		name.includes("..") ||
-		// biome-ignore lint/suspicious/noControlCharactersInRegex: the point – control chars can never be branch names
-		/[\s\u0000-\u001f\u007f]/.test(name)
-	);
 }
 
 /**

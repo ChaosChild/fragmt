@@ -49,6 +49,17 @@ export async function git(
 	}
 }
 
+/** Cheap reject of branch names git can never accept (empty, spaces, "..", leading "-", control chars). */
+export function badBranchName(name: string): boolean {
+	return (
+		name === "" ||
+		name.startsWith("-") ||
+		name.includes("..") ||
+		// biome-ignore lint/suspicious/noControlCharactersInRegex: the point – control chars can never be branch names
+		/[\s\u0000-\u001f\u007f]/.test(name)
+	);
+}
+
 /** Name of the checked-out branch ("main"; "HEAD" when detached). */
 export async function currentBranch(repoRoot: string): Promise<string> {
 	return git(repoRoot, ["rev-parse", "--abbrev-ref", "HEAD"]);

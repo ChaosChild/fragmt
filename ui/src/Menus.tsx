@@ -1,4 +1,4 @@
-import { ChevronDown, GitBranch, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, GitBranch, Plus, Trash2 } from "lucide-react";
 import {
 	type FormEvent,
 	type MouseEvent as ReactMouseEvent,
@@ -11,7 +11,13 @@ import {
 	useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { getBranches, getPRs, openPR } from "./api";
+import {
+	type BranchState,
+	getBranches,
+	getBranchStatus,
+	getPRs,
+	openPR,
+} from "./api";
 import { popoverPosition } from "./popover-position";
 
 /** Every file operation the sidebar menus / doc head can request (App performs it). */
@@ -205,10 +211,13 @@ export function BranchMenu({
 	prsEnabled,
 	mainName,
 	led,
+	syncedAgo,
 	onAction,
 }: {
 	current: string | null;
 	prsEnabled: boolean;
+	/** "synced N min ago" for the main row (App's last clean sync). */
+	syncedAgo?: string;
 	/** The navigator trigger's sync LED (ui v1) – App's led colour; absent
 	 *  renders no dot. The status bar carries the word. */
 	led?: string;
@@ -228,9 +237,17 @@ export function BranchMenu({
 		string,
 		{ number: number }
 	> | null>(null);
+	// ui v1 (phase 7): ahead/behind and the conflict hint per draft – fetched
+	// when the menu opens, never on boot; a failure just drops the lines.
+	const [status, setStatus] = useState<Record<string, BranchState>>({});
 
 	useEffect(() => {
 		if (!menu.open) return;
+		getBranchStatus()
+			.then((r) =>
+				setStatus(Object.fromEntries(r.branches.map((b) => [b.name, b]))),
+			)
+			.catch(() => setStatus({}));
 		getBranches()
 			.then((r) => {
 				setBranches(r.branches);
@@ -273,63 +290,109 @@ export function BranchMenu({
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				{failed && <p className="menu-empty">branches unavailable</p>}
-				{(branches ?? []).map((b) => {
-					const pr = prBy(b);
-					return (
-						// One row, three targets: the name switches, the PR chip views
-						// (non-current rows with an open PR only), the trash deletes
-						// (never offered on the current branch – the server refuses
-						// it; gated on merged, D7 – no force-delete from here).
-						<span key={b} className="menu-row">
-							<button
-								type="button"
-								className="menu-item"
-								aria-current={b === current ? "true" : undefined}
-								onClick={() => {
-									menu.close();
-									if (b !== current) onAction({ kind: "switch", name: b });
-								}}
-							>
-								{b}
-							</button>
-							{/* The PR chip shows on EVERY row, the current branch
+				<p className="ph">Branches</p>
+				{/* main first – the landing base reads as the list's anchor. */}
+				{[...(branches ?? [])]
+					.sort((a, b) => Number(b === mainName) - Number(a === mainName))
+					.map((b) => {
+						const pr = prBy(b);
+						const st = status[b];
+						const isMain = b === mainName;
+						// The row's second line: main says when it last synced; a
+						// draft its standing against main (amber when a merge would
+						// conflict).
+						const line: ReactNode[] = [];
+						if (isMain && b === current && syncedAgo) line.push(syncedAgo);
+						if (st) {
+							const counts = [
+								st.ahead > 0 && `${st.ahead} ahead`,
+								st.behind > 0 && `${st.behind} behind`,
+							].filter(Boolean);
+							line.push(
+								counts.length > 0 ? counts.join(" · ") : "level with main",
+							);
+							if (st.conflicts)
+								line.push(
+									<span key="conflict" className="br-conflict">
+										conflicts with main
+									</span>,
+								);
+						}
+						return (
+							// One row, three targets: the name switches, the PR chip views
+							// (rows with an open PR), the trash deletes (never offered on
+							// the current branch – the server refuses it; gated on
+							// merged, D7 – no force-delete from here).
+							<span key={b} className="menu-row br">
+								<button
+									type="button"
+									className="menu-item br-main"
+									aria-current={b === current ? "true" : undefined}
+									onClick={() => {
+										menu.close();
+										if (b !== current) onAction({ kind: "switch", name: b });
+									}}
+								>
+									<span className="br-mark" aria-hidden="true">
+										{b === current && <Check />}
+									</span>
+									<span className="bn">{b}</span>
+									{isMain && b === current && led && (
+										<span className={`led ${led}`} aria-hidden="true" />
+									)}
+									{line.length > 0 && (
+										<span className="bm">
+											{line.map((part, i) => (
+												// biome-ignore lint/suspicious/noArrayIndexKey: a fixed, ordered list of parts
+												<span key={i}>
+													{i > 0 && " · "}
+													{part}
+												</span>
+											))}
+										</span>
+									)}
+								</button>
+								{/* The PR chip shows on EVERY row, the current branch
 						    included – on the branch being merged it is the one
-						    answer to "what am I merging into main?". Only the
-						    trash stays off the current branch (deleting the
-						    checked-out branch is refused anyway). */}
-							{pr && (
-								<button
-									type="button"
-									className="pr-chip"
-									title={`View pull request #${pr.number}`}
-									onClick={() => {
-										menu.close();
-										onAction({ kind: "view-pr", number: pr.number });
-									}}
-								>
-									PR #{pr.number}
-								</button>
-							)}
-							{b !== current && b !== mainName && (
-								<button
-									type="button"
-									className="tool-btn"
-									disabled={!isMerged(b)}
-									title={isMerged(b) ? "Delete branch" : "Not merged yet"}
-									aria-label={`Delete branch ${b}`}
-									aria-disabled={!isMerged(b) || undefined}
-									onClick={() => {
-										if (!isMerged(b)) return;
-										menu.close();
-										onAction({ kind: "delete", name: b });
-									}}
-								>
-									<Trash2 aria-hidden="true" />
-								</button>
-							)}
-						</span>
-					);
-				})}
+						    answer to "what am I merging into main?". Drafts
+						    without one say so (when the PR surface is on). */}
+								{pr ? (
+									<button
+										type="button"
+										className="pr-chip"
+										title={`View pull request #${pr.number}`}
+										onClick={() => {
+											menu.close();
+											onAction({ kind: "view-pr", number: pr.number });
+										}}
+									>
+										PR #{pr.number}
+									</button>
+								) : (
+									prsEnabled &&
+									byBranch !== null &&
+									!isMain && <span className="chip no-pr">no PR</span>
+								)}
+								{b !== current && !isMain && (
+									<button
+										type="button"
+										className="tool-btn"
+										disabled={!isMerged(b)}
+										title={isMerged(b) ? "Delete branch" : "Not merged yet"}
+										aria-label={`Delete branch ${b}`}
+										aria-disabled={!isMerged(b) || undefined}
+										onClick={() => {
+											if (!isMerged(b)) return;
+											menu.close();
+											onAction({ kind: "delete", name: b });
+										}}
+									>
+										<Trash2 aria-hidden="true" />
+									</button>
+								)}
+							</span>
+						);
+					})}
 				<form className="popover-form" onSubmit={submit}>
 					<label htmlFor="branch-name">New branch</label>
 					<input
@@ -344,6 +407,9 @@ export function BranchMenu({
 						</button>
 					</div>
 				</form>
+				<p className="br-foot">
+					Editing on main starts a draft branch for you.
+				</p>
 			</MenuPopover>
 		</span>
 	);

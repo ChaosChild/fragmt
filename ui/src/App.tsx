@@ -72,7 +72,7 @@ import { ResolutionView } from "./ResolutionView";
 import { SearchModal } from "./SearchModal";
 import { Sidebar, SidebarResizeHandle } from "./Sidebar";
 import { Slideout } from "./Slideout";
-import { StatusBar } from "./StatusBar";
+import { minutesAgo, StatusBar } from "./StatusBar";
 import {
 	readStoredSidebarCollapsed,
 	readStoredSidebarWidth,
@@ -1236,6 +1236,11 @@ export function App() {
 			prsEnabled={prAvailable}
 			mainName={meta?.main ?? null}
 			led={led}
+			syncedAgo={
+				lastSyncAt === null
+					? undefined
+					: `synced ${minutesAgo(lastSyncAt, Date.now())}`
+			}
 			onAction={requestBranch}
 		/>
 	);

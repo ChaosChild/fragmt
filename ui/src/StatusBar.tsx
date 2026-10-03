@@ -2,10 +2,11 @@ import { GitBranch } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { OkfFinding } from "./api";
 
-/** "pulled N min ago" – whole minutes, "just now" under one. */
-function pulledAgo(at: number, now: number): string {
+/** "N min ago" – whole minutes, "just now" under one (the status bar's
+ *  "pulled …", the branch menu's "synced …"). */
+export function minutesAgo(at: number, now: number): string {
 	const min = Math.floor((now - at) / 60_000);
-	return min < 1 ? "pulled just now" : `pulled ${min} min ago`;
+	return min < 1 ? "just now" : `${min} min ago`;
 }
 
 /**
@@ -68,7 +69,7 @@ export function StatusBar({
 				<span className={`led ${led}`} aria-hidden="true" />
 				{ledLabel}
 				{lastSyncAt !== null &&
-					` · ${pulledAgo(lastSyncAt, Math.max(now, lastSyncAt))}`}
+					` · pulled ${minutesAgo(lastSyncAt, Math.max(now, lastSyncAt))}`}
 			</span>
 			{branch && (
 				<span className="s">

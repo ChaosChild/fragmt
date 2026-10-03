@@ -1145,6 +1145,68 @@ describe("BranchMenu: PR chips + the merged gate (#27 b3, owner reshape)", () =>
 	});
 });
 
+describe("BranchMenu: branch state lines (ui v1 phase 7)", () => {
+	test("rows carry the PR chip or 'no PR', ahead/behind, and the conflict warning from /api/branches/status", async () => {
+		const base = prFetch();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = new URL(String(input), "http://localhost");
+				if (url.pathname === "/api/branches/status")
+					return jsonResponse({
+						branches: [
+							{
+								name: "feat",
+								ahead: 3,
+								behind: 1,
+								conflicts: true,
+								lastCommitAt: "2026-09-01T00:00:00Z",
+							},
+							{
+								name: "work",
+								ahead: 1,
+								behind: 0,
+								conflicts: false,
+								lastCommitAt: "2026-09-01T00:00:00Z",
+							},
+						],
+					});
+				return base(input, init);
+			}),
+		);
+		render(
+			createElement(BranchMenu, {
+				current: "work",
+				prsEnabled: true,
+				mainName: "main",
+				onAction: () => {},
+			}),
+		);
+		fireEvent.click(
+			screen.getByRole("button", { name: "Branch: work. Switch branch" }),
+		);
+		expect(await screen.findByText("PR #12")).toBeTruthy();
+		expect(await screen.findByText("conflicts with main")).toBeTruthy();
+		const row = (name: string) =>
+			Array.from(document.querySelectorAll<HTMLElement>(".br")).find(
+				(r) => r.querySelector(".bn")?.textContent === name,
+			) as HTMLElement;
+		const feat = row("feat");
+		expect(within(feat).getByText(/3 ahead · 1 behind/)).toBeTruthy();
+		const work = row("work");
+		expect(within(work).getByText("1 ahead")).toBeTruthy();
+		expect(within(work).getByText("no PR")).toBeTruthy();
+		expect(within(work).queryByText("conflicts with main")).toBeNull();
+		// main leads the list and never gets a "no PR" chip.
+		const rows = Array.from(document.querySelectorAll(".br .bn")).map(
+			(el) => el.textContent,
+		);
+		expect(rows[0]).toBe("main");
+		const main = row("main");
+		expect(within(main).queryByText("no PR")).toBeNull();
+	});
+});
+
 describe("OpenPRButton: the head-row popover (owner reshape)", () => {
 	test("a failed open keeps the form open with the server error inline", async () => {
 		const onCreated = vi.fn();

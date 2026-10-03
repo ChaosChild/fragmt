@@ -224,6 +224,18 @@ export const deleteFolder = (path: string) =>
 
 export const getBranches = () => request<BranchesResponse>("/api/branches");
 
+/** One branch's standing against main (ui v1) – GET /api/branches/status. */
+export interface BranchState {
+	name: string;
+	ahead: number;
+	behind: number;
+	/** null = unknown (git < 2.38). */
+	conflicts: boolean | null;
+	lastCommitAt: string;
+}
+export const getBranchStatus = () =>
+	request<{ branches: BranchState[] }>("/api/branches/status");
+
 /** Creates `name` – the server also checks it out. */
 export const createBranch = (name: string) =>
 	request<{ current: string }>("/api/branches", {

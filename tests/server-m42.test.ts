@@ -71,6 +71,34 @@ test("GET /api/meta: repo is the folder name without a GitHub origin, the slug's
 	});
 });
 
+test("GET /api/branches/status: every non-main branch with ahead/behind, conflicts and tip date", async () => {
+	gitOut(["switch", "-q", "-c", "drafts/a"]);
+	writeFileSync(join(root, "b.md"), "draft\n");
+	gitOut(["add", "-A"]);
+	gitOut(["commit", "-q", "-m", "draft"]);
+	gitOut(["switch", "-q", "main"]);
+
+	const res = await api("GET", "/api/branches/status");
+	expect(res.status).toBe(200);
+	const body = (await res.json()) as {
+		branches: {
+			name: string;
+			ahead: number;
+			behind: number;
+			conflicts: boolean | null;
+			lastCommitAt: string;
+		}[];
+	};
+	expect(body.branches).toHaveLength(1);
+	expect(body.branches[0]).toMatchObject({
+		name: "drafts/a",
+		ahead: 1,
+		behind: 0,
+		conflicts: false,
+	});
+	expect(typeof body.branches[0].lastCommitAt).toBe("string");
+});
+
 test("GET /api/meta: main/current/docs/drafts/deleted, docs paths docsRoot-relative", async () => {
 	const res = await api("GET", "/api/meta");
 	expect(res.status).toBe(200);
