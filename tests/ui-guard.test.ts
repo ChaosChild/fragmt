@@ -561,6 +561,81 @@ describe("DocView: the sheet (ui v1)", () => {
 	});
 });
 
+describe("App: doc paths inside comments", () => {
+	function commentFetch() {
+		return vi.fn(async (input: RequestInfo | URL) => {
+			const url = new URL(String(input), "http://localhost");
+			if (url.pathname === "/api/docs/a.md/comments")
+				return jsonResponse({
+					comments: {
+						t1: {
+							id: "t1",
+							quote: "first",
+							author: "Tester",
+							createdAt: "2026-09-01T00:00:00Z",
+							resolved: false,
+							replies: [
+								{
+									author: "Tester",
+									body: "see b.md",
+									at: "2026-09-01T00:00:00Z",
+								},
+							],
+						},
+					},
+				});
+			if (url.pathname === "/api/docs/a.md")
+				return jsonResponse(
+					docOf("a.md", 'One <span data-c="t1">first</span> line.'),
+				);
+			return mockFetch(input);
+		});
+	}
+	const docRef = () =>
+		screen.findByRole("button", { name: "b.md" }) as Promise<HTMLElement>;
+
+	test("a click with unsaved edits parks behind the save-or-discard banner instead of navigating", async () => {
+		vi.stubGlobal("fetch", commentFetch());
+		await renderAppReady();
+		await enterEditMode();
+		fireEvent.change(metaInput("description"), {
+			target: { value: "dirty now" },
+		});
+		fireEvent.click(await docRef());
+		expect(
+			await screen.findByText("This document has unsaved changes."),
+		).toBeTruthy();
+		// Still on a.md, still editing – nothing was dropped.
+		expect(breadcrumbText()).toBe("a");
+		expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+	});
+
+	test("Ctrl/Cmd+click opens the path in the preview, the main doc stays", async () => {
+		vi.stubGlobal("fetch", commentFetch());
+		await renderAppReady();
+		fireEvent.click(await docRef(), { ctrlKey: true });
+		const pane = await screen.findByRole("complementary", { name: "Preview" });
+		expect(within(pane).getByText("b.md")).toBeTruthy();
+		expect(breadcrumbText()).toBe("a");
+		cleanup();
+
+		vi.stubGlobal("fetch", commentFetch());
+		await renderAppReady();
+		fireEvent.click(await docRef(), { metaKey: true });
+		expect(
+			await screen.findByRole("complementary", { name: "Preview" }),
+		).toBeTruthy();
+	});
+
+	test("a plain click on a clean buffer opens the doc in the main pane", async () => {
+		vi.stubGlobal("fetch", commentFetch());
+		await renderAppReady();
+		fireEvent.click(await docRef());
+		await waitFor(() => expect(breadcrumbText()).toBe("b"));
+		expect(screen.queryByRole("complementary", { name: "Preview" })).toBeNull();
+	});
+});
+
 describe("App: marginalia (ui v1 phase 5)", () => {
 	test("two anchored threads render two notes; clicking the second span focuses the second note", async () => {
 		const thread = (id: string, quote: string) => ({

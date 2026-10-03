@@ -67,7 +67,7 @@ function DocRefText({
 }: {
 	text: string;
 	docs: AtDoc[];
-	onOpenDoc: (path: string) => void;
+	onOpenDoc: (path: string, opts?: { preview?: boolean }) => void;
 }) {
 	const paths = docs
 		.map((d) => d.path)
@@ -85,7 +85,13 @@ function DocRefText({
 				type="button"
 				className="doc-ref"
 				key={`${m[0]}@${i}`}
-				onClick={() => onOpenDoc(m[0])}
+				title={`${m[0]} – Ctrl/Cmd+click to preview`}
+				onClick={(e) =>
+					onOpenDoc(
+						m[0],
+						e.ctrlKey || e.metaKey ? { preview: true } : undefined,
+					)
+				}
 			>
 				{m[0]}
 			</button>,
@@ -116,7 +122,7 @@ function ThreadCard({
 	agents: string[];
 	/** The tree's docs – @ mentions and body linkification (M4-2). */
 	docs: AtDoc[];
-	onOpenDoc: (path: string) => void;
+	onOpenDoc: (path: string, opts?: { preview?: boolean }) => void;
 	onJump: (id: string) => void;
 	onReply: (id: string, body: string) => Promise<boolean>;
 	onResolve: (id: string) => void;
@@ -429,8 +435,9 @@ export function CommentsRail({
 	error: string | null;
 	/** The tree's docs – @ mentions and body linkification (M4-2). */
 	docs: AtDoc[];
-	/** A linkified doc path was clicked – open that doc (App). */
-	onOpenDoc: (path: string) => void;
+	/** A linkified doc path was clicked – open that doc in the main pane
+	 *  through App's guarded navigation, or (Ctrl/Cmd+click) in the preview. */
+	onOpenDoc: (path: string, opts?: { preview?: boolean }) => void;
 	/** A preview shares the desk (ui v1, phase 6): notes fold to 34px author
 	 *  pins at the same positions; a pin (or its highlight) expands that one
 	 *  note as a popover, Escape folds it again. */
@@ -481,17 +488,19 @@ export function CommentsRail({
 			const sheet = root?.closest(".page")?.querySelector(".sheet");
 			if (!root || !sheet) return;
 			const base = root.getBoundingClientRect().top;
-			const items = Array.from(
-				root.querySelectorAll<HTMLElement>(":scope > .note"),
-			).map((el) => {
-				const id = el.dataset.note ?? "";
-				const anchor = sheet.querySelector(`[data-c="${CSS.escape(id)}"]`);
-				return {
-					id,
-					anchorTop: anchor ? anchor.getBoundingClientRect().top - base : null,
-					height: el.offsetHeight,
-				};
-			});
+			const items = (Array.from(root.children) as HTMLElement[])
+				.filter((el) => el.classList.contains("note"))
+				.map((el) => {
+					const id = el.dataset.note ?? "";
+					const anchor = sheet.querySelector(`[data-c="${CSS.escape(id)}"]`);
+					return {
+						id,
+						anchorTop: anchor
+							? anchor.getBoundingClientRect().top - base
+							: null,
+						height: el.offsetHeight,
+					};
+				});
 			const next = layoutNotes(items, { gap: 12, top: 0, focused });
 			let bottom = 0;
 			for (const it of items) {
@@ -532,6 +541,10 @@ export function CommentsRail({
 		const mo = new MutationObserver(layout);
 		mo.observe(sheet, { childList: true, subtree: true, characterData: true });
 		void document.fonts?.ready.then(layout);
+		// The previous run's cleanup cancelled any pending frame – including
+		// the one this render's layout effect just scheduled – so lay out
+		// again rather than rely on an observer firing.
+		layout();
 		return () => {
 			ro?.disconnect();
 			mo.disconnect();

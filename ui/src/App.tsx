@@ -1557,7 +1557,12 @@ export function App() {
 											onDelete={(id) => void railDelete(id)}
 											error={railError}
 											docs={docs}
-											onOpenDoc={setSelected}
+											// A doc path in a comment: the same seams as a doc link –
+											// the guarded navigation (an unsaved buffer parks behind
+											// the save-or-discard banner), Ctrl/Cmd+click = preview.
+											onOpenDoc={(path, opts) =>
+												opts?.preview ? openPreviewDoc(path) : onDocLink(path)
+											}
 											pins={previewPath !== null}
 										/>
 									}
