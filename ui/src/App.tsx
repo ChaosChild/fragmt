@@ -1324,7 +1324,7 @@ export function App() {
 
 	return (
 		<>
-			<div className="ambient" aria-hidden="true" />
+			<div className="grain" aria-hidden="true" />
 			<div
 				className="app-frame"
 				// #27 (b3): the PR target, mirrored for the guard tests

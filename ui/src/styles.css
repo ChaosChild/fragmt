@@ -1,27 +1,68 @@
 /* ─────────────────────────────────────────────────────────────
-   fragmt – "a reading room with a voice"
-   Silver/platinum (light) / gunmetal (dark). One royal-blue accent.
-   v2: glass inbox sidebar · email-style doc header · no top bar.
+   fragmt – "papers on a machined desk" (v1, docs/app.v1.html)
+   The doc is a sheet of paper on a platinum (light) / gunmetal (dark)
+   desk; everything that is not the doc is desk. One royal-blue accent.
+   Token values are copied from the mock – do not eyeball them.
    ───────────────────────────────────────────────────────────── */
 :root {
-	/* Silver / platinum – cool steel */
-	--bg: #e8ecf0;
-	--pane: #dfe4ea;
-	--surface: #f4f6f9;
-	--fg: #252b32;
-	--muted: #535c67;
-	--border: #cbd2da;
-	--border-soft: #dce1e7;
-	/* Royal blue – 7.79:1 on silver, 9.25:1 white-on-accent */
+	--desk: #e3e7ec;
+	--desk-2: #d9dee5;
+	--sheet: #fbfcfd;
+	--sheet-2: #f3f5f8;
+	--ink: #1b2128;
+	--ink-2: #47505c;
+	--ink-3: #5f6875;
+	--line: #cdd3db;
+	--line-soft: #e4e8ed;
 	--accent: #1f39b0;
-	--accent-on: #ffffff;
 	--accent-hover: #182d8f;
+	--accent-on: #fff;
+	--accent-soft: color-mix(in srgb, var(--accent) 9%, transparent);
+	--accent-mid: color-mix(in srgb, var(--accent) 22%, transparent);
+	--green: #2b7a4b;
+	--amber: #94660a;
+	--red: #a3292f;
+	--amber-soft: color-mix(in srgb, var(--amber) 13%, transparent);
+	--green-soft: color-mix(in srgb, var(--green) 12%, transparent);
+	--red-soft: color-mix(in srgb, var(--red) 11%, transparent);
+	--hl: color-mix(in srgb, #e2b33c 26%, transparent);
+	--sheet-shadow:
+		0 1px 1px rgba(28, 38, 54, 0.05), 0 2px 6px -2px rgba(28, 38, 54, 0.08),
+		0 24px 56px -24px rgba(28, 38, 54, 0.28);
+	--float-shadow:
+		0 2px 4px rgba(28, 38, 54, 0.06), 0 18px 48px -10px rgba(28, 38, 54, 0.3);
+	--grain-opacity: 0.035;
+	--serif: "Newsreader", Georgia, serif;
+	--sans: "Geist", -apple-system, "Segoe UI", system-ui, sans-serif;
+	--mono: "Geist Mono", ui-monospace, "SF Mono", Consolas, monospace;
+	--r-sm: 5px;
+	--r: 8px;
+	--r-lg: 14px;
+	--rail: 60px;
+	--nav: 272px;
+	--cmd: 56px;
+	--status: 30px;
+	--focus: 0 0 0 3px color-mix(in srgb, var(--accent) 38%, transparent);
+	--ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+	/* Pre-v1 names, aliased so existing rules follow the new palette. */
+	--bg: var(--desk);
+	--pane: var(--desk-2);
+	--surface: var(--sheet);
+	--fg: var(--ink);
+	--muted: var(--ink-2);
+	--border: var(--line);
+	--border-soft: var(--line-soft);
+	--success: var(--green);
+	--warn: var(--amber);
+	--danger: var(--red);
+	--font-serif: var(--serif);
+	--font-body: var(--sans);
+	--font-mono: var(--mono);
+	--focus-ring: var(--focus);
 	--accent-tint: color-mix(in srgb, var(--accent) 10%, transparent);
-	--success: #2e7d4f;
-	--warn: #9a6a00;
-	--danger: #a52a2f;
 	--warn-soft: color-mix(in srgb, var(--warn) 15%, transparent);
-	/* Glass */
+	/* Glass – removed with its users in phase 2 */
 	--glass-bg: rgba(255, 255, 255, 0.44);
 	--glass-bg-strong: rgba(255, 255, 255, 0.78);
 	--glass-border: rgba(255, 255, 255, 0.65);
@@ -29,13 +70,6 @@
 	--glass-shadow: 0 8px 32px rgba(30, 40, 55, 0.14);
 	--card-shadow:
 		0 1px 2px rgba(30, 40, 55, 0.1), 0 8px 24px rgba(30, 40, 55, 0.14);
-	--font-serif: "Newsreader", Georgia, "Times New Roman", serif;
-	--font-body:
-		-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica,
-		Arial, sans-serif;
-	--font-mono:
-		"IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-		monospace;
 	--text-base: 17px;
 	--leading-body: 1.65;
 	--leading-tight: 1.18;
@@ -55,7 +89,6 @@
 	--rail-w: 316px;
 	--slideout-share: 0.55;
 	--topbar-h: 54px;
-	--focus-ring: 0 0 0 3px rgba(31, 57, 176, 0.34);
 	--motion-fast: 80ms;
 	--motion-base: 200ms;
 	--ease-standard: ease-out;
@@ -63,21 +96,27 @@
 		0 1px 2px rgba(30, 40, 55, 0.12), 0 10px 34px rgba(30, 40, 55, 0.16);
 }
 [data-theme="dark"] {
-	/* Gunmetal night – deep blue-steel charcoal */
-	--bg: #151a20;
-	--pane: #191f26;
-	--surface: #1d242c;
-	--fg: #e6eaef;
-	--muted: #98a3b0;
-	--border: #333c47;
-	--border-soft: #262e37;
-	--accent: #6f9cff;
-	--accent-on: #151a20;
-	--accent-hover: #8db0ff;
+	--desk: #0f1318;
+	--desk-2: #0b0e12;
+	--sheet: #171c23;
+	--sheet-2: #1c222a;
+	--ink: #e5e9ee;
+	--ink-2: #a8b2be;
+	--ink-3: #8a95a2;
+	--line: #2b343f;
+	--line-soft: #212831;
+	--accent: #7ea4ff;
+	--accent-hover: #9bb8ff;
+	--accent-on: #0f1318;
+	--green: #72b38d;
+	--amber: #d9a74e;
+	--red: #ef7b81;
+	--hl: color-mix(in srgb, #e2b33c 20%, transparent);
+	--sheet-shadow: 0 0 0 1px #232b35, 0 30px 60px -28px rgba(0, 0, 0, 0.8);
+	--float-shadow: 0 0 0 1px #2a333e, 0 24px 60px -12px rgba(0, 0, 0, 0.75);
+	--grain-opacity: 0.05;
+
 	--accent-tint: color-mix(in srgb, var(--accent) 16%, transparent);
-	--success: #71b08c;
-	--warn: #d3a24e;
-	--danger: #ef6f77;
 	--warn-soft: color-mix(in srgb, var(--warn) 16%, transparent);
 	--glass-bg: rgba(29, 36, 45, 0.5);
 	--glass-bg-strong: rgba(38, 47, 58, 0.82);
@@ -85,7 +124,6 @@
 	--glass-inner: rgba(255, 255, 255, 0.06);
 	--glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
 	--card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 10px 28px rgba(0, 0, 0, 0.5);
-	--focus-ring: 0 0 0 3px rgba(111, 156, 255, 0.42);
 	--elev-raised: 0 1px 3px rgba(0, 0, 0, 0.55), 0 10px 34px rgba(0, 0, 0, 0.6);
 }
 *,
@@ -100,9 +138,9 @@ html {
 	scroll-behavior: smooth;
 }
 body {
-	font-family: var(--font-body);
-	font-size: var(--text-base);
-	line-height: var(--leading-body);
+	font-family: var(--sans);
+	font-size: 14px;
+	line-height: 1.5;
 	color: var(--fg);
 	background: var(--bg);
 	height: 100%;
@@ -115,29 +153,14 @@ body {
 	color: var(--fg);
 }
 
-/* Ambient tint – quiet color behind the glass so the blur reads.
-   Static, no animation: a reading room, not a lava lamp. */
-.ambient {
+/* Grain – one fixed layer breaks the digital flatness of the desk */
+.grain {
 	position: fixed;
 	inset: 0;
-	z-index: 0;
 	pointer-events: none;
-	background:
-		radial-gradient(
-			720px 520px at 4% 8%,
-			color-mix(in srgb, var(--accent) 9%, transparent),
-			transparent 70%
-		),
-		radial-gradient(
-			820px 620px at 96% 96%,
-			color-mix(in srgb, var(--accent) 6%, transparent),
-			transparent 72%
-		),
-		radial-gradient(
-			520px 420px at 70% 4%,
-			color-mix(in srgb, var(--warn) 5%, transparent),
-			transparent 70%
-		);
+	z-index: 50;
+	opacity: var(--grain-opacity);
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 .layout {
@@ -1082,6 +1105,8 @@ body {
    styles apply identically – the two modes cannot drift apart. */
 .markdown {
 	font-family: var(--font-serif);
+	font-size: var(--text-base);
+	line-height: var(--leading-body);
 	font-optical-sizing: auto;
 	/* Tiptap injects `white-space: break-spaces; word-wrap: break-word`
 	   on the ProseMirror div (node_modules/@tiptap/core/dist/index.js,
