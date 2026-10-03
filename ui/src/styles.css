@@ -62,14 +62,6 @@
 	--focus-ring: var(--focus);
 	--accent-tint: color-mix(in srgb, var(--accent) 10%, transparent);
 	--warn-soft: color-mix(in srgb, var(--warn) 15%, transparent);
-	/* Glass – removed with its users in phase 2 */
-	--glass-bg: rgba(255, 255, 255, 0.44);
-	--glass-bg-strong: rgba(255, 255, 255, 0.78);
-	--glass-border: rgba(255, 255, 255, 0.65);
-	--glass-inner: rgba(255, 255, 255, 0.55);
-	--glass-shadow: 0 8px 32px rgba(30, 40, 55, 0.14);
-	--card-shadow:
-		0 1px 2px rgba(30, 40, 55, 0.1), 0 8px 24px rgba(30, 40, 55, 0.14);
 	--text-base: 17px;
 	--leading-body: 1.65;
 	--leading-tight: 1.18;
@@ -92,8 +84,6 @@
 	--motion-fast: 80ms;
 	--motion-base: 200ms;
 	--ease-standard: ease-out;
-	--elev-raised:
-		0 1px 2px rgba(30, 40, 55, 0.12), 0 10px 34px rgba(30, 40, 55, 0.16);
 }
 [data-theme="dark"] {
 	--desk: #0f1318;
@@ -118,13 +108,6 @@
 
 	--accent-tint: color-mix(in srgb, var(--accent) 16%, transparent);
 	--warn-soft: color-mix(in srgb, var(--warn) 16%, transparent);
-	--glass-bg: rgba(29, 36, 45, 0.5);
-	--glass-bg-strong: rgba(38, 47, 58, 0.82);
-	--glass-border: rgba(255, 255, 255, 0.1);
-	--glass-inner: rgba(255, 255, 255, 0.06);
-	--glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
-	--card-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 10px 28px rgba(0, 0, 0, 0.5);
-	--elev-raised: 0 1px 3px rgba(0, 0, 0, 0.55), 0 10px 34px rgba(0, 0, 0, 0.6);
 }
 *,
 *::before,
@@ -397,8 +380,8 @@ body {
 	font-size: 11px;
 	letter-spacing: var(--track-label);
 	color: var(--fg);
-	background: var(--glass-inner);
-	border: 1px solid var(--glass-border);
+	background: var(--sheet-2);
+	border: 1px solid var(--line);
 	border-radius: var(--radius);
 	padding: 6px 8px;
 	width: min(280px, 40vw);
@@ -527,8 +510,8 @@ body {
 	font-family: var(--font-mono);
 	font-size: 11px;
 	color: var(--fg);
-	background: var(--glass-inner);
-	border: 1px solid var(--glass-border);
+	background: var(--sheet-2);
+	border: 1px solid var(--line);
 	border-radius: var(--radius);
 	padding: 6px 8px;
 	min-width: 0;
@@ -1338,7 +1321,7 @@ button.pr-file-head svg {
 }
 .pr-patch-row.hunk {
 	color: var(--muted);
-	background: var(--glass-inner);
+	background: var(--sheet-2);
 }
 .pr-patch-more {
 	padding: 0 var(--space-3);
@@ -1366,7 +1349,7 @@ button.pr-file-head svg {
 	display: block;
 	height: 12px;
 	border-radius: 4px;
-	background: var(--glass-inner);
+	background: var(--sheet-2);
 	margin-bottom: var(--space-3);
 }
 .preview-skeleton span:nth-child(1) {
@@ -1435,15 +1418,8 @@ button.pr-file-head svg {
 	left: 0;
 	right: 0;
 	z-index: 40;
-	background: var(--glass-bg);
-	border-bottom: 1px solid var(--glass-border);
-	backdrop-filter: blur(18px) saturate(1.5);
-	-webkit-backdrop-filter: blur(18px) saturate(1.5);
-}
-@supports not (backdrop-filter: blur(1px)) {
-	.topbar {
-		background: var(--surface);
-	}
+	background: var(--sheet);
+	border-bottom: 1px solid var(--line);
 }
 .hamburger {
 	display: flex;
@@ -1499,7 +1475,7 @@ button.pr-file-head svg {
 }
 
 /* ═══ RESPONSIVE ═══════════════════════════════════════════════ */
-/* ≤1180: comments pane → glass bottom sheet; top bar appears. */
+/* ≤1180: comments pane → bottom sheet; top bar appears. */
 @media (max-width: 1180px) {
 	.topbar {
 		display: flex;
@@ -1527,19 +1503,12 @@ button.pr-file-head svg {
 		right: 0;
 		max-height: 78vh;
 		border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-		background: var(--glass-bg-strong);
-		border: 1px solid var(--glass-border);
+		background: var(--sheet);
+		border: 1px solid var(--line);
 		border-bottom: none;
-		box-shadow: var(--elev-raised);
-		backdrop-filter: blur(22px) saturate(1.5);
-		-webkit-backdrop-filter: blur(22px) saturate(1.5);
+		box-shadow: var(--float-shadow);
 		transform: translateY(105%);
 		transition: transform var(--motion-base) var(--ease-standard);
-	}
-	@supports not (backdrop-filter: blur(1px)) {
-		.slideout {
-			background: var(--surface);
-		}
 	}
 	.slideout.open {
 		transform: translateY(0);
@@ -1573,7 +1542,7 @@ button.pr-file-head svg {
 		padding: var(--space-6) var(--space-6) var(--space-12);
 	}
 }
-/* ≤768: sidebar → glass drawer */
+/* ≤768: sidebar → drawer */
 @media (max-width: 768px) {
 	:root {
 		--reading-max: 100%;
@@ -1656,10 +1625,9 @@ button.pr-file-head svg {
 	display: flex;
 	flex-direction: column;
 	border-radius: 8px;
-	background: var(--glass-bg-strong);
-	border: 1px solid var(--glass-border);
-	box-shadow: var(--glass-shadow);
-	backdrop-filter: blur(6px);
+	background: var(--sheet);
+	border: 1px solid var(--line);
+	box-shadow: var(--float-shadow);
 	max-width: min(340px, calc(100vw - 24px));
 }
 .bubble-row {
@@ -1769,10 +1737,9 @@ button.pr-file-head svg {
 	position: fixed;
 	z-index: 60;
 	border-radius: 8px;
-	background: var(--glass-bg-strong);
-	border: 1px solid var(--glass-border);
-	box-shadow: var(--glass-shadow);
-	backdrop-filter: blur(6px);
+	background: var(--sheet);
+	border: 1px solid var(--line);
+	box-shadow: var(--float-shadow);
 }
 .slash-menu {
 	width: 264px;
@@ -1967,9 +1934,9 @@ button.pr-file-head svg {
 	width: 15px;
 	height: 15px;
 }
-/* Fixed glass menu (branch list, row actions, new-doc form) – rendered
-   through a portal to body, so the sidebar's backdrop-filter (a containing
-   block for fixed descendants) can neither clip nor contain it. */
+/* Fixed menu (branch list, row actions, new-doc form) – rendered
+   through a portal to body, so no ancestor (a transform or filter is a containing
+   block for fixed descendants) can clip or contain it. */
 .menu-popover {
 	position: fixed;
 	z-index: 70;
@@ -1978,10 +1945,9 @@ button.pr-file-head svg {
 	display: flex;
 	flex-direction: column;
 	border-radius: 8px;
-	background: var(--glass-bg-strong);
-	border: 1px solid var(--glass-border);
-	box-shadow: var(--glass-shadow);
-	backdrop-filter: blur(6px);
+	background: var(--sheet);
+	border: 1px solid var(--line);
+	box-shadow: var(--float-shadow);
 }
 /* A branch row: the switch target grows, the delete icon keeps its 32px. */
 .menu-row {
@@ -4494,7 +4460,6 @@ h1.title::after {
 	background: var(--sheet);
 	border: 1px solid var(--line-soft);
 	box-shadow: var(--float-shadow);
-	backdrop-filter: none;
 }
 .menu-item:hover,
 .menu-item[aria-current="true"] {

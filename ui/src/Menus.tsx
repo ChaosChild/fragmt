@@ -106,8 +106,8 @@ export function useMenu() {
 }
 
 /**
- * Fixed glass popover portalled to document.body – the sidebar's
- * backdrop-filter is a containing block for fixed descendants and would
+ * Fixed popover portalled to document.body – an ancestor's transform or
+ * filter is a containing block for fixed descendants and would
  * otherwise clip/misplace it. Positioned from the anchor's rect plus the
  * popover's own measured size (useLayoutEffect, before paint; re-measures on
  * any re-render while open, which is idempotent while the anchor stands still).
