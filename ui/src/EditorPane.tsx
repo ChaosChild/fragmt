@@ -134,6 +134,10 @@ export function EditorPane({
 	// A getter over the ref keeps the @ menu's doc list live across tree
 	// refreshes – the extension captured it once at plugin creation.
 	const docsRef = useRef(docs);
+	// The linking doc's path for @ / Link-at-cursor hrefs – read at insert
+	// time, so a doc switch never needs the extensions rebuilt.
+	const docPathRef = useRef(docPath);
+	docPathRef.current = docPath;
 	docsRef.current = docs;
 	const knownDocPaths = new Set(docs.map((d) => d.path));
 	const knownFolderPaths = new Set(folders);
@@ -147,6 +151,7 @@ export function EditorPane({
 			},
 			{
 				docs: () => docsRef.current,
+				docPath: () => docPathRef.current,
 				onState: setAtState,
 				onKeyDown: (event) => atKeydown.current(event),
 			},
@@ -273,7 +278,7 @@ export function EditorPane({
 			insertDocLink: (doc: AtDoc) => {
 				if (!editor?.isEditable) return false;
 				const { from, to } = editor.state.selection;
-				applyAtReference(editor, { from, to }, doc);
+				applyAtReference(editor, { from, to }, doc, docPathRef.current);
 				return true;
 			},
 		}),

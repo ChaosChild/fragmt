@@ -151,6 +151,7 @@ export function editorExtensions(
 	// optionality one step further: no docs, no plugin, no corpus impact).
 	at?: {
 		docs: () => AtDoc[];
+		docPath?: () => string;
 		onState?: AtRenderer;
 		onKeyDown?: AtKeydownHandler;
 	},
