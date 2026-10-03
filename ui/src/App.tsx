@@ -66,7 +66,8 @@ import {
 	NewDocButton,
 	OpenPRButton,
 } from "./Menus";
-import { PRPane } from "./PRPane";
+import { PRList } from "./PRList";
+import { PRReview } from "./PRReview";
 import { Rail } from "./Rail";
 import { ResolutionView } from "./ResolutionView";
 import { SearchModal } from "./SearchModal";
@@ -87,7 +88,8 @@ import {
 /** #27 (b3): the slideout's PR target – the list, or one PR by number.
  *  App owns it; the entry points (brand-row/topbar button, BranchMenu
  *  view chips, the head-row Open PR button's success) set it, the
- *  slideout's PR mode renders it (PRPane, b4). */
+ *  list renders as the drawer over the doc, one PR as the full-stage
+ *  review (ui v1, phase 9). */
 export type PrView = { kind: "list" } | { kind: "pr"; n: number };
 
 function firstDoc(node: TreeNode): string | null {
@@ -196,8 +198,9 @@ export function App() {
 
 	// --- #27 (b3): the PR surface's boot state. Availability = auth on AND
 	// a github.com origin (enabled && slug non-null); a fetch failure reads
-	// as unavailable. prView is the slideout's PR target (b4 renders it) –
-	// PR actions never navigate the editor, so no dirty-guard/Escape slots.
+	// as unavailable. prView is the PR surface's target: the list is a drawer
+	// over the doc; a PR's review takes over the stage (ui v1), so entering
+	// one goes through the dirty guard like the graph.
 	const auth = useAuth();
 	const [prAvailable, setPrAvailable] = useState(false);
 	const [prView, setPrView] = useState<PrView | null>(null);
@@ -205,10 +208,6 @@ export function App() {
 	// the head-row Open PR button hides while the current branch has one.
 	const [prByBranch, setPrByBranch] =
 		useState<PrsResponse["byBranch"]>(undefined);
-	// b4: the PR mode's slideout-head line – PRPane reports it (the list's
-	// open count, the detail's "PR #n · title"); until the first report
-	// lands, the head falls back to the plain "Pull requests".
-	const [prTitle, setPrTitle] = useState<string | null>(null);
 	const refreshPrAvailable = useCallback(() => {
 		getPRs()
 			.then((r) => {
@@ -235,11 +234,6 @@ export function App() {
 	// ≤1180px, where the CSS turns the pane into the bottom sheet; a preview
 	// (previewPath) is what widens it into the draggable split.
 	const [railOpen, setRailOpen] = useState(false);
-	// #27 (b4): opening the PR surface lifts the ≤1180px sheet – the
-	// desktop pane is always present anyway.
-	useEffect(() => {
-		if (prView) setRailOpen(true);
-	}, [prView]);
 	const [slideoutShare, setSlideoutShare] = useState(() =>
 		readStoredSlideoutShare(),
 	);
@@ -619,21 +613,26 @@ export function App() {
 		run();
 	}
 
+	// A PR's review replaces the doc view (ui v1) – the editor unmounts, so
+	// the entry rides the save-or-discard guard like the graph's.
+	function openReview(n: number) {
+		guardAction(`Open pull request #${n}`, () => setPrView({ kind: "pr", n }));
+	}
+
 	// Branch switches pass through the guard; deletion skips it – it never
-	// touches the worktree or the checked-out branch. The PR actions
-	// (#27 b3) set the slideout's PR target – never an editor navigation,
-	// so they skip the guard by design.
+	// touches the worktree or the checked-out branch. Opening a PR's review
+	// guards (it takes over the stage).
 	function requestBranch(action: BranchAction) {
 		if (action.kind === "delete") {
 			void runDeleteBranch(action.name);
 			return;
 		}
 		if (action.kind === "view-pr") {
-			setPrView({ kind: "pr", n: action.number });
+			openReview(action.number);
 			return;
 		}
 		if (action.kind === "open-pr-created") {
-			setPrView({ kind: "pr", n: action.number });
+			openReview(action.number);
 			refreshPrAvailable();
 			return;
 		}
@@ -1310,7 +1309,9 @@ export function App() {
 		<>
 			<div className="grain" aria-hidden="true" />
 			<div
-				className="app-frame"
+				// The graph and a PR review take the whole stage (ui v1): the
+				// navigator steps aside without touching its collapse state.
+				className={`app-frame${graphOpen || prView?.kind === "pr" ? " stage-only" : ""}`}
 				// #27 (b3): the PR target, mirrored for the guard tests
 				// ("list" | "pr:<n>" – absent = closed).
 				data-prview={
@@ -1415,7 +1416,7 @@ export function App() {
 						style={
 							{
 								"--slideout-share": String(
-									previewPath !== null || prView !== null ? slideoutShare : 1,
+									previewPath !== null ? slideoutShare : 1,
 								),
 							} as CSSProperties
 						}
@@ -1465,6 +1466,24 @@ export function App() {
 							)}
 							{inResolution ? (
 								<ResolutionView onDone={mergeDone} />
+							) : prView?.kind === "pr" ? (
+								<PRReview
+									key={prView.n}
+									n={prView.n}
+									onBack={() => setPrView({ kind: "list" })}
+									/* A landed PR merge ends the branch's work: switch to
+									   main so the tree/doc state reads post-merge. Rides
+									   the save-or-discard guard – a dirty buffer parks,
+									   never silently drops. */
+									onMerged={() => {
+										const m = meta?.main;
+										if (m)
+											guardAction(
+												"Switch to main",
+												() => void switchTo({ kind: "switch", name: m }),
+											);
+									}}
+								/>
 							) : graphOpen ? (
 								graph ? (
 									<GraphView
@@ -1541,9 +1560,7 @@ export function App() {
 									repo={meta?.repo}
 									// The margin (ui v1, phase 5): the open doc's threads
 									// beside the sheet; ≤1180px it is the bottom sheet.
-									marginOpen={
-										railOpen && previewPath === null && prView === null
-									}
+									marginOpen={railOpen && previewPath === null}
 									margin={
 										<CommentsRail
 											threads={threads}
@@ -1570,85 +1587,75 @@ export function App() {
 							)}
 						</main>
 						{/* The right pane (#15): the draggable split, only for a
-					    preview or the PR mode (#27 b4) – the comment threads live
-					    in the sheet's margin since ui v1. Hidden in resolution mode
-					    and under the graph lens. */}
+					    preview – the comment threads live in the sheet's margin
+					    and the PRs in their drawer/review since ui v1. Hidden in
+					    resolution mode, under the graph lens and in a review. */}
 						{selected &&
 							!inResolution &&
 							!graphOpen &&
-							(previewPath !== null || prView !== null) && (
+							prView?.kind !== "pr" &&
+							previewPath !== null && (
 								<Slideout
 									open={railOpen}
-									preview={previewPath !== null}
-									prTitle={
-										prView !== null ? (prTitle ?? "Pull requests") : null
-									}
 									previewPath={previewPath}
 									// "Link at cursor" (ui v1): only while the main doc is
 									// being edited – the same insert as a typed @.
 									onLinkAtCursor={
-										previewPath === null
-											? undefined
-											: mainEditing
-												? () => {
-														docViewRef.current?.insertDocLink(previewPath);
-													}
-												: null
+										mainEditing
+											? () => {
+													docViewRef.current?.insertDocLink(previewPath);
+												}
+											: null
 									}
-									onPromote={previewPath ? promotePreview : undefined}
-									onClose={
-										previewPath !== null
-											? closePreview
-											: prView !== null
-												? () => setPrView(null)
-												: closeSheet
-									}
+									onPromote={promotePreview}
+									onClose={closePreview}
 									onShare={applySlideoutShare}
 								>
-									{/* Render precedence (#27 b4): a preview wins over the PR
-							    mode – App renders
-							    DocPreview when previewPath is set, whatever prView
-							    holds; the PR mode yields and returns when the preview
-							    closes. */}
-									{previewPath === null ? (
-										prView !== null ? (
-											<PRPane
-												prView={prView}
-												setPrView={setPrView}
-												onHead={setPrTitle}
-												/* A landed PR merge ends the branch's work: switch to
-										   main so the tree/doc state reads post-merge. Rides
-										   the save-or-discard guard – a dirty buffer parks,
-										   never silently drops. */
-												onMerged={() => {
-													const m = meta?.main;
-													if (m)
-														guardAction(
-															"Switch to main",
-															() => void switchTo({ kind: "switch", name: m }),
-														);
-												}}
-											/>
-										) : null
-									) : (
-										<DocPreview
-											title={previewTitle}
-											path={previewPath}
-											doc={previewDoc}
-											error={previewError}
-											deadLink={previewDeadLink}
-											anchor={previewAnchor}
-											onAnchorConsumed={clearPreviewAnchor}
-											docs={docs}
-											folders={treeFolders}
-											onSelectDoc={onPreviewDocLink}
-											onSelectFolder={onPreviewFolderLink}
-											onLinkNotFound={setPreviewDeadLink}
-											spanTitleFor={previewTitleFor}
-										/>
-									)}
+									<DocPreview
+										title={previewTitle}
+										path={previewPath}
+										doc={previewDoc}
+										error={previewError}
+										deadLink={previewDeadLink}
+										anchor={previewAnchor}
+										onAnchorConsumed={clearPreviewAnchor}
+										docs={docs}
+										folders={treeFolders}
+										onSelectDoc={onPreviewDocLink}
+										onSelectFolder={onPreviewFolderLink}
+										onLinkNotFound={setPreviewDeadLink}
+										spanTitleFor={previewTitleFor}
+									/>
 								</Slideout>
 							)}
+						{/* The PR list (ui v1): a sheet over the doc, the doc dimmed
+						    behind it (a click on the dim closes it). */}
+						{prView?.kind === "list" && (
+							<>
+								<button
+									type="button"
+									className="drawer-scrim"
+									aria-label="Close pull requests"
+									tabIndex={-1}
+									onClick={() => setPrView(null)}
+								/>
+								<PRList
+									repoLabel={
+										meta?.repo?.slug
+											? `${meta.repo.slug.owner}/${meta.repo.slug.repo}`
+											: null
+									}
+									branch={branch}
+									mainName={meta?.main ?? null}
+									branchHasPr={branch !== null && Boolean(prByBranch?.[branch])}
+									onOpen={openReview}
+									onCreated={(n) =>
+										requestBranch({ kind: "open-pr-created", number: n })
+									}
+									onClose={() => setPrView(null)}
+								/>
+							</>
+						)}
 					</div>
 					<StatusBar
 						led={led}

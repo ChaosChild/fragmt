@@ -656,6 +656,12 @@ export interface PrSummary {
 	base: { ref: string };
 	user: { login: string };
 	changed_files: number;
+	/** ui v1 – the list's age and Merged/Closed split; absent on old
+	 *  fixtures. */
+	created_at?: string;
+	merged_at?: string | null;
+	additions?: number;
+	deletions?: number;
 }
 
 export interface PrFile {
@@ -676,7 +682,8 @@ export interface PrsResponse {
 	byBranch?: Record<string, { number: number; title: string; state: string }>;
 }
 
-export const getPRs = () => request<PrsResponse>("/api/prs");
+export const getPRs = (state: "open" | "closed" = "open") =>
+	request<PrsResponse>(state === "open" ? "/api/prs" : "/api/prs?state=closed");
 
 /** Branch + optional description only – the title derives server-side from
  *  the branch name. 201 created and the 200 duplicate (idempotent) both
@@ -689,10 +696,37 @@ export const openPR = (branch: string, body?: string) =>
 	});
 
 /** One 20-file page – a page with <20 files is the last. */
+export interface PrCommit {
+	sha: string;
+	/** The first line of the message. */
+	message: string;
+	author: string;
+}
+
 export const getPR = (n: number, filesPage = 1) =>
-	request<{ pr: PrSummary; files: PrFile[]; filesPage: number }>(
-		`/api/prs/${n}?files_page=${filesPage}`,
-	);
+	request<{
+		pr: PrSummary;
+		files: PrFile[];
+		filesPage: number;
+		/** ui v1 (absent on old fixtures). */
+		commits?: PrCommit[];
+		/** The same-named local branch sits on GitHub's head; null = no
+		 *  such local branch. */
+		localUpToDate?: boolean | null;
+	}>(`/api/prs/${n}?files_page=${filesPage}`);
+
+/** One side of a changed doc – parsed server-side. */
+export interface PrDocSide {
+	frontmatter: Record<string, unknown>;
+	body: string;
+}
+
+/** A PR doc's two sides (ui v1): null = the side doesn't exist (added /
+ *  removed); tooLarge = over 1 MB, Source tab only. */
+export const getPrDoc = (n: number, path: string) =>
+	request<
+		{ base: PrDocSide | null; head: PrDocSide | null } | { tooLarge: true }
+	>(`/api/prs/${n}/doc?path=${encodeURIComponent(path)}`);
 
 export const pushPR = (n: number, branch: string) =>
 	request<{ pushed: boolean }>(`/api/prs/${n}/push`, {

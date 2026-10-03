@@ -1178,6 +1178,8 @@ function prFetch(
 		};
 		mergeAnswer?: Response;
 		pushAnswer?: Response;
+		/** ui v1: the rendered diff's two sides for any doc path. */
+		prDoc?: unknown;
 	} = {},
 ) {
 	return async (
@@ -1211,6 +1213,13 @@ function prFetch(
 				},
 			});
 		}
+		if (/^\/api\/prs\/\d+\/doc$/.test(url.pathname))
+			return jsonResponse(
+				opts.prDoc ?? {
+					base: { frontmatter: { title: "A" }, body: "Old line here.\n" },
+					head: { frontmatter: { title: "A2" }, body: "New line here.\n" },
+				},
+			);
 		const detail = url.pathname.match(/^\/api\/prs\/(\d+)$/);
 		if (detail) {
 			const page = Number(url.searchParams.get("files_page") ?? 1);
@@ -1516,16 +1525,16 @@ describe("App: the head-row Open PR button (owner reshape)", () => {
 
 // --- #27 (b4): the PR review pane ----------------------------------------------
 
-/** The mounted slideout – queries scope to it so pane buttons never collide
- *  with the header's (Merge exists in both). */
-function slideoutEl(): HTMLElement {
-	const el = document.querySelector<HTMLElement>(".slideout");
-	if (!el) throw new Error("no slideout");
+/** The mounted PR list drawer (ui v1). */
+function drawerEl(): HTMLElement {
+	const el = document.querySelector<HTMLElement>(".pr-drawer");
+	if (!el) throw new Error("no PR drawer");
 	return el;
 }
 
-/** Authed App → PR list → PR #12's detail, waited to its ready state (the
- *  pane's title line renders only with a fetched pr). */
+/** Authed App → PR list → PR #12's full-stage review, waited to its ready
+ *  state (the title renders only with a fetched pr). Queries scope to the
+ *  review so its buttons never collide with the navigator's (Merge). */
 async function openPrDetail(
 	fetchImpl: (
 		url: RequestInfo | URL,
@@ -1536,12 +1545,78 @@ async function openPrDetail(
 	fireEvent.click(await screen.findByRole("button", { name: "Pull requests" }));
 	fireEvent.click(await screen.findByText("Docs: the feat branch"));
 	return waitFor(() => {
-		const slideout = slideoutEl();
-		if (!slideout.querySelector(".pr-title"))
-			throw new Error("detail not loaded yet");
-		return slideout;
+		const review = document.querySelector<HTMLElement>(".pr-review");
+		if (!review?.querySelector(".pr-title"))
+			throw new Error("review not loaded yet");
+		return review;
 	});
 }
+
+/** The review's Source tab – the patch rows and the pager. */
+function showSource(review: HTMLElement) {
+	fireEvent.click(within(review).getByRole("button", { name: "Source" }));
+}
+
+describe("App: the rendered PR diff (ui v1 phase 9)", () => {
+	test("Rendered is the default tab: changed frontmatter keys and an inline word change", async () => {
+		const s = await openPrDetail();
+		const rendered = within(s).getByRole("button", { name: "Rendered" });
+		expect(rendered.getAttribute("aria-pressed")).toBe("true");
+		await waitFor(() =>
+			expect(s.querySelector(".fm-row .k")?.textContent).toBe("title"),
+		);
+		expect(s.querySelector(".fm-row s")?.textContent).toBe("A");
+		expect(s.querySelector(".fm-row u")?.textContent).toBe("A2");
+		expect(s.querySelector(".rd .chg del")?.textContent).toBe("Old");
+		expect(s.querySelector(".rd .chg ins")?.textContent).toBe("New");
+		// No patch rows until Source.
+		expect(document.querySelectorAll(".pr-patch-row")).toHaveLength(0);
+		showSource(s);
+		expect(document.querySelectorAll(".pr-patch-row").length).toBeGreaterThan(
+			0,
+		);
+	});
+
+	test("consecutive reflowed paragraphs collapse into one row with a Show toggle", async () => {
+		const wrapped = [
+			"One line\nwrapped.",
+			"Two line\nwrapped.",
+			"Three line\nwrapped.",
+		];
+		const s = await openPrDetail(
+			prFetch({
+				prDoc: {
+					base: { frontmatter: {}, body: wrapped.join("\n\n") },
+					head: {
+						frontmatter: {},
+						body: wrapped.map((p) => p.replace("\n", " ")).join("\n\n"),
+					},
+				},
+			}),
+		);
+		const row = await within(s).findByText(/3 paragraphs reflowed/);
+		expect(row.closest(".reflow")?.textContent).toContain(
+			"line breaks only, no words changed",
+		);
+		expect(within(s).queryByText("One line wrapped.")).toBeNull();
+		fireEvent.click(within(s).getByRole("button", { name: "Show" }));
+		expect(within(s).getByText("One line wrapped.")).toBeTruthy();
+	});
+
+	test("opening a review with unsaved edits parks behind the save-or-discard banner", async () => {
+		await renderAuthedApp(prFetch());
+		await enterEditMode();
+		fireEvent.change(metaInput("description"), { target: { value: "dirty" } });
+		fireEvent.click(
+			await screen.findByRole("button", { name: "Pull requests" }),
+		);
+		fireEvent.click(await screen.findByText("Docs: the feat branch"));
+		expect(
+			await screen.findByText("This document has unsaved changes."),
+		).toBeTruthy();
+		expect(document.querySelector(".pr-review")).toBeNull();
+	});
+});
 
 describe("App: the PR review pane (#27 b4)", () => {
 	test("the list renders rows and the head count; a row click opens the detail with status, meta, and patch rows", async () => {
@@ -1549,23 +1624,30 @@ describe("App: the PR review pane (#27 b4)", () => {
 		fireEvent.click(
 			await screen.findByRole("button", { name: "Pull requests" }),
 		);
-		expect(await screen.findByText("Pull requests · 1 open")).toBeTruthy();
+		// ui v1: the list is a drawer over the doc, its Open tab counting.
+		const open = await within(drawerEl()).findByRole("button", {
+			name: /^Open\s*1$/,
+		});
+		expect(open.getAttribute("aria-pressed")).toBe("true");
 		fireEvent.click(screen.getByText("Docs: the feat branch"));
 
 		const s = await waitFor(() => {
-			const slideout = slideoutEl();
-			if (!slideout.querySelector(".pr-title"))
-				throw new Error("detail not loaded yet");
-			return slideout;
+			const review = document.querySelector<HTMLElement>(".pr-review");
+			if (!review?.querySelector(".pr-title"))
+				throw new Error("review not loaded yet");
+			return review;
 		});
-		// The head carries the detail line; the pane the honest chips, the
-		// branch pair, and the parsed patch rows.
-		expect(within(s).getByText("PR #12 · Docs: the feat branch")).toBeTruthy();
-		expect(within(s).getByText("open")).toBeTruthy();
-		expect(within(s).getByText("mergeable")).toBeTruthy();
-		expect(within(s).getByText("feat")).toBeTruthy();
-		expect(within(s).getByText("main")).toBeTruthy();
+		// The review takes the stage: the title, the honest state, the
+		// mergeability check, the branch pair, and – on Source – the rows.
+		expect(s.querySelector(".pr-title")?.textContent).toBe(
+			"Docs: the feat branch",
+		);
+		expect(within(s).getByText("Open")).toBeTruthy();
+		expect(within(s).getByText("No conflicts with main")).toBeTruthy();
+		expect(s.querySelector(".rv-head .flow")?.textContent).toBe("feat → main");
 		expect(s.textContent).toContain("2 files");
+		expect(document.querySelector(".pr-drawer")).toBeNull();
+		showSource(s);
 		expect(document.querySelectorAll(".pr-patch-row.add")).toHaveLength(2);
 		expect(document.querySelectorAll(".pr-patch-row.del")).toHaveLength(1);
 		expect(document.querySelectorAll(".pr-patch-row.hunk")).toHaveLength(1);
@@ -1577,8 +1659,10 @@ describe("App: the PR review pane (#27 b4)", () => {
 		const gh = within(s).getByRole("link", { name: "Open on GitHub" });
 		expect(gh.getAttribute("href")).toBe(PR12.html_url);
 		expect(gh.getAttribute("target")).toBe("_blank");
-		// Opening a review never navigates the editor.
-		expect(breadcrumbText()).toBe("a");
+		// The review takes over the stage but never moves the selection:
+		// leaving it lands back on the same doc.
+		fireEvent.keyDown(window, { key: "Escape" });
+		await waitFor(() => expect(breadcrumbText()).toBe("a"));
 	});
 
 	test("an empty list answers with the calm empty state and a zero count", async () => {
@@ -1587,7 +1671,9 @@ describe("App: the PR review pane (#27 b4)", () => {
 			await screen.findByRole("button", { name: "Pull requests" }),
 		);
 		expect(await screen.findByText("No open pull requests.")).toBeTruthy();
-		expect(await screen.findByText("Pull requests · 0 open")).toBeTruthy();
+		expect(
+			within(drawerEl()).getByRole("button", { name: /^Open\s*0$/ }),
+		).toBeTruthy();
 	});
 
 	test("the pager steps 20-file pages: prev disabled on page 1, next only while the page was full", async () => {
@@ -1601,6 +1687,7 @@ describe("App: the PR review pane (#27 b4)", () => {
 		const s = await openPrDetail(
 			prFetch({ detail: { files: files20, files2: files20.slice(0, 3) } }),
 		);
+		showSource(s);
 		const prev = within(s).getByRole("button", {
 			name: "Previous page",
 		}) as HTMLButtonElement;
@@ -1637,7 +1724,9 @@ describe("App: the PR review pane (#27 b4)", () => {
 		]) {
 			cleanup();
 			const s = await openPrDetail(prFetch({ detail: { pr: over } }));
-			expect(within(s).queryByRole("button", { name: "Merge" })).toBeNull();
+			expect(
+				within(s).queryByRole("button", { name: "Merge into main" }),
+			).toBeNull();
 			if (over.state === "closed") {
 				expect(
 					within(s).queryByRole("button", { name: "Push commits" }),
@@ -1659,11 +1748,13 @@ describe("App: the PR review pane (#27 b4)", () => {
 				}),
 			}),
 		);
-		fireEvent.click(within(s).getByRole("button", { name: "Merge" }));
+		fireEvent.click(within(s).getByRole("button", { name: "Merge into main" }));
 		expect(
 			await within(s).findByText(/conflicts that must be resolved on GitHub/),
 		).toBeTruthy();
-		expect(within(s).queryByRole("button", { name: "Merge" })).toBeNull();
+		expect(
+			within(s).queryByRole("button", { name: "Merge into main" }),
+		).toBeNull();
 		const resolve = within(s).getByRole("link", { name: /Resolve on GitHub/ });
 		expect(resolve.getAttribute("href")).toBe("https://github.com/o/r/pull/12");
 		expect(resolve.getAttribute("target")).toBe("_blank");
@@ -1692,9 +1783,11 @@ describe("App: the PR review pane (#27 b4)", () => {
 			}
 			return base(input, init);
 		});
-		fireEvent.click(within(s).getByRole("button", { name: "Merge" }));
-		expect(await within(s).findByText("closed")).toBeTruthy();
-		expect(within(s).queryByRole("button", { name: "Merge" })).toBeNull();
+		fireEvent.click(within(s).getByRole("button", { name: "Merge into main" }));
+		expect(await within(s).findByText("Closed")).toBeTruthy();
+		expect(
+			within(s).queryByRole("button", { name: "Merge into main" }),
+		).toBeNull();
 		const detailGets = vi
 			.mocked(fetch)
 			.mock.calls.filter(([u]) => String(u).startsWith("/api/prs/12?")).length;
