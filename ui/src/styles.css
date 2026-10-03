@@ -2474,154 +2474,209 @@ button.pr-file-head svg {
 	overflow-wrap: anywhere;
 }
 
-/* ── #14: Ctrl+K search modal – Spotlight-style centered dialog ── */
-/* The dim backdrop (click = close) and the glass card on top of everything
-   (above menu-popover's 70). Rows echo the sidebar card language: hover is
-   the inner glass, the active row is the raised .doc-card.active look. */
+/* ── #14 / ui v1: the Ctrl+K search palette ── */
+/* A sheet over a softly dimmed desk: results left, the selected doc's
+   preview right, the Actions group under the documents. */
 .search-overlay {
 	position: fixed;
 	inset: 0;
 	z-index: 80;
-	background: rgba(15, 20, 27, 0.55);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: var(--space-4);
+	background: color-mix(in srgb, var(--desk-2) 55%, transparent);
+	backdrop-filter: blur(6px) saturate(0.8);
+	display: grid;
+	place-items: start center;
+	padding: 12vh var(--space-4) var(--space-4);
 }
 .search-modal {
-	width: min(640px, 100%);
-	max-height: min(70vh, 560px);
-	display: flex;
-	flex-direction: column;
-	border-radius: var(--radius-lg);
-	background: var(--glass-bg-strong);
-	border: 1px solid var(--glass-border);
-	box-shadow: var(--glass-shadow);
-	backdrop-filter: blur(22px) saturate(1.5);
-	-webkit-backdrop-filter: blur(22px) saturate(1.5);
+	width: min(920px, 92vw);
+	height: min(480px, 76vh);
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	border-radius: 16px;
+	background: var(--sheet);
+	box-shadow: var(--float-shadow);
 	overflow: hidden;
+	animation: palette-in 0.22s var(--ease);
 }
-@supports not (backdrop-filter: blur(1px)) {
-	.search-modal {
-		background: var(--surface);
+@keyframes palette-in {
+	from {
+		transform: translateY(-8px) scale(0.985);
+		opacity: 0;
 	}
 }
 .search-input-row {
 	display: flex;
 	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-4);
-	border-bottom: 1px solid var(--border-soft);
-	flex-shrink: 0;
+	gap: 12px;
+	padding: 18px 22px;
+	border-bottom: 1px solid var(--line-soft);
 }
 .search-input-row svg {
-	width: 16px;
-	height: 16px;
-	color: var(--muted);
+	width: 20px;
+	height: 20px;
+	color: var(--accent);
 	flex-shrink: 0;
 }
 .search-input-row input {
 	flex: 1;
 	min-width: 0;
-	font-family: var(--font-body);
-	font-size: 15px;
-	color: var(--fg);
+	font: 400 22px var(--serif);
+	color: var(--ink);
 	background: transparent;
 	border: none;
-	padding: 4px 0;
 	outline: none;
 }
 .search-input-row input::placeholder {
-	color: var(--muted);
+	color: var(--ink-3);
 }
 .search-modal kbd {
-	font-family: var(--font-mono);
-	font-size: 10px;
-	color: var(--muted);
-	background: var(--glass-inner);
-	border: 1px solid var(--border);
-	border-radius: 4px;
+	font: 500 11px var(--mono);
 	padding: 1px 5px;
-	line-height: 1.5;
+	border: 1px solid var(--line);
+	border-bottom-width: 2px;
+	border-radius: 4px;
+	color: var(--ink-2);
+	background: var(--sheet);
 	flex-shrink: 0;
 }
+.search-body {
+	display: grid;
+	grid-template-columns: 400px minmax(0, 1fr);
+	min-height: 0;
+}
 .search-results {
-	flex: 1;
 	overflow-y: auto;
-	padding: var(--space-2);
+	padding: 8px;
+	border-right: 1px solid var(--line-soft);
+}
+.search-results .gh {
+	padding: 10px 12px 4px;
+	font: 500 11px var(--mono);
+	color: var(--ink-3);
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
 }
 .sr-row {
-	padding: var(--space-2) var(--space-3);
-	border-radius: 10px;
-	border: 1px solid transparent;
-	margin: 2px 0;
+	display: block;
+	padding: 10px 12px;
+	border-radius: 9px;
 	cursor: pointer;
-	transition:
-		background var(--motion-fast) var(--ease-standard),
-		border-color var(--motion-fast) var(--ease-standard),
-		box-shadow var(--motion-base) var(--ease-standard),
-		transform var(--motion-base) var(--ease-standard);
 }
 .sr-row:hover {
-	background: var(--glass-inner);
+	background: var(--sheet-2);
 }
-/* Active = physically raised off the glass (the .doc-card.active look) */
 .sr-row.active {
-	background: var(--glass-bg-strong);
-	border-color: var(--glass-border);
-	box-shadow: var(--card-shadow);
-	transform: translateY(-1px);
+	background: var(--accent-soft);
+	box-shadow: inset 3px 0 0 var(--accent);
 }
 .sr-title {
-	display: block;
-	font-size: 14px;
-	font-weight: 600;
-	color: var(--fg);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 500;
+	color: var(--ink);
+	min-width: 0;
+}
+.sr-title .sr-t {
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.sr-row.active .sr-title {
-	color: var(--accent);
+.sr-folder {
+	margin-left: auto;
+	font: 400 11.5px var(--mono);
+	color: var(--ink-3);
+	flex-shrink: 0;
 }
 .sr-snippet {
 	display: block;
-	font-family: var(--font-serif);
 	font-size: 12.5px;
-	line-height: 1.45;
-	color: var(--muted);
-	margin-top: 2px;
+	color: var(--ink-2);
+	margin-top: 3px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
-.sr-row mark {
-	background: color-mix(in srgb, var(--accent) 22%, transparent);
-	color: inherit;
+.search-modal mark {
+	background: color-mix(in srgb, var(--accent) 16%, transparent);
+	color: var(--accent);
 	border-radius: 2px;
 	padding: 0 1px;
 }
+.act-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 9px 12px;
+	border-radius: 9px;
+	color: var(--ink-2);
+	cursor: pointer;
+}
+.act-row svg {
+	width: 15px;
+	height: 15px;
+}
+.act-row kbd {
+	margin-left: auto;
+}
+.act-row:hover {
+	background: var(--sheet-2);
+}
+.act-row.active {
+	background: var(--accent-soft);
+	box-shadow: inset 3px 0 0 var(--accent);
+	color: var(--ink);
+}
 .search-empty {
-	padding: var(--space-6) var(--space-4);
+	padding: 18px 12px;
 	font-size: 13px;
-	color: var(--muted);
-	text-align: center;
+	color: var(--ink-3);
+}
+.search-preview {
+	padding: 26px 30px;
+	overflow: hidden;
+	background: var(--sheet-2);
+}
+.search-preview h2 {
+	font: 500 30px / 1.15 var(--serif);
+	margin: 10px 0 8px;
+}
+.search-preview p {
+	font: 400 15.5px / 1.65 var(--serif);
+	color: var(--ink-2);
+}
+.search-preview p + p {
+	margin-top: 10px;
+}
+.search-preview .search-preview-empty {
+	font: 13px var(--sans);
+	color: var(--ink-3);
 }
 .search-foot {
 	display: flex;
 	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-2) var(--space-4);
-	border-top: 1px solid var(--border-soft);
-	font-family: var(--font-mono);
-	font-size: 10px;
-	text-transform: uppercase;
-	letter-spacing: 0.08em;
-	color: var(--muted);
-	flex-shrink: 0;
+	gap: 18px;
+	padding: 10px 22px;
+	border-top: 1px solid var(--line-soft);
+	font-size: 12px;
+	color: var(--ink-3);
 }
-.search-foot .sep {
-	color: var(--border);
+.search-foot > span {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+.search-foot .search-scope {
+	margin-left: auto;
+}
+@media (max-width: 900px) {
+	.search-body {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.search-preview {
+		display: none;
+	}
 }
 
 /* ── #20: auth – the sign-in gate, the sidebar user chip ── */

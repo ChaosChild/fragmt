@@ -3,7 +3,7 @@
 // this). Match at start/middle/end/multiple, case-insensitive, no-match
 // passthrough, plus the trim and empty-query words the modal feeds it.
 import { describe, expect, test } from "vitest";
-import { highlightSegments } from "../ui/src/highlight.js";
+import { highlightSegments, plainExcerpt } from "../ui/src/highlight.js";
 
 describe("highlightSegments", () => {
 	test("match at the start", () => {
@@ -75,5 +75,33 @@ describe("highlightSegments", () => {
 		expect(highlightSegments("any text", "   ")).toEqual([
 			{ text: "any text", hit: false },
 		]);
+	});
+});
+
+describe("plainExcerpt (search preview)", () => {
+	test("flattens markdown to plain paragraphs – no fences, tags, link syntax or markers", () => {
+		const body = [
+			"# Heading",
+			"",
+			'A **bold** [link](a.md) and <span data-c="x">marked</span> `code`.',
+			"",
+			"```ts",
+			"const hidden = 1;",
+			"```",
+			"",
+			"- item one",
+		].join("\n");
+		expect(plainExcerpt(body)).toEqual([
+			"Heading",
+			"A bold link and marked code.",
+			"item one",
+		]);
+	});
+
+	test("stops near the limit and marks the cut", () => {
+		const out = plainExcerpt(`${"word ".repeat(50)}\n\nnever reached`, 40);
+		expect(out).toHaveLength(1);
+		expect(out[0].endsWith("…")).toBe(true);
+		expect(out[0].length).toBeLessThanOrEqual(41);
 	});
 });

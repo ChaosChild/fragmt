@@ -40,6 +40,7 @@ import {
 	BranchMenu,
 	OpenPRButton,
 } from "../ui/src/Menus.js";
+import { SearchModal } from "../ui/src/SearchModal.js";
 
 // RTL wraps render/fireEvent/waitFor in act; React 19 requires the flag.
 (
@@ -687,6 +688,108 @@ describe("App: the preview beside the doc (ui v1 phase 6)", () => {
 		);
 		// Still editing: the first Escape was spent on the preview.
 		expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+	});
+});
+
+describe("SearchModal: the palette (ui v1 phase 8)", () => {
+	const HITS = [
+		{ path: "a.md", title: "Alpha sync", snippet: "first sync" },
+		{ path: "b.md", title: "Beta sync", snippet: "second sync" },
+		{ path: "sub/c.md", title: "Gamma sync", snippet: "third sync" },
+	];
+
+	/** /api/search answers HITS; doc fetches are recorded and can be held. */
+	function paletteFetch(docCalls: string[], hold?: Map<string, () => void>) {
+		return vi.fn(async (input: RequestInfo | URL) => {
+			const url = new URL(String(input), "http://localhost");
+			if (url.pathname === "/api/search") return jsonResponse(HITS);
+			const m = url.pathname.match(/^\/api\/docs\/(.+)$/);
+			if (m) {
+				const path = decodeURIComponent(m[1]);
+				docCalls.push(path);
+				const body = jsonResponse(docOf(path, `Body of ${path} with sync.`));
+				const release = hold?.get(path);
+				if (release) {
+					await new Promise<void>((resolve) => hold?.set(path, resolve));
+				}
+				return body;
+			}
+			return mockFetch(input);
+		});
+	}
+
+	function mount(extra: Partial<ComponentProps<typeof SearchModal>> = {}) {
+		render(
+			createElement(SearchModal, {
+				open: true,
+				onClose: () => {},
+				onOpen: () => {},
+				...extra,
+			}),
+		);
+		const input = screen.getByRole("combobox", { name: "Search documents" });
+		fireEvent.change(input, { target: { value: "sync" } });
+		return input;
+	}
+
+	test("arrow keys move the selection; the preview fetches the settled selection once", async () => {
+		const calls: string[] = [];
+		vi.stubGlobal("fetch", paletteFetch(calls));
+		const input = mount();
+		await screen.findByText("Alpha", { exact: false });
+		await waitFor(() => expect(calls).toEqual(["a.md"]));
+		// Two quick moves inside the debounce: only the last selection loads.
+		fireEvent.keyDown(input, { key: "ArrowDown" });
+		fireEvent.keyDown(input, { key: "ArrowDown" });
+		await waitFor(() =>
+			expect(
+				document.querySelector(".search-preview .kicker")?.textContent,
+			).toContain("sub/c.md"),
+		);
+		expect(calls).toEqual(["a.md", "sub/c.md"]);
+		// Back to a cached one: no new request.
+		fireEvent.keyDown(input, { key: "ArrowUp" });
+		fireEvent.keyDown(input, { key: "ArrowUp" });
+		await waitFor(() =>
+			expect(
+				document.querySelector(".search-preview .kicker")?.textContent,
+			).toContain("a.md"),
+		);
+		expect(calls).toEqual(["a.md", "sub/c.md"]);
+	});
+
+	test("a preview response that lands after the selection moved on is ignored", async () => {
+		const calls: string[] = [];
+		const hold = new Map<string, () => void>([["a.md", () => {}]]);
+		vi.stubGlobal("fetch", paletteFetch(calls, hold));
+		const input = mount();
+		await waitFor(() => expect(calls).toEqual(["a.md"]));
+		// a.md is still in flight; move to b.md and let it load.
+		fireEvent.keyDown(input, { key: "ArrowDown" });
+		await waitFor(() =>
+			expect(
+				document.querySelector(".search-preview .kicker")?.textContent,
+			).toContain("b.md"),
+		);
+		// Now release the stale a.md answer – the preview must stay on b.md.
+		hold.get("a.md")?.();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(
+			document.querySelector(".search-preview .kicker")?.textContent,
+		).toContain("b.md");
+	});
+
+	test("the Actions group shows for 'sync' and runs the sync handler", async () => {
+		vi.stubGlobal("fetch", paletteFetch([]));
+		const onSync = vi.fn();
+		const onClose = vi.fn();
+		mount({ onSync, onClose, onNewDoc: () => {} });
+		const row = await screen.findByText("Sync now");
+		// "New document" doesn't match "sync" – not offered.
+		expect(screen.queryByText("New document")).toBeNull();
+		fireEvent.click(row);
+		expect(onSync).toHaveBeenCalledTimes(1);
+		expect(onClose).toHaveBeenCalled();
 	});
 });
 

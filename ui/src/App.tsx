@@ -274,6 +274,9 @@ export function App() {
 	// it from anywhere, including mid-edit (the editor binds no Mod-K;
 	// preventDefault keeps the browser's own search focus out of the way).
 	const [searchOpen, setSearchOpen] = useState(false);
+	// The palette's "New document" action (ui v1): bumps the navigator's +
+	// button into its new-document form – the same form, the same op.
+	const [newDocRequest, setNewDocRequest] = useState(0);
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
 			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -1280,7 +1283,9 @@ export function App() {
 				onCreated={(n) => requestBranch({ kind: "open-pr-created", number: n })}
 			/>
 		);
-	const newDocBtn = <NewDocButton onFileOp={runFileOp} />;
+	const newDocBtn = (
+		<NewDocButton onFileOp={runFileOp} openDocRequest={newDocRequest} />
+	);
 
 	// The OKF banner's payload (#21): findings only once an OKF repo's
 	// validate answered; null hides the banner everywhere else. A conformant
@@ -1657,6 +1662,15 @@ export function App() {
 				open={searchOpen}
 				onClose={() => setSearchOpen(false)}
 				onOpen={openFromSearch}
+				docMetas={meta?.docs ?? {}}
+				branch={branch}
+				onSync={() => void runSync()}
+				onNewDoc={() => {
+					// The form hangs off the navigator's + – make sure it shows.
+					if (sidebarCollapsed) toggleSidebar();
+					setNewDocRequest((n) => n + 1);
+				}}
+				onOpenGraph={okfFindings !== null ? requestGraph : undefined}
 			/>
 		</>
 	);

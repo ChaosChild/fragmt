@@ -90,7 +90,19 @@ export function useMenu() {
 		const el = e.currentTarget; // currentTarget is null after dispatch
 		setAnchor((a) => (a ? null : el));
 	};
-	return { open: anchor !== null, anchor, wrapRef, popRef, toggle, close };
+	// Open from code (ui v1: the search palette's "New document" action).
+	const openAt = useCallback((el: HTMLButtonElement | null) => {
+		if (el) setAnchor(el);
+	}, []);
+	return {
+		open: anchor !== null,
+		anchor,
+		wrapRef,
+		popRef,
+		toggle,
+		close,
+		openAt,
+	};
 }
 
 /**
@@ -502,9 +514,24 @@ export function OpenPRButton({
  * existing path form) or New folder (same form, the create-folder op; the
  * folder appears in the tree, nothing gets selected).
  */
-export function NewDocButton({ onFileOp }: { onFileOp: (op: FileOp) => void }) {
+export function NewDocButton({
+	onFileOp,
+	openDocRequest = 0,
+}: {
+	onFileOp: (op: FileOp) => void;
+	/** Bump to open straight into the new-document form (ui v1: the search
+	 *  palette's action) – the same form and submit as the + button's. */
+	openDocRequest?: number;
+}) {
 	const menu = useMenu();
 	const [mode, setMode] = useState<"choice" | "doc" | "folder">("choice");
+	const buttonRef = useRef<HTMLButtonElement>(null);
+	const { openAt } = menu;
+	useEffect(() => {
+		if (openDocRequest === 0) return;
+		setMode("doc");
+		openAt(buttonRef.current);
+	}, [openDocRequest, openAt]);
 	const [path, setPath] = useState("");
 	const pathRef = useRef<HTMLInputElement>(null);
 	// Land focus in the form when one opens; reset to the choice menu on close.
@@ -533,6 +560,7 @@ export function NewDocButton({ onFileOp }: { onFileOp: (op: FileOp) => void }) {
 	return (
 		<span className="menu-wrap" ref={menu.wrapRef}>
 			<button
+				ref={buttonRef}
 				type="button"
 				className="tool-btn"
 				title="New document or folder"
