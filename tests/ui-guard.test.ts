@@ -330,8 +330,6 @@ function docViewProps(over: Partial<DocViewProps> = {}): DocViewProps {
 		onEscapeSurfacesClear: () => false,
 		onBeforeEdit: () => Promise.resolve(true),
 		branch: "work",
-		led: "green",
-		ledLabel: "Synced",
 		draftBranch: null,
 		onOpenDraft: () => {},
 		onDraft: false,
@@ -526,6 +524,90 @@ describe("GraphView: the fixture mount (component harness)", () => {
 		fireEvent.click(node);
 		expect(onOpenDoc).toHaveBeenCalledTimes(1);
 		expect(onOpenDoc).toHaveBeenCalledWith("a.md");
+	});
+});
+
+// --- ui v1 phase 2: the rail, the navigator toggle, the status bar ----------
+
+describe("App: the v1 shell (rail, navigator, status bar)", () => {
+	function rail(): HTMLElement {
+		return screen.getByRole("navigation", { name: "App" });
+	}
+
+	afterEach(() => {
+		localStorage.removeItem("fragmt.sidebarCollapsed");
+	});
+
+	test("the rail carries Search and the gated Reference graph; Pull requests only with the PR surface", async () => {
+		await renderAppReady();
+		const r = rail();
+		expect(
+			within(r).getByRole("button", { name: "Search (Ctrl+K)" }),
+		).toBeTruthy();
+		expect(
+			within(r).getByRole("button", { name: "Reference graph" }),
+		).toBeTruthy();
+		// Local mode: no auth, so no PR surface.
+		expect(
+			within(r).queryByRole("button", { name: "Pull requests" }),
+		).toBeNull();
+		cleanup();
+
+		await renderAuthedApp(prFetch());
+		expect(
+			await within(rail()).findByRole("button", { name: "Pull requests" }),
+		).toBeTruthy();
+		cleanup();
+
+		// Non-OKF meta: the graph entry is gone from the rail.
+		vi.stubGlobal("fetch", vi.fn(fetchWith({ metaOkf: false })));
+		const view = render(createElement(App));
+		await view.findByRole("button", { name: "Edit" });
+		expect(
+			within(rail()).queryByRole("button", { name: "Reference graph" }),
+		).toBeNull();
+	});
+
+	test("Ctrl+ toggles the navigator's collapsed class, and the choice persists across a remount", async () => {
+		await renderAppReady();
+		const nav = () => document.querySelector("aside.sidebar");
+		expect(nav()?.classList.contains("collapsed")).toBe(false);
+
+		fireEvent.keyDown(window, { key: "\\", ctrlKey: true });
+		expect(nav()?.classList.contains("collapsed")).toBe(true);
+		expect(localStorage.getItem("fragmt.sidebarCollapsed")).toBe("1");
+
+		cleanup();
+		await renderAppReady();
+		expect(nav()?.classList.contains("collapsed")).toBe(true);
+
+		fireEvent.keyDown(window, { key: "\\", metaKey: true });
+		expect(nav()?.classList.contains("collapsed")).toBe(false);
+		expect(localStorage.getItem("fragmt.sidebarCollapsed")).toBe("0");
+	});
+
+	test("the status bar reads OKF · 2 findings and opens the findings list", async () => {
+		const findings = [
+			{ path: "a.md", clause: "type", detail: "type is missing" },
+			{ path: "b.md", clause: "frontmatter", detail: "no frontmatter" },
+		];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = new URL(String(input), "http://localhost");
+				if (url.pathname === "/api/validate")
+					return jsonResponse({ okf: true, conformant: false, findings });
+				return mockFetch(input);
+			}),
+		);
+		await renderAppReady();
+		const status = document.querySelector("footer.status") as HTMLElement;
+		const btn = await within(status).findByRole("button", {
+			name: /OKF · 2 findings/,
+		});
+		fireEvent.click(btn);
+		expect(within(status).getByText("2 docs non-conformant")).toBeTruthy();
+		expect(within(status).getByText("b.md")).toBeTruthy();
 	});
 });
 

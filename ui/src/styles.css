@@ -85,7 +85,7 @@
 	--space-8: 32px;
 	--space-12: 48px;
 	--reading-max: 920px;
-	--sidebar-w: 332px;
+	--sidebar-w: var(--nav);
 	--rail-w: 316px;
 	--slideout-share: 0.55;
 	--topbar-h: 54px;
@@ -205,26 +205,17 @@ body {
 	box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent);
 }
 
-/* ═══ SIDEBAR – the inbox. One glass object in the room. ═══════ */
+/* ═══ NAVIGATOR – a flat panel of the desk, between desk and desk-2 ═══ */
 .sidebar {
 	width: var(--sidebar-w);
 	min-width: var(--sidebar-w);
 	display: flex;
 	flex-direction: column;
 	position: relative;
-	border-radius: var(--radius-lg);
-	background: var(--glass-bg);
-	border: 1px solid var(--glass-border);
-	box-shadow: var(--glass-shadow);
-	backdrop-filter: blur(18px) saturate(1.5);
-	-webkit-backdrop-filter: blur(18px) saturate(1.5);
+	background: color-mix(in srgb, var(--desk) 55%, var(--desk-2));
+	border-right: 1px solid var(--line-soft);
 	overflow: hidden;
 	flex-shrink: 0;
-}
-@supports not (backdrop-filter: blur(1px)) {
-	.sidebar {
-		background: var(--surface);
-	}
 }
 /* Drag handle on the sidebar's right edge (M4-3 b3) – App writes
    --sidebar-w on the .sidebar element; hidden ≤768px, where the drawer
@@ -240,12 +231,6 @@ body {
 	user-select: none;
 }
 
-.side-head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding: var(--space-4) var(--space-4) var(--space-3);
-}
 .brand {
 	font-family: var(--font-serif);
 	font-optical-sizing: auto;
@@ -266,39 +251,6 @@ body {
 	outline: none;
 	box-shadow: var(--focus-ring);
 	border-radius: 3px;
-}
-.side-head-spacer {
-	flex: 1;
-}
-.branch-dd {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-family: var(--font-mono);
-	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: var(--track-label);
-	color: var(--muted);
-	background: transparent;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	padding: 5px 10px;
-	cursor: pointer;
-	transition:
-		color var(--motion-fast) var(--ease-standard),
-		border-color var(--motion-fast) var(--ease-standard);
-}
-.branch-dd:hover {
-	color: var(--accent);
-	border-color: var(--accent);
-}
-.branch-dd:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-.branch-dd svg {
-	width: 13px;
-	height: 13px;
 }
 
 /* Search – exact word, filters the list live */
@@ -421,43 +373,6 @@ body {
 /* OKF conformance banner (#21) – one warn line above the doc list, native
    details/summary for the expand; the clause chip reuses the draft chip's
    recipe (warn border, tiny caps). */
-.okf-banner {
-	flex-shrink: 0;
-	margin: var(--space-2) var(--space-3) 0;
-	border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
-	background: var(--warn-soft);
-	border-radius: 8px;
-	font-family: var(--font-mono);
-	font-size: 11px;
-}
-.okf-banner summary {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: var(--space-2) var(--space-3);
-	cursor: pointer;
-	color: var(--warn);
-	list-style: none;
-	text-transform: uppercase;
-	letter-spacing: var(--track-label);
-}
-.okf-banner summary::-webkit-details-marker {
-	display: none;
-}
-.okf-banner summary:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-	border-radius: 8px;
-}
-.okf-banner .count {
-	flex-shrink: 0;
-	font-size: 10px;
-	border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
-	border-radius: var(--radius);
-	padding: 0 6px;
-	line-height: 1.6;
-	letter-spacing: 0;
-}
 .okf-findings {
 	list-style: none;
 	margin: 0 var(--space-2) var(--space-2);
@@ -1017,12 +932,6 @@ body {
 .dh-line .sep {
 	color: var(--border);
 }
-.dh-sync {
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-	white-space: nowrap;
-}
 .draft-pill {
 	display: inline-flex;
 	align-items: center;
@@ -1377,21 +1286,6 @@ body {
    rail head is gone – the mode tabs and close live in .slideout-head, and
    the sync indicator / theme toggle outlived it in the topbar and the
    sidebar head. */
-.sync-indicator {
-	font-family: var(--font-mono);
-	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: var(--track-label);
-	color: var(--success);
-	display: flex;
-	align-items: center;
-	gap: 7px;
-}
-.sync-indicator .led {
-	width: 6px;
-	height: 6px;
-	box-shadow: none;
-}
 
 .rail-body {
 	flex: 1;
@@ -1549,13 +1443,6 @@ button.comment-quote:hover {
 	margin: var(--space-3) 0 0 var(--space-3);
 	padding-left: var(--space-3);
 	border-left: 1px solid var(--border-soft);
-}
-/* The sync-indicator text follows its LED (staged rule pins success only). */
-.sync-indicator.warn {
-	color: var(--warn);
-}
-.sync-indicator.err {
-	color: var(--danger);
 }
 /* "Show resolved (N)" and "Show N earlier replies" – label-meta supplies
    the font/color; both are quiet expander buttons (a11y floor: 32px + ring). */
@@ -2008,48 +1895,30 @@ button.pr-file-head svg {
 	cursor: inherit;
 }
 
-/* ── #15: collapse chrome – the topbar the collapsed sidebar wears ── */
+/* ── ui v1 frame: rail | navigator | stage (main + pane over the status bar) ── */
 .app-frame {
-	display: flex;
-	flex-direction: column;
+	display: grid;
+	grid-template-columns: var(--rail) auto minmax(0, 1fr);
+	/* One viewport-tall row: the long doc list scrolls inside the
+	   navigator instead of growing the frame past the status bar. */
+	grid-template-rows: minmax(0, 100vh);
 	height: 100vh;
 }
-/* The layout was height:100vh as the root; inside the frame it takes
-   whatever the topbar leaves. */
-.app-frame > .layout {
+.stage {
+	display: grid;
+	grid-template-rows: minmax(0, 1fr) var(--status);
+	min-width: 0;
+	position: relative;
+}
+/* The layout was height:100vh as the root; inside the stage it takes
+   whatever the status bar leaves. */
+.stage > .layout {
 	height: auto;
-	flex: 1;
+	width: auto;
 	min-height: 0;
 }
 .sidebar.collapsed {
 	display: none;
-}
-.app-topbar {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	height: 40px;
-	flex-shrink: 0;
-	padding: 0 var(--space-3) 0 var(--space-2);
-	background: var(--glass-bg);
-	border-bottom: 1px solid var(--glass-border);
-	backdrop-filter: blur(18px) saturate(1.5);
-	-webkit-backdrop-filter: blur(18px) saturate(1.5);
-}
-@supports not (backdrop-filter: blur(1px)) {
-	.app-topbar {
-		background: var(--surface);
-	}
-}
-/* The sidebar head's stretching rules un-stretch here: the branch menu
-   sizes to its name (ellipsizing past 150px) and Merge never widens the
-   bar – same look as the sidebar's row 2, without the full-width pull. */
-.app-topbar .branch-dd {
-	width: auto;
-	max-width: 150px;
-}
-.app-topbar .iconbtn {
-	flex-shrink: 0;
 }
 
 /* ═══ TOP BAR – mobile / tablet only ═══════════════════════════ */
@@ -2557,9 +2426,6 @@ button.pr-file-head svg {
 }
 
 /* ── M3: branches, file ops, sync LED ─────────────────────────── */
-.branch-dd {
-	min-height: 32px; /* a11y floor: ≥32px hit targets (§9) */
-}
 /* Tree row = full-width select target (M4-3 b4: the corner-icon overlay is
    gone – the file actions live on the doc head's breadcrumb line now). */
 .tree-row {
@@ -2581,9 +2447,6 @@ button.pr-file-head svg {
 }
 .folder-group > .tree-row {
 	margin-top: var(--space-2);
-}
-.side-head .menu-wrap {
-	flex-shrink: 0;
 }
 /* Visible-but-subtle square icon button (new doc, branch delete, doc-head
    file actions) – 32px target */
@@ -2737,38 +2600,12 @@ button.pr-file-head svg {
 }
 
 /* ── M4-2: two-row sidebar head, recycle bin ── */
-.side-head {
-	flex-direction: column;
-	align-items: stretch;
-	gap: var(--space-2);
-}
 /* space-2, not 3 – five controls (search, add, graph, theme, collapse)
    share this row at the sidebar's minimum width. */
-.side-head-row {
-	display: flex;
-	align-items: center;
-	gap: var(--space-2);
-}
 /* Row 2 (branch + Merge): the branch menu stretches full width – the name
    ellipsizes, the button's title carries the whole branch. Scoped to the
    branch menu's own wrapper so popover neighbours (Open PR) keep their
    natural width. */
-.side-head-branch .branch-menu-wrap {
-	flex: 1;
-	min-width: 0;
-}
-.branch-dd {
-	width: 100%;
-	min-width: 0;
-}
-.branch-dd .branch-name {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-.side-head-branch .iconbtn {
-	flex-shrink: 0;
-}
 /* Operator rounds A (tool-btn) and 4E (the reserved-doc Edit refusal): a
    disabled action keeps its pointer events so its explaining tooltip can
    hover (a pointer-events:none here would swallow the hover); the click
@@ -3243,60 +3080,6 @@ button.pr-file-head svg {
 	color: var(--muted);
 	max-width: 300px;
 }
-/* The signed-in user chip: mono login + avatar, the branch-dd border idiom.
-   Sits at the end of the doc head; absent entirely when auth is off. */
-.user-chip {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	font-family: var(--font-mono);
-	font-size: 11px;
-	color: var(--muted);
-	background: transparent;
-	border: 1px solid var(--border);
-	border-radius: var(--radius);
-	padding: 3px 9px 3px 4px;
-	cursor: pointer;
-	flex-shrink: 0;
-	max-width: 180px;
-	transition:
-		color var(--motion-fast) var(--ease-standard),
-		border-color var(--motion-fast) var(--ease-standard);
-}
-.user-chip:hover {
-	color: var(--accent);
-	border-color: var(--accent);
-}
-.user-chip:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-.chip-avatar {
-	width: 18px;
-	height: 18px;
-	border-radius: 4px;
-	flex-shrink: 0;
-	display: block;
-}
-.chip-login {
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-/* The read collaborator's warning pill (the draft-pill warn family): names
-   the 403s before the first one is hit. */
-.readonly-pill {
-	font-family: var(--font-mono);
-	font-size: 9.5px;
-	text-transform: uppercase;
-	letter-spacing: 0.06em;
-	color: var(--warn);
-	background: var(--warn-soft);
-	border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
-	border-radius: var(--radius);
-	padding: 3px 7px;
-	flex-shrink: 0;
-}
 
 /* ── OKF rung 5 (#21): the reference graph – the fourth main-pane state ── */
 /* A full-pane lens: quiet chrome, tier color the only strong hue on a node. */
@@ -3486,4 +3269,428 @@ button.pr-file-head svg {
 .gv-sw-edge line {
 	stroke: var(--border);
 	stroke-width: 1;
+}
+
+/* ═══ ui v1 – rail, navigator head, status bar (docs/app.v1.html) ═══ */
+
+/* The rail: the instrument strip. Text on desk-2 uses --ink-2 – light
+   --ink-3 is under 4.5:1 there (phase 1 contrast table). */
+.rail {
+	background: var(--desk-2);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 14px 0 12px;
+	gap: 4px;
+	border-right: 1px solid var(--line-soft);
+	z-index: 3;
+	min-height: 0;
+}
+.mark {
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	display: grid;
+	place-items: center;
+	background: var(--ink);
+	color: var(--desk);
+	font: italic 600 22px / 1 var(--serif);
+	margin-bottom: 14px;
+	position: relative;
+	user-select: none;
+}
+.mark::after {
+	content: "";
+	position: absolute;
+	right: 7px;
+	bottom: 8px;
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: var(--accent);
+}
+.rbtn {
+	width: 40px;
+	height: 40px;
+	border-radius: 10px;
+	display: grid;
+	place-items: center;
+	color: var(--ink-2);
+	position: relative;
+	background: none;
+	border: 0;
+	cursor: pointer;
+	transition:
+		background 0.15s var(--ease),
+		color 0.15s var(--ease);
+}
+.rbtn svg {
+	width: 18px;
+	height: 18px;
+	stroke-width: 1.6;
+}
+.rbtn:hover {
+	background: var(--line-soft);
+	color: var(--ink);
+}
+.rbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+}
+.rbtn[aria-current="true"] {
+	color: var(--accent);
+	background: var(--accent-soft);
+}
+.rbtn[aria-current="true"]::before {
+	content: "";
+	position: absolute;
+	left: -10px;
+	top: 10px;
+	bottom: 10px;
+	width: 3px;
+	border-radius: 0 3px 3px 0;
+	background: var(--accent);
+}
+.rbtn .dot {
+	position: absolute;
+	top: 8px;
+	right: 8px;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--accent);
+	box-shadow: 0 0 0 2px var(--desk-2);
+}
+.rbtn .tip {
+	position: absolute;
+	left: 52px;
+	top: 50%;
+	transform: translateY(-50%) translateX(-4px);
+	white-space: nowrap;
+	font-size: 12px;
+	padding: 4px 8px;
+	border-radius: 6px;
+	background: var(--ink);
+	color: var(--desk);
+	opacity: 0;
+	pointer-events: none;
+	transition: 0.12s var(--ease);
+	z-index: 20;
+}
+.rbtn:hover .tip,
+.rbtn:focus-visible .tip {
+	opacity: 1;
+	transform: translateY(-50%);
+}
+.rail-sp {
+	flex: 1;
+}
+.me {
+	width: 34px;
+	height: 34px;
+	border-radius: 10px;
+	margin-top: 8px;
+	display: grid;
+	place-items: center;
+	font: 600 12px var(--sans);
+	color: #fff;
+	background: linear-gradient(135deg, #3a4a63, #1f2a3a);
+	position: relative;
+	border: 0;
+	cursor: pointer;
+}
+.me > * {
+	grid-area: 1 / 1;
+}
+.me-avatar {
+	border-radius: 10px;
+}
+.me::after {
+	content: "";
+	position: absolute;
+	right: -2px;
+	bottom: -2px;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--green);
+	box-shadow: 0 0 0 2px var(--desk-2);
+}
+/* Read-only: a hollow amber ring instead of the filled green dot. */
+.me.readonly::after {
+	background: var(--desk-2);
+	border: 2px solid var(--amber);
+}
+.me:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+}
+
+/* The navigator head. */
+.nav-head {
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
+}
+.repo {
+	padding: 18px 18px 10px;
+	min-width: 0;
+}
+.repo-name {
+	font: italic 500 21px / 1.15 var(--serif);
+	letter-spacing: -0.01em;
+	color: var(--ink);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.repo-sub {
+	color: var(--ink-2);
+	font-size: 12px;
+	margin-top: 2px;
+}
+.nav-head .branch-menu-wrap {
+	display: block;
+	margin: 6px 12px;
+}
+.branch-dd {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 8px 10px;
+	border-radius: var(--r);
+	border: 1px solid var(--line);
+	background: var(--sheet);
+	box-shadow: 0 1px 0 rgba(28, 38, 54, 0.04);
+	color: var(--ink);
+	text-align: left;
+	cursor: pointer;
+	transition: border-color 0.15s;
+}
+.branch-dd:hover {
+	border-color: var(--ink-3);
+}
+.branch-dd:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+}
+.branch-dd svg {
+	width: 15px;
+	height: 15px;
+	flex-shrink: 0;
+}
+.branch-dd .branch-name {
+	font: 500 12.5px var(--mono);
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.branch-dd .led {
+	width: 7px;
+	height: 7px;
+}
+.branch-dd .branch-chev {
+	color: var(--ink-3);
+}
+.branch-acts {
+	display: flex;
+	gap: 6px;
+	padding: 0 12px 6px;
+}
+.branch-acts > *,
+.branch-acts .menu-wrap > .iconbtn {
+	flex: 1;
+}
+.branch-acts .menu-wrap {
+	display: flex;
+}
+/* The shared v1 button family (the mock's .btn) – Open PR's existing
+   .iconbtn trigger wears the outline variant inside the navigator. */
+.btn,
+.branch-acts .iconbtn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+	height: 32px;
+	padding: 0 12px;
+	border-radius: var(--r);
+	font: 500 13px var(--sans);
+	color: var(--ink);
+	background: none;
+	border: 0;
+	cursor: pointer;
+	transition:
+		background 0.15s var(--ease),
+		box-shadow 0.15s;
+}
+.btn:hover {
+	background: var(--line-soft);
+}
+.btn.line,
+.branch-acts .iconbtn {
+	border: 1px solid var(--line);
+	background: var(--sheet);
+}
+.btn.line:hover,
+.branch-acts .iconbtn:hover {
+	border-color: var(--ink-3);
+	background: var(--sheet);
+}
+.btn:focus-visible,
+.branch-acts .iconbtn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+}
+.btn[disabled],
+.branch-acts .iconbtn[disabled] {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+.nav-tools {
+	display: flex;
+	gap: 6px;
+	padding: 4px 12px 10px;
+	align-items: center;
+}
+.nt {
+	flex: 1;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 32px;
+	padding: 7px 10px;
+	border-radius: var(--r);
+	color: var(--ink-2);
+	font: 13px var(--sans);
+	background: none;
+	border: 0;
+	cursor: pointer;
+}
+.nt svg {
+	width: 15px;
+	height: 15px;
+}
+.nt:hover {
+	background: var(--line-soft);
+	color: var(--ink);
+}
+.nt:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+}
+.kbd {
+	font: 500 11px var(--mono);
+	padding: 1px 5px;
+	border: 1px solid var(--line);
+	border-bottom-width: 2px;
+	border-radius: 4px;
+	color: var(--ink-2);
+	background: var(--sheet);
+}
+.nt .kbd {
+	margin-left: auto;
+}
+.mono {
+	font-family: var(--mono);
+	font-size: 12px;
+	letter-spacing: 0;
+}
+
+/* The status bar – the one fixed sync indicator. */
+.status {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	padding: 0 20px 0 28px;
+	font-size: 12px;
+	color: var(--ink-2);
+	border-top: 1px solid var(--line-soft);
+	min-width: 0;
+	white-space: nowrap;
+}
+.status .s {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+}
+.status .s svg {
+	width: 14px;
+	height: 14px;
+}
+.status .sp {
+	flex: 1;
+}
+.status .led {
+	width: 7px;
+	height: 7px;
+}
+.okf-status {
+	position: relative;
+}
+.okf-status-btn {
+	font: inherit;
+	color: inherit;
+	background: none;
+	border: 0;
+	padding: 2px 6px;
+	margin: 0 -6px;
+	border-radius: var(--r-sm);
+	cursor: pointer;
+}
+.okf-status-btn:hover {
+	color: var(--ink);
+	background: var(--line-soft);
+}
+.okf-status-btn:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+}
+.okf-panel {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 8px);
+	width: 380px;
+	max-height: 50vh;
+	overflow: auto;
+	padding: 12px 14px;
+	background: var(--sheet);
+	border: 1px solid var(--line);
+	border-radius: var(--r);
+	box-shadow: var(--float-shadow);
+	white-space: normal;
+	z-index: 30;
+}
+.okf-panel-head {
+	font-weight: 500;
+	color: var(--ink);
+	margin-bottom: 8px;
+}
+/* Trust marks – a shape and a colour, never colour alone. */
+.tr {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	display: inline-block;
+}
+.status .tr {
+	width: 7px;
+	height: 7px;
+}
+.tr.u {
+	border: 1.5px solid var(--ink-3);
+}
+.tr.m {
+	border: 1.5px solid var(--accent);
+	background: linear-gradient(90deg, var(--accent) 50%, transparent 50%);
+}
+.tr.h {
+	background: var(--green);
+}
+.tr.s {
+	border: 1.5px dashed var(--amber);
 }

@@ -1,4 +1,4 @@
-import { GitBranch, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, GitBranch, Plus, Trash2 } from "lucide-react";
 import {
 	type FormEvent,
 	type MouseEvent as ReactMouseEvent,
@@ -134,11 +134,10 @@ export function MenuPopover({
 }
 
 /**
- * The signed-in user chip (#20, auth batch): avatar + login, opens the
- * one-item sign-out menu. Lives at the end of the doc head (owner round –
- * moved out of the sidebar head's brand row). canWrite=false adds the warn
- * read-only pill so a read collaborator reads the coming 403s before
- * hitting one.
+ * The signed-in user chip (#20, auth batch): the rail's avatar square (ui
+ * v1), opening the one-item sign-out menu. canWrite=false swaps the corner
+ * mark and says "read-only" in the title, so a read collaborator reads the
+ * coming 403s before hitting one.
  */
 export function UserChip({
 	login,
@@ -150,28 +149,30 @@ export function UserChip({
 	onSignOut: () => void;
 }) {
 	const menu = useMenu();
+	// The rail's avatar square (ui v1): initials under the GitHub avatar, so
+	// a blocked or failed image still reads as someone. Read-only access is
+	// the amber corner mark plus the title – never colour alone.
 	return (
-		<span className="menu-wrap user-chip-wrap">
-			{!canWrite && <span className="readonly-pill">read-only</span>}
+		<span className="menu-wrap user-chip-wrap" ref={menu.wrapRef}>
 			<button
 				type="button"
-				className="user-chip"
-				title={`${login} – sign out`}
+				className={`me${canWrite ? "" : " readonly"}`}
+				title={`${login} · ${canWrite ? "write access" : "read-only"} – sign out`}
 				aria-label={`Signed in as ${login}. Sign out`}
 				aria-expanded={menu.open}
 				onClick={menu.toggle}
 			>
+				<span aria-hidden="true">{login.slice(0, 2).toUpperCase()}</span>
 				<img
-					className="chip-avatar"
-					src={`https://avatars.githubusercontent.com/${encodeURIComponent(login)}?s=64`}
+					className="me-avatar"
+					src={`https://avatars.githubusercontent.com/${encodeURIComponent(login)}?s=68`}
 					alt=""
-					width={18}
-					height={18}
+					width={34}
+					height={34}
 					onError={(e) => {
 						e.currentTarget.style.visibility = "hidden";
 					}}
 				/>
-				<span className="chip-login">{login}</span>
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				<button
@@ -203,10 +204,14 @@ export function BranchMenu({
 	current,
 	prsEnabled,
 	mainName,
+	led,
 	onAction,
 }: {
 	current: string | null;
 	prsEnabled: boolean;
+	/** The navigator trigger's sync LED (ui v1) – App's led colour; absent
+	 *  renders no dot. The status bar carries the word. */
+	led?: string;
 	/** The repo's main branch (meta.main): the drafting model's landing base –
 	 *  never offered a delete, merged or not (the server refuses it too). */
 	mainName: string | null;
@@ -262,7 +267,9 @@ export function BranchMenu({
 				onClick={menu.toggle}
 			>
 				<GitBranch aria-hidden="true" />
-				<span className="branch-name">on {current ?? "…"}</span>
+				<span className="branch-name">{current ?? "…"}</span>
+				{led && <span className={`led ${led}`} aria-hidden="true" />}
+				<ChevronDown className="branch-chev" aria-hidden="true" />
 			</button>
 			<MenuPopover anchor={menu.anchor} popRef={menu.popRef}>
 				{failed && <p className="menu-empty">branches unavailable</p>}

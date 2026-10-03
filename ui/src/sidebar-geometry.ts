@@ -22,3 +22,23 @@ export function readStoredSidebarWidth(): number | null {
 export function storeSidebarWidth(width: number): void {
 	localStorage.setItem(SIDEBAR_W_KEY, String(width));
 }
+
+const SIDEBAR_COLLAPSED_KEY = "fragmt.sidebarCollapsed";
+
+/** The navigator's persisted collapse (ui v1, Ctrl+\ and the rail toggle).
+ *  Storage can throw (private mode, blocked site data) – that reads as open. */
+export function readStoredSidebarCollapsed(): boolean {
+	try {
+		return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+	} catch {
+		return false;
+	}
+}
+
+export function storeSidebarCollapsed(collapsed: boolean): void {
+	try {
+		localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+	} catch {
+		// a convenience, not state – the toggle still works this session
+	}
+}

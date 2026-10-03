@@ -1,7 +1,5 @@
 import { SquareArrowOutUpRight, X } from "lucide-react";
 import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
-import { useAuth } from "./AuthGate";
-import { UserChip } from "./Menus";
 import { clampSlideoutShare } from "./slideout-geometry";
 
 /**
@@ -73,8 +71,6 @@ export function Slideout({
 	references,
 	commentCount,
 	previewTitle,
-	led,
-	ledLabel,
 	onPromote,
 	onClose,
 	onShare,
@@ -97,10 +93,6 @@ export function Slideout({
 	/** The previewed doc's display title – the head's "Preview · <title>"
 	 *  line (null with nothing previewed). */
 	previewTitle: string | null;
-	/** The sync LED + one-word status (App's), the rail head's right end –
-	 *  the v0.5.0 header restored (testing round 2026-08-26). */
-	led: string;
-	ledLabel: string;
 	/** The head's open-in-main act (preview state, #15): App closes the pane
 	 *  and sends the previewed doc through the navigation queue. Absent =
 	 *  no button (nothing previewed). */
@@ -109,9 +101,6 @@ export function Slideout({
 	onShare: (share: number, commit: boolean) => void;
 	children: ReactNode;
 }) {
-	// The signed-in session for the comments bar head's user chip (null =
-	// auth off – the head keeps its exact pre-auth shape).
-	const auth = useAuth();
 	// #27 (b4): the wide split serves a preview OR the PR mode – the
 	// .preview class is the shared wide machinery (divider, flexed width).
 	const wide = preview || prTitle !== null;
@@ -147,30 +136,6 @@ export function Slideout({
 						<span className="slideout-title">Comments · {commentCount}</span>
 					)}
 					<span className="slideout-spacer" />
-					{/* The rail head's right end (v0.5.0): the sync LED + word.
-					    Preview state keeps it too – the split hides the sidebar,
-					    so this stays the one always-visible sync cue. Hidden
-					    ≤1180px (the topbar's LED covers it there). */}
-					<span
-						className={`sync-indicator${led === "amber" ? " warn" : led === "red" ? " err" : ""}`}
-						role="status"
-						title={ledLabel}
-					>
-						<span className={`led ${led}`} aria-hidden="true" />
-						{ledLabel}
-					</span>
-					{/* The signed-in user's chip (#20, owner round): the comments
-					    bar head's trailing slot, after the sync cue – the owner's
-					    "Comments · N    Synced    login details" shape. Kept in the
-					    preview state too: the split hides the sidebar, so this is
-					    the one always-visible sign-in cue. */}
-					{auth && (
-						<UserChip
-							login={auth.login}
-							canWrite={auth.canWrite}
-							onSignOut={auth.signOut}
-						/>
-					)}
 					{/* Open in main pane (#15): the previewed doc becomes the
 					    main one – through the navigation queue. The icon reads
 					    as move-to-main, not edit. */}

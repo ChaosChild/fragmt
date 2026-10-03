@@ -315,6 +315,9 @@ export interface RepoMeta {
 	/** Non-null while a stood merge is being resolved (M4-4 b3) – resolution
 	 *  mode's on-switch; the full per-file detail is getMergeState. */
 	merge: { branch: string | null; remaining: number } | null;
+	/** The navigator head's repo line (ui v1). Optional: older servers and
+	 *  fixtures omit it, and the head just drops the parts it can't name. */
+	repo?: { name: string; slug: { owner: string; repo: string } | null };
 }
 
 export const getMeta = () => request<RepoMeta>("/api/meta");

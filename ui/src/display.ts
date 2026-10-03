@@ -212,3 +212,14 @@ export function metaViewRows(
 	}
 	return rows;
 }
+
+/** Words in a doc body for the status bar (ui v1): fenced code and inline
+ *  HTML (the `<span data-c>` comment anchors) don't count; markdown
+ *  punctuation tokens with no letter or digit don't either. The body arrives
+ *  without its frontmatter (DocResponse.markdown). */
+export function wordCount(markdown: string): number {
+	const prose = markdown
+		.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, " ")
+		.replace(/<[^>]+>/g, " ");
+	return prose.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+}

@@ -12,6 +12,7 @@ import {
 	isStaleIso,
 	metaViewRows,
 	toIsoUtc,
+	wordCount,
 } from "../ui/src/display.js";
 
 describe("avatarUser", () => {
@@ -168,5 +169,25 @@ describe("metaViewRows (the metadata view block)", () => {
 			{ key: "generated", value: "fragmt-agent/x" },
 			{ key: "verified", value: "1 event · latest by human:b" },
 		]);
+	});
+});
+
+describe("wordCount (status bar)", () => {
+	test("counts prose words, skipping code fences, comment spans and bare punctuation", () => {
+		const body = [
+			"# The title",
+			"",
+			'A <span data-c="c1">marked phrase</span> here – and more.',
+			"",
+			"```ts",
+			"const notCounted = true;",
+			"```",
+			"",
+			"- one",
+			"- two",
+		].join("\n");
+		// The, title, A, marked, phrase, here, and, more., one, two
+		expect(wordCount(body)).toBe(10);
+		expect(wordCount("")).toBe(0);
 	});
 });

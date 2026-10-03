@@ -771,11 +771,16 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 
 	app.get("/api/meta", async (c) => {
 		const meta = await repoMeta(ctx.repoRoot, ctx.docsRoot);
+		// The navigator head's identity (ui v1): the GitHub repo name when
+		// origin is github.com, else the checkout's folder name. Behind the
+		// /api gate like the rest of meta – the sign-in page never shows it.
+		const slug = (await githubSlug(ctx.repoRoot)) ?? null;
 		// Explicit .fragmt.json authors entries override derived mappings; the
 		// merge happens server-side so core/meta stays free of auth state.
 		return c.json({
 			...meta,
 			authors: { ...verifiedEmailLogins(), ...meta.authors },
+			repo: { name: slug?.repo ?? basename(resolve(ctx.repoRoot)), slug },
 		});
 	});
 

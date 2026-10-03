@@ -142,8 +142,6 @@ export function DocView({
 	onDraftFirst,
 	docMeta,
 	branch,
-	led,
-	ledLabel,
 	draftBranch,
 	onOpenDraft,
 	onDraft,
@@ -195,9 +193,6 @@ export function DocView({
 	docMeta?: DocMeta;
 	/** Current branch name – the "vN · branch" segment. */
 	branch: string | null;
-	/** App's LED color/word – reused verbatim in the head (one vocabulary). */
-	led: string;
-	ledLabel: string;
 	/** The branch a draft pill would check out; null = no pill (App computes). */
 	draftBranch: string | null;
 	onOpenDraft: () => void;
@@ -883,9 +878,8 @@ export function DocView({
 		);
 
 	// The doc-head meta line (item 3): "vN · branch · saved <time>" in read
-	// mode, "editing vN · branch" in edit mode, then the sync LED + word –
-	// the rail's one-word vocabulary, reused.
-	const syncWord = editing ? "unsaved changes" : ledLabel.toLowerCase();
+	// mode, "editing vN · branch" in edit mode. The sync LED lives in the
+	// status bar alone (ui v1, DESIGN.md §7).
 	const lineSegs: string[] = [];
 	if (docMeta)
 		lineSegs.push(
@@ -937,15 +931,6 @@ export function DocView({
 									{s}
 								</span>
 							))}
-							{lineSegs.length > 0 && <span className="sep">·</span>}
-							<span className="dh-sync">
-								<span
-									className={`led ${editing ? "amber" : led}`}
-									role="status"
-									aria-label={syncWord}
-								/>
-								{syncWord}
-							</span>
 						</div>
 						{/* #33: the metadata chips + the references toggle. Quiet by
 						    default – tier always (lowest emphasis), type/status only

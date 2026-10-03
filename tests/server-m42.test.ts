@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { RepoMeta } from "../src/core/index.js";
 import { createApp, startServer } from "../src/server/index.js";
@@ -51,6 +51,23 @@ function api(method: string, path: string, body?: unknown): Promise<Response> {
 function gitOut(args: string[]): string {
 	return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 }
+
+test("GET /api/meta: repo is the folder name without a GitHub origin, the slug's repo with one", async () => {
+	let meta = (await (await api("GET", "/api/meta")).json()) as {
+		repo: { name: string; slug: unknown };
+	};
+	expect(meta.repo).toEqual({
+		name: basename(root),
+		slug: null,
+	});
+
+	gitOut(["remote", "add", "origin", "https://github.com/acme/handbook.git"]);
+	meta = await (await api("GET", "/api/meta")).json();
+	expect(meta.repo).toEqual({
+		name: "handbook",
+		slug: { owner: "acme", repo: "handbook" },
+	});
+});
 
 test("GET /api/meta: main/current/docs/drafts/deleted, docs paths docsRoot-relative", async () => {
 	const res = await api("GET", "/api/meta");
