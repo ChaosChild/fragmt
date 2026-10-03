@@ -4298,3 +4298,129 @@ h1.title::after {
 		transform: none;
 	}
 }
+
+/* ═══ ui v1 – the preview as a second sheet beside the first ═══ */
+/* The split (main | divider | pane) is the #15 flex machinery; the pane
+   now reads as a sheet on the desk, and each column scrolls on its own. */
+.slideout.preview {
+	margin: 28px 16px 12px 0;
+	background: var(--sheet);
+	border-radius: var(--r-lg);
+	box-shadow: var(--sheet-shadow);
+	overflow: hidden;
+}
+.slideout-divider {
+	width: 18px;
+	background: transparent;
+}
+.slideout-divider:hover,
+.slideout-divider:active {
+	background: transparent;
+}
+.slideout-divider::before {
+	background: var(--line);
+}
+.slideout.preview .slideout-head {
+	gap: 8px;
+	padding: 12px 14px 12px 28px;
+	border-bottom: 1px solid var(--line-soft);
+}
+.slideout-kicker {
+	flex: 1;
+	min-width: 0;
+}
+.slideout-kicker .kicker-path {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.slideout-head .slideout-close {
+	border: 0;
+	color: var(--ink-2);
+	border-radius: var(--r);
+}
+.slideout-head .slideout-close:hover {
+	background: var(--line-soft);
+	color: var(--ink);
+}
+.preview-body {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	padding: 28px 40px 48px;
+}
+.preview-body h1.title {
+	font-size: 40px;
+	margin: 0 0 20px;
+}
+.slideout .markdown {
+	font-size: 17px;
+}
+
+/* Marginalia fold to pins while two sheets share the desk. */
+.page.has-margin.pins {
+	grid-template-columns: minmax(0, 1fr) 40px;
+	gap: 10px;
+	padding: 28px 0 96px 24px;
+}
+.page.pins .margin-h b,
+.page.pins .margin-h .show-resolved {
+	display: none;
+}
+.note.pin {
+	height: 34px;
+}
+.note.pin::before {
+	left: -10px;
+	top: 17px;
+	width: 8px;
+}
+.pin-btn {
+	width: 34px;
+	height: 34px;
+	border-radius: 10px;
+	display: grid;
+	place-items: center;
+	border: 0;
+	cursor: pointer;
+	font: 600 11px var(--sans);
+	color: #fff;
+	background: linear-gradient(135deg, #55657d, #2b3647);
+	box-shadow: 0 0 0 2px var(--desk);
+}
+.note.pin.on .pin-btn {
+	box-shadow:
+		0 0 0 2px var(--desk),
+		0 0 0 4px var(--accent);
+}
+.pin-btn:focus-visible {
+	outline: none;
+	box-shadow:
+		0 0 0 2px var(--desk),
+		var(--focus);
+}
+/* The one expanded note, a popover over the margin's left. */
+.pin-pop {
+	position: absolute;
+	right: 44px;
+	width: 292px;
+	z-index: 5;
+}
+.pin-pop .comment-thread {
+	background: var(--sheet);
+	box-shadow: var(--float-shadow);
+	border-color: transparent;
+}
+
+@media (max-width: 1180px) {
+	.slideout.preview {
+		margin: 0;
+		border-radius: var(--r-lg) var(--r-lg) 0 0;
+		box-shadow: var(--float-shadow);
+	}
+	.page.has-margin.pins {
+		grid-template-columns: minmax(0, 820px);
+		padding: 28px 32px 96px;
+	}
+}

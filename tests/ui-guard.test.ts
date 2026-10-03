@@ -613,6 +613,83 @@ describe("App: marginalia (ui v1 phase 5)", () => {
 	});
 });
 
+describe("App: the preview beside the doc (ui v1 phase 6)", () => {
+	/** a.md links sub/c.md; PUTs are recorded and answered like a save. */
+	function previewFetch(puts: string[]) {
+		return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = new URL(String(input), "http://localhost");
+			if (url.pathname === "/api/docs/a.md" && init?.method === "PUT") {
+				puts.push(String(init.body));
+				return jsonResponse({ sha: "s1", hash: "h1" });
+			}
+			if (url.pathname === "/api/docs/a.md")
+				return jsonResponse(docOf("a.md", "See [C](sub/c.md) here."));
+			return mockFetch(input);
+		});
+	}
+
+	async function openPreview() {
+		const link = await waitFor(() => {
+			const el = document.querySelector<HTMLElement>(
+				'.sheet a[href="sub/c.md"]',
+			);
+			if (!el) throw new Error("link not rendered yet");
+			return el;
+		});
+		fireEvent.click(link, { shiftKey: true });
+		return screen.findByRole("complementary", { name: "Preview" });
+	}
+
+	test("with a preview open, Edit still works, Link at cursor is gated on edit mode and inserts the previewed path, and Save saves it", async () => {
+		const puts: string[] = [];
+		vi.stubGlobal("fetch", previewFetch(puts));
+		await renderAppReady();
+		const pane = await openPreview();
+
+		// Read mode: the button is there, disabled, and says why.
+		const link = within(pane).getByRole("button", { name: /Link at cursor/ });
+		expect((link as HTMLButtonElement).disabled).toBe(true);
+		expect(link.getAttribute("title")).toBe(
+			"Start editing the main doc to insert a link",
+		);
+
+		// The main doc stays fully interactive beside the preview.
+		await enterEditMode();
+		expect(screen.getByRole("complementary", { name: "Preview" })).toBeTruthy();
+		await waitFor(() =>
+			expect((link as HTMLButtonElement).disabled).toBe(false),
+		);
+		fireEvent.click(link);
+		await waitFor(() =>
+			expect(
+				document.querySelectorAll('.sheet a[href="sub/c.md"]').length,
+			).toBe(2),
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		await waitFor(() => expect(puts.length).toBe(1));
+		const saved = JSON.parse(puts[0]) as { markdown: string };
+		// The inserted reference is the @-menu's own shape: title + path href.
+		expect(saved.markdown.match(/\]\(sub\/c\.md\)/g)?.length).toBe(2);
+	});
+
+	test("Escape closes the preview before it touches the edit session", async () => {
+		vi.stubGlobal("fetch", previewFetch([]));
+		await renderAppReady();
+		await openPreview();
+		await enterEditMode();
+		const editor = document.querySelector(".sheet .ProseMirror") as HTMLElement;
+		fireEvent.keyDown(editor, { key: "Escape" });
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("complementary", { name: "Preview" }),
+			).toBeNull(),
+		);
+		// Still editing: the first Escape was spent on the preview.
+		expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+	});
+});
+
 describe("hasHardWraps", () => {
 	test("a wrapped paragraph is true", () => {
 		expect(hasHardWraps("first line of prose\nsecond line of prose")).toBe(

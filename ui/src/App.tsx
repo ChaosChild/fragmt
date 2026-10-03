@@ -48,7 +48,7 @@ import {
 import { CommentsRail } from "./CommentsRail";
 import { commentSpanTitle } from "./comment-summary";
 import { DocPreview } from "./DocPreview";
-import { DocView } from "./DocView";
+import { DocView, type DocViewHandle } from "./DocView";
 import { displayTitle, wordCount } from "./display";
 import {
 	basename,
@@ -1044,6 +1044,10 @@ export function App() {
 	// re-targets these, which is why none of it goes through the navigation
 	// queue.
 	const [previewPath, setPreviewPath] = useState<string | null>(null);
+	// ui v1 phase 6: the main editor's handle and its edit state – the
+	// preview's "Link at cursor" inserts through it.
+	const docViewRef = useRef<DocViewHandle>(null);
+	const [mainEditing, setMainEditing] = useState(false);
 	const [previewAnchor, setPreviewAnchor] = useState<string | null>(null);
 	const [previewDoc, setPreviewDoc] = useState<DocResponse | null>(null);
 	const [previewError, setPreviewError] = useState<string | null>(null);
@@ -1470,6 +1474,9 @@ export function App() {
 								)
 							) : (
 								<DocView
+									ref={docViewRef}
+									onEditingChange={setMainEditing}
+									marginPins={previewPath !== null}
 									doc={doc}
 									selected={selected}
 									// A successful save commits locally – synced flips back
@@ -1541,6 +1548,7 @@ export function App() {
 											error={railError}
 											docs={docs}
 											onOpenDoc={setSelected}
+											pins={previewPath !== null}
 										/>
 									}
 								/>
@@ -1560,7 +1568,18 @@ export function App() {
 									prTitle={
 										prView !== null ? (prTitle ?? "Pull requests") : null
 									}
-									previewTitle={previewTitle}
+									previewPath={previewPath}
+									// "Link at cursor" (ui v1): only while the main doc is
+									// being edited – the same insert as a typed @.
+									onLinkAtCursor={
+										previewPath === null
+											? undefined
+											: mainEditing
+												? () => {
+														docViewRef.current?.insertDocLink(previewPath);
+													}
+												: null
+									}
 									onPromote={previewPath ? promotePreview : undefined}
 									onClose={
 										previewPath !== null
@@ -1598,6 +1617,7 @@ export function App() {
 										) : null
 									) : (
 										<DocPreview
+											title={previewTitle}
 											path={previewPath}
 											doc={previewDoc}
 											error={previewError}

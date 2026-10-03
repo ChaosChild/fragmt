@@ -33,6 +33,17 @@ function timeAgo(iso: string): string {
 	return new Date(iso).toLocaleDateString();
 }
 
+/** The pin's two letters – the author's initials. */
+function initials(name: string): string {
+	return name
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((w) => w[0] ?? "")
+		.join("")
+		.toUpperCase();
+}
+
 /** Restart the flash animation (class off → reflow → class on). */
 function flash(el: Element) {
 	el.classList.remove("flash");
@@ -398,6 +409,7 @@ export function CommentsRail({
 	error,
 	docs,
 	onOpenDoc,
+	pins = false,
 }: {
 	threads: CommentThread[];
 	/** Ids whose data-c span is present in the rendered doc (App's reconcile). */
@@ -419,15 +431,38 @@ export function CommentsRail({
 	docs: AtDoc[];
 	/** A linkified doc path was clicked – open that doc (App). */
 	onOpenDoc: (path: string) => void;
+	/** A preview shares the desk (ui v1, phase 6): notes fold to 34px author
+	 *  pins at the same positions; a pin (or its highlight) expands that one
+	 *  note as a popover, Escape folds it again. */
+	pins?: boolean;
 }) {
 	const [showResolved, setShowResolved] = useState(false);
 	const [focused, setFocused] = useState<string | null>(null);
+	const [expanded, setExpanded] = useState<string | null>(null);
+	useEffect(() => {
+		if (!pins) setExpanded(null);
+	}, [pins]);
+	// Escape folds the popover – on document, so it is consumed before App's
+	// window-level chain would close the preview itself.
+	useEffect(() => {
+		if (!expanded) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.defaultPrevented) return;
+			e.preventDefault();
+			setExpanded(null);
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [expanded]);
 	const notesRef = useRef<HTMLDivElement>(null);
 	const [tops, setTops] = useState<Map<string, number>>(() => new Map());
 	const [notesHeight, setNotesHeight] = useState(0);
 	// Read inside the focus effect without re-running it on every refetch.
 	const threadsRef = useRef(threads);
 	threadsRef.current = threads;
+	// Read at focus time only – toggling pins must not replay the last focus.
+	const pinsRef = useRef(pins);
+	pinsRef.current = pins;
 
 	const resolvedCount = threads.filter((t) => t.resolved).length;
 	const openCount = threads.length - resolvedCount;
@@ -517,6 +552,7 @@ export function CommentsRail({
 			setShowResolved(true);
 		}
 		setFocused(focus.id);
+		if (pinsRef.current) setExpanded(focus.id);
 		const card = notesRef.current?.parentElement?.querySelector(
 			`[data-c="${CSS.escape(focus.id)}"]`,
 		);
@@ -597,31 +633,75 @@ export function CommentsRail({
 				ref={notesRef}
 				style={{ height: notesHeight }}
 			>
-				{placedThreads.map((t) => (
-					// biome-ignore lint/a11y/noStaticElementInteractions: a pointer convenience – the card's own buttons are the keyboard path; focusing only re-runs the layout.
-					// biome-ignore lint/a11y/useKeyWithClickEvents: as above.
-					<div
-						key={t.id}
-						className={`note${focused === t.id ? " on" : ""}`}
-						data-note={t.id}
-						style={
-							tops.has(t.id)
-								? { top: tops.get(t.id) }
-								: { visibility: "hidden" }
-						}
-						onClick={() => setFocused(t.id)}
-					>
-						{card(t)}
-					</div>
-				))}
+				{pins &&
+					placedThreads.map((t) => (
+						<div
+							key={t.id}
+							className={`note pin${expanded === t.id ? " on" : ""}`}
+							data-note={t.id}
+							style={
+								tops.has(t.id)
+									? { top: tops.get(t.id) }
+									: { visibility: "hidden" }
+							}
+						>
+							<button
+								type="button"
+								className="pin-btn"
+								aria-label={`Comment by ${t.author}: ${t.quote}`}
+								title={`${t.author}: ${t.replies[0]?.body ?? ""}`}
+								aria-expanded={expanded === t.id}
+								onClick={() => {
+									setFocused(t.id);
+									setExpanded((x) => (x === t.id ? null : t.id));
+								}}
+							>
+								{initials(t.author)}
+							</button>
+						</div>
+					))}
+				{pins &&
+					expanded &&
+					tops.has(expanded) &&
+					placedThreads
+						.filter((t) => t.id === expanded)
+						.map((t) => (
+							<div
+								key={t.id}
+								className="pin-pop"
+								style={{ top: tops.get(t.id) }}
+							>
+								{card(t)}
+							</div>
+						))}
+				{!pins &&
+					placedThreads.map((t) => (
+						// biome-ignore lint/a11y/noStaticElementInteractions: a pointer convenience – the card's own buttons are the keyboard path; focusing only re-runs the layout.
+						// biome-ignore lint/a11y/useKeyWithClickEvents: as above.
+						<div
+							key={t.id}
+							className={`note${focused === t.id ? " on" : ""}`}
+							data-note={t.id}
+							style={
+								tops.has(t.id)
+									? { top: tops.get(t.id) }
+									: { visibility: "hidden" }
+							}
+							onClick={() => setFocused(t.id)}
+						>
+							{card(t)}
+						</div>
+					))}
 			</div>
-			{unanchored.length > 0 && (
+			{!pins && unanchored.length > 0 && (
 				<div className="margin-rest">
 					<p className="margin-group">Not anchored</p>
 					{unanchored.map(card)}
 				</div>
 			)}
-			<p className="margin-hint">Select text in the doc to leave a note.</p>
+			{!pins && (
+				<p className="margin-hint">Select text in the doc to leave a note.</p>
+			)}
 		</div>
 	);
 }

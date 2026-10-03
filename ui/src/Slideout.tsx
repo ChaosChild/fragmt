@@ -1,4 +1,4 @@
-import { SquareArrowOutUpRight, X } from "lucide-react";
+import { Link2, SquareArrowOutUpRight, X } from "lucide-react";
 import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import { clampSlideoutShare } from "./slideout-geometry";
 
@@ -59,8 +59,9 @@ export function Slideout({
 	open,
 	preview,
 	prTitle,
-	previewTitle,
+	previewPath,
 	onPromote,
+	onLinkAtCursor,
 	onClose,
 	onShare,
 	children,
@@ -74,13 +75,17 @@ export function Slideout({
 	 *  "Pull requests" fallback). Non-null = the fourth state, riding the
 	 *  same wide split as a preview. */
 	prTitle: string | null;
-	/** The previewed doc's display title – the head's "Preview · <title>"
-	 *  line (null with nothing previewed). */
-	previewTitle: string | null;
+	/** The previewed doc's path – the head's "Preview — <path>" kicker
+	 *  (null with nothing previewed). */
+	previewPath: string | null;
 	/** The head's open-in-main act (preview state, #15): App closes the pane
 	 *  and sends the previewed doc through the navigation queue. Absent =
 	 *  no button (nothing previewed). */
 	onPromote?: () => void;
+	/** "Link at cursor" (ui v1): link the previewed doc at the main
+	 *  editor's cursor; null = the main doc isn't being edited (the button
+	 *  shows, disabled, saying so). */
+	onLinkAtCursor?: (() => void) | null;
 	onClose: () => void;
 	onShare: (share: number, commit: boolean) => void;
 	children: ReactNode;
@@ -97,9 +102,11 @@ export function Slideout({
 			>
 				<div className="slideout-head">
 					{preview ? (
-						previewTitle && (
-							<span className="slideout-title" title={previewTitle}>
-								Preview · {previewTitle}
+						previewPath && (
+							<span className="kicker slideout-kicker" title={previewPath}>
+								<span className="type">Preview</span>
+								<span className="rule" />
+								<span className="kicker-path">{previewPath}</span>
 							</span>
 						)
 					) : (
@@ -108,18 +115,34 @@ export function Slideout({
 						</span>
 					)}
 					<span className="slideout-spacer" />
+					{preview && onLinkAtCursor !== undefined && (
+						<button
+							type="button"
+							className="btn line"
+							disabled={onLinkAtCursor === null}
+							title={
+								onLinkAtCursor === null
+									? "Start editing the main doc to insert a link"
+									: "Insert a link to this doc at the main editor's cursor"
+							}
+							onClick={onLinkAtCursor ?? undefined}
+						>
+							<Link2 aria-hidden="true" />
+							Link at cursor
+						</button>
+					)}
 					{/* Open in main pane (#15): the previewed doc becomes the
-					    main one – through the navigation queue. The icon reads
-					    as move-to-main, not edit. */}
+					    main one – through the navigation queue. */}
 					{preview && onPromote && (
 						<button
 							type="button"
-							className="tool-btn"
+							className="btn"
 							title="Open in main pane"
 							aria-label="Open in main pane"
 							onClick={onPromote}
 						>
 							<SquareArrowOutUpRight aria-hidden="true" />
+							Open
 						</button>
 					)}
 					<button

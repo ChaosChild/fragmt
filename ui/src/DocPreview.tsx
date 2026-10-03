@@ -15,6 +15,7 @@ import type { AtDoc } from "./editor/at";
  * spans, nothing more (no reply/resolve UI here).
  */
 export function DocPreview({
+	title,
 	path,
 	doc,
 	error,
@@ -28,6 +29,8 @@ export function DocPreview({
 	onLinkNotFound,
 	spanTitleFor,
 }: {
+	/** The previewed doc's display title – the second sheet's heading. */
+	title: string | null;
 	/** The previewed docsRoot-relative path (App owns it and the fetch). */
 	path: string | null;
 	/** The fetched doc; null while loading, and on error. */
@@ -83,6 +86,7 @@ export function DocPreview({
 					<span />
 				</div>
 			)}
+			{!error && doc && title && <h1 className="title">{title}</h1>}
 			{!error && doc && (
 				<EditorPane
 					key={doc.path}

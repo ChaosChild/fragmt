@@ -9,7 +9,14 @@ import {
 	TriangleAlert,
 	X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+	type ReactNode,
+	type Ref,
+	useEffect,
+	useImperativeHandle,
+	useRef,
+	useState,
+} from "react";
 import {
 	addComment,
 	type DocMeta,
@@ -133,6 +140,13 @@ function statusOptions(current: string): string[] {
 	).concat([...STATUS_VALUES]);
 }
 
+/** What App can ask of the main doc view. */
+export interface DocViewHandle {
+	/** Link the doc at `path` at the editor's cursor – the preview's "Link
+	 *  at cursor". False (nothing inserted) outside edit mode. */
+	insertDocLink(path: string): boolean;
+}
+
 /**
  * The doc pane: reading mode by default (DESIGN §3), one explicit Edit action
  * flips the SAME mounted Tiptap editor to editable (M4 review decision 3 –
@@ -181,6 +195,9 @@ export function DocView({
 	repo,
 	margin,
 	marginOpen = false,
+	marginPins = false,
+	onEditingChange,
+	ref,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
@@ -269,6 +286,12 @@ export function DocView({
 	margin?: ReactNode;
 	/** ≤1180px the margin is the bottom sheet – App's open state. */
 	marginOpen?: boolean;
+	/** The margin folds to its 40px pin column (a preview shares the desk). */
+	marginPins?: boolean;
+	/** The edit session opened or closed – App gates "Link at cursor". */
+	onEditingChange?: (editing: boolean) => void;
+	/** App's handle on the main editor (ui v1, phase 6). */
+	ref?: Ref<DocViewHandle>;
 }) {
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -397,6 +420,27 @@ export function DocView({
 	}, [editing, doc]);
 	const renameRef = useRef<HTMLInputElement>(null);
 	const editorRef = useRef<EditorPaneHandle>(null);
+	useEffect(() => {
+		onEditingChange?.(editing);
+	}, [editing, onEditingChange]);
+	useImperativeHandle(
+		ref,
+		() => ({
+			insertDocLink: (path: string) => {
+				if (!editing) return false;
+				const known = docs.find((d) => d.path === path);
+				return (
+					editorRef.current?.insertDocLink(
+						known ?? {
+							path,
+							title: displayTitle(undefined, path.split("/").at(-1) ?? path),
+						},
+					) ?? false
+				);
+			},
+		}),
+		[editing, docs],
+	);
 	const paneRef = useRef<HTMLDivElement>(null);
 
 	// The confirm banners render at the top of the pane – bring them into view
@@ -1325,7 +1369,9 @@ export function DocView({
 					))}
 			</CommandBar>
 			<div className="desk">
-				<div className={`page${margin ? " has-margin" : ""}`}>
+				<div
+					className={`page${margin ? " has-margin" : ""}${margin && marginPins ? " pins" : ""}`}
+				>
 					<article
 						className={`sheet${editing ? " editing" : ""}`}
 						ref={paneRef}

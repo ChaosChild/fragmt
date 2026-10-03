@@ -9,7 +9,7 @@ import {
 	useState,
 } from "react";
 import { mapRangesToBlocks, sourceBlockSpans } from "./draft-gutter";
-import type { AtDoc, AtMenuState } from "./editor/at";
+import { type AtDoc, type AtMenuState, applyAtReference } from "./editor/at";
 import { BubbleToolbar } from "./editor/BubbleToolbar";
 import { editorExtensions } from "./editor/extensions";
 import { ImagePopover } from "./editor/ImageForm";
@@ -19,6 +19,11 @@ import type { SlashMenuState } from "./editor/slash";
 
 export interface EditorPaneHandle {
 	getMarkdown(): string;
+	/** Link `doc` at the current selection (ui v1, "Link at cursor"): the
+	 *  `@` reference's own insert, so the references field follows on save
+	 *  exactly as for a typed `@`. A selection is replaced; the editor keeps
+	 *  its last selection while blurred. False when not editable. */
+	insertDocLink(doc: AtDoc): boolean;
 }
 
 /** Scroll a heading id into view – the anchor dispatch's one action (M4-3
@@ -265,6 +270,12 @@ export function EditorPane({
 		ref,
 		() => ({
 			getMarkdown: () => editor?.storage.markdown.getMarkdown() ?? "",
+			insertDocLink: (doc: AtDoc) => {
+				if (!editor?.isEditable) return false;
+				const { from, to } = editor.state.selection;
+				applyAtReference(editor, { from, to }, doc);
+				return true;
+			},
 		}),
 		[editor],
 	);
