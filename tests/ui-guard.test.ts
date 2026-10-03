@@ -1888,3 +1888,50 @@ describe("App: the PR review pane (#27 b4)", () => {
 		).toBeTruthy();
 	});
 });
+
+describe("AuthGate: the sign-in page (ui v1 phase 12)", () => {
+	const signedOut = async (input: RequestInfo | URL): Promise<Response> => {
+		const url = new URL(String(input), "http://localhost");
+		if (url.pathname === "/api/auth/session")
+			return jsonResponse({ enabled: true, user: null, canWrite: false });
+		return mockFetch(input);
+	};
+
+	test("signed out: the wordmark, the GitHub link, nothing about the repo", async () => {
+		vi.stubGlobal("fetch", vi.fn(signedOut));
+		render(createElement(AuthGate, null, createElement(App)));
+		expect(await screen.findByRole("heading", { name: "fragmt" })).toBeTruthy();
+		const link = screen.getByRole("link", { name: "Continue with GitHub" });
+		expect(link.getAttribute("href")).toBe("/api/auth/login");
+		expect(screen.queryByRole("status")).toBeNull();
+		// The app never mounted – no repo payloads were asked for.
+		const asked = vi
+			.mocked(fetch)
+			.mock.calls.map(([u]) => new URL(String(u), "http://localhost").pathname);
+		expect(asked).toEqual(["/api/auth/session"]);
+	});
+
+	test("a 401 mid-session lands back here with the session-ended notice", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = new URL(String(input), "http://localhost");
+				if (url.pathname === "/api/auth/session")
+					return jsonResponse({
+						enabled: true,
+						user: { login: "tester" },
+						canWrite: true,
+					});
+				return new Response(JSON.stringify({ error: "sign in" }), {
+					status: 401,
+					headers: { "content-type": "application/json" },
+				});
+			}),
+		);
+		render(createElement(AuthGate, null, createElement(App)));
+		expect(await screen.findByText(/Your session ended/)).toBeTruthy();
+		expect(
+			screen.getByRole("link", { name: "Continue with GitHub" }),
+		).toBeTruthy();
+	});
+});
