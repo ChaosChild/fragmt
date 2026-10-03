@@ -267,3 +267,34 @@ test("sync() mirrors every branch to origin (no `as`)", {
 	expect(await sync(work)).toEqual({ conflict: false });
 	expect(branches(origin)).toEqual(["main", "topic"]);
 });
+
+test("an unpushed, conflict-resolved local merge syncs as-is (no flattening replay)", {
+	timeout: 20_000,
+}, async () => {
+	const { origin, work } = bareAndWork();
+	// topic and main both change f.md's line; the merge is resolved by hand –
+	// the shape the in-app resolution leaves before its first push.
+	run(work, ["checkout", "-q", "topic"]);
+	commitFile(work, "f.md", "topic\n", "topic edits f");
+	run(work, ["checkout", "-q", "main"]);
+	commitFile(work, "f.md", "main\n", "main edits f");
+	try {
+		run(work, ["merge", "-q", "topic"]);
+	} catch {
+		// the expected conflict
+	}
+	commitFile(work, "f.md", "resolved\n", "merge topic");
+	const merged = head(work);
+
+	// A flattening `pull --rebase` would replay "topic edits f" onto main and
+	// conflict; the merge must survive and reach origin untouched.
+	expect(await sync(work)).toEqual({ conflict: false });
+	expect(head(work)).toBe(merged);
+	expect(rebaseInProgress(work)).toBe(false);
+	const originMain = execFileSync(
+		"git",
+		["show-ref", "--hash", "refs/heads/main"],
+		{ cwd: origin, encoding: "utf8" },
+	).trim();
+	expect(originMain).toBe(merged);
+});
