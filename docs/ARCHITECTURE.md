@@ -84,7 +84,7 @@ The MCP server is nearly free once core exists. Because everything is markdown i
 
 ### 8. The web UI (ui v1, 2026-10)
 
-The UI (`ui/src`, React + Vite) is a client of the HTTP API only – it never reads the repo itself, and it never renders doc or PR content as raw HTML. The ui v1 round added four read-only API surfaces, each behind the same `/api` auth gate and validating its parameters before git sees them:
+The UI (`ui/src`, React + Vite) is a client of the HTTP API only – it never reads the repo itself, and it never renders doc or PR content as raw HTML. The ui v1 round added these read-only API surfaces, each behind the same `/api` auth gate and validating its parameters before git or GitHub sees them:
 
 - `GET /api/meta` gained `repo: { name, slug, docsRoot }` – the navigator head's repo name and the PR surface's GitHub slug (null off github.com).
 - `GET /api/branches/status` – per branch: ahead/behind main and a "conflicts with main" flag from `git merge-tree --write-tree` (git ≥ 2.38; older git reports no flag). Branch names pass `badBranchName` first.
