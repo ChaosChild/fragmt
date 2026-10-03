@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { basename, resolve } from "node:path";
+import { basename, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getRequestListener } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -780,7 +780,16 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		return c.json({
 			...meta,
 			authors: { ...verifiedEmailLogins(), ...meta.authors },
-			repo: { name: slug?.repo ?? basename(resolve(ctx.repoRoot)), slug },
+			repo: {
+				name: slug?.repo ?? basename(resolve(ctx.repoRoot)),
+				slug,
+				// Repo-relative POSIX, "" for the repo root – the sheet's
+				// "History on GitHub" link joins it with the doc path.
+				docsRoot: relative(
+					resolve(ctx.repoRoot),
+					resolve(ctx.repoRoot, ctx.docsRoot),
+				).replaceAll("\\", "/"),
+			},
 		});
 	});
 

@@ -49,7 +49,7 @@ import { CommentsRail } from "./CommentsRail";
 import { commentSpanTitle } from "./comment-summary";
 import { DocPreview } from "./DocPreview";
 import { DocView } from "./DocView";
-import { displayTitle, isReservedDoc, wordCount } from "./display";
+import { displayTitle, wordCount } from "./display";
 import {
 	basename,
 	type DragItem,
@@ -68,7 +68,6 @@ import {
 } from "./Menus";
 import { PRPane } from "./PRPane";
 import { Rail } from "./Rail";
-import { ReferencesPane } from "./ReferencesPane";
 import { ResolutionView } from "./ResolutionView";
 import { SearchModal } from "./SearchModal";
 import { Sidebar, SidebarResizeHandle } from "./Sidebar";
@@ -236,13 +235,8 @@ export function App() {
 	// ≤1180px, where the CSS turns the pane into the bottom sheet; a preview
 	// (previewPath) is what widens it into the draggable split.
 	const [railOpen, setRailOpen] = useState(false);
-	// #33 (D1): the pane's third mode – References. A dismissible state over
-	// the permanent rail: the doc-head toggle opens it (and lifts the sheet),
-	// its close button and the Escape chain return to comments. It re-targets
-	// with the main doc; a preview still wins over it.
-	const [refsMode, setRefsMode] = useState(false);
-	// #27 (b4): opening the PR surface lifts the ≤1180px sheet like the
-	// references toggle does – the desktop pane is always present anyway.
+	// #27 (b4): opening the PR surface lifts the ≤1180px sheet – the
+	// desktop pane is always present anyway.
 	useEffect(() => {
 		if (prView) setRailOpen(true);
 	}, [prView]);
@@ -709,14 +703,6 @@ export function App() {
 		return draftFirst();
 	}
 
-	// #33 (D1): open the References pane – the toggle's one direction; the
-	// pane's close and the Escape chain return to the rail. Opening lifts
-	// the ≤1180px sheet like a span click does.
-	function openReferences() {
-		setRefsMode(true);
-		setRailOpen(true);
-	}
-
 	// --- header file actions (M4-3 b4): rename/move/delete on the open doc.
 
 	// A title landed: the frontmatter changed, so the doc reloads and meta
@@ -1072,10 +1058,10 @@ export function App() {
 	// here by design, PM being keydown-inert on a non-editable view – the
 	// bubble's capture listener eats the selection-clearing ones). Modal
 	// first, then the preview, then the PR mode (#27 b4 – slotted to match
-	// the render precedence: a preview wins over it, it wins over
-	// references), then the References mode (#33): the modal usually closes
-	// itself (focus sits in its input), so this leg mostly covers focus
-	// escaping its trap.
+	// the render precedence: a preview wins over it): the modal usually
+	// closes itself (focus sits in its input), so this leg mostly covers
+	// focus escaping its trap. (The References mode is gone – ui v1's
+	// Connections live on the sheet.)
 	// biome-ignore lint/correctness/useExhaustiveDependencies: closePreview is re-created per render on purpose – its sidebar restore reads autoCollapsed (a ref), so the two open flags are the only state this listener branches on.
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
@@ -1089,14 +1075,11 @@ export function App() {
 			} else if (prView !== null) {
 				e.preventDefault();
 				setPrView(null);
-			} else if (refsMode) {
-				e.preventDefault();
-				setRefsMode(false);
 			}
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
-	}, [searchOpen, previewPath, prView, refsMode]);
+	}, [searchOpen, previewPath, prView]);
 
 	// The preview's fetch – the main doc's read client, cancel-guarded like
 	// the sidecar fetch. Quiet both ways: DocPreview's skeleton while
@@ -1537,10 +1520,8 @@ export function App() {
 									onDeleteDoc={requestDeleteDoc}
 									onRenamed={onRenamed}
 									okf={meta?.okf === true}
-									referencesOpen={
-										refsMode && previewPath === null && prView === null
-									}
-									onOpenReferences={openReferences}
+									docMetas={meta?.docs ?? {}}
+									repo={meta?.repo}
 								/>
 							)}
 						</main>
@@ -1556,7 +1537,6 @@ export function App() {
 								open={railOpen}
 								preview={previewPath !== null}
 								prTitle={prView !== null ? (prTitle ?? "Pull requests") : null}
-								references={refsMode}
 								commentCount={threads.length}
 								previewTitle={previewTitle}
 								onPromote={previewPath ? promotePreview : undefined}
@@ -1565,14 +1545,12 @@ export function App() {
 										? closePreview
 										: prView !== null
 											? () => setPrView(null)
-											: refsMode
-												? () => setRefsMode(false)
-												: closeSheet
+											: closeSheet
 								}
 								onShare={applySlideoutShare}
 							>
 								{/* Render precedence (#27 b4): a preview wins over the PR
-							    mode exactly as it wins over references – App renders
+							    mode – App renders
 							    DocPreview when previewPath is set, whatever prView
 							    holds; the PR mode yields and returns when the preview
 							    closes. */}
@@ -1594,14 +1572,6 @@ export function App() {
 														() => void switchTo({ kind: "switch", name: m }),
 													);
 											}}
-										/>
-									) : refsMode ? (
-										<ReferencesPane
-											references={doc?.frontmatter.references ?? []}
-											referencedBy={doc?.frontmatter["referenced-by"] ?? []}
-											docs={docs}
-											onPreview={openPreviewDoc}
-											reserved={doc ? isReservedDoc(doc.path) : false}
 										/>
 									) : (
 										<CommentsRail

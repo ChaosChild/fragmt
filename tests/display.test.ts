@@ -6,11 +6,13 @@
 import { describe, expect, test } from "vitest";
 import {
 	avatarUser,
+	collapseCrumb,
 	extensionRows,
 	isoToLocal,
 	isReservedDoc,
 	isStaleIso,
 	metaViewRows,
+	readMinutes,
 	toIsoUtc,
 	wordCount,
 } from "../ui/src/display.js";
@@ -189,5 +191,33 @@ describe("wordCount (status bar)", () => {
 		// The, title, A, marked, phrase, here, and, more., one, two
 		expect(wordCount(body)).toBe(10);
 		expect(wordCount("")).toBe(0);
+	});
+});
+
+describe("collapseCrumb + readMinutes (the sheet's command bar and byline)", () => {
+	test("a 5-segment path keeps first folder, last folder and the name", () => {
+		expect(collapseCrumb(["a", "b", "c", "d", "name"])).toEqual([
+			"a",
+			"…",
+			"d",
+			"name",
+		]);
+		expect(collapseCrumb(["a", "b", "c", "name"])).toEqual([
+			"a",
+			"…",
+			"c",
+			"name",
+		]);
+	});
+
+	test("3 segments or fewer stay whole", () => {
+		expect(collapseCrumb(["a", "b", "name"])).toEqual(["a", "b", "name"]);
+		expect(collapseCrumb(["name"])).toEqual(["name"]);
+	});
+
+	test("230 words a minute, rounded up, at least one", () => {
+		expect(readMinutes(1150)).toBe(5);
+		expect(readMinutes(1151)).toBe(6);
+		expect(readMinutes(0)).toBe(1);
 	});
 });

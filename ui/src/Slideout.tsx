@@ -51,24 +51,21 @@ function SlideoutDivider({
  * restored as the default – a permanent 316px margin column with the open
  * doc's threads – that widens into the draggable split only while a preview
  * is open (the head row, with the previewed title, open-in-main, and close,
- * exists in that state alone). No mode tabs: the three states are
- * previewPath's presence and the References toggle (#33) – nothing to
- * switch beyond those. `open` matters only where the CSS turns the pane
- * into the bottom sheet (≤1180px); the head row in the comments state
- * is that sheet's affordance – desktop CSS hides it with the whole head.
- * The References mode (#33, D1) keeps the rail's fixed width and shows its
- * own close (a dismissible mode, unlike the permanent rail). The PR mode
- * (#27 b4) is the fourth state: the same wide split as a preview (the
- * shared .preview class + divider), its head line supplied by App (PRPane
- * reports it). Precedence: a preview wins over the PR mode, the PR mode
- * wins over References – the close of either dismissible mode returns to
- * the rail.
+ * exists in that state alone). No mode tabs: the states are previewPath's
+ * presence and the PR mode – nothing to switch beyond those. `open`
+ * matters only where the CSS turns the pane into the bottom sheet
+ * (≤1180px); the head row in the comments state is that sheet's
+ * affordance – desktop CSS hides it with the whole head. The PR mode
+ * (#27 b4) rides the same wide split as a preview (the shared .preview
+ * class + divider), its head line supplied by App (PRPane reports it).
+ * Precedence: a preview wins over the PR mode; closing either returns to
+ * the rail. (The References mode left with ui v1 – Connections live on
+ * the sheet.)
  */
 export function Slideout({
 	open,
 	preview,
 	prTitle,
-	references,
 	commentCount,
 	previewTitle,
 	onPromote,
@@ -85,9 +82,6 @@ export function Slideout({
 	 *  "Pull requests" fallback). Non-null = the fourth state, riding the
 	 *  same wide split as a preview. */
 	prTitle: string | null;
-	/** The References mode is showing (#33) – the third state; wins over
-	 *  the comments rail, yields to a preview (App renders the content). */
-	references: boolean;
 	/** The comments head's "Comments · N" (the sheet's title line). */
 	commentCount: number;
 	/** The previewed doc's display title – the head's "Preview · <title>"
@@ -108,15 +102,9 @@ export function Slideout({
 		<>
 			{wide && <SlideoutDivider onShare={onShare} />}
 			<aside
-				className={`slideout${open ? " open" : ""}${wide ? " preview" : ""}${references && !wide ? " references" : ""}`}
+				className={`slideout${open ? " open" : ""}${wide ? " preview" : ""}`}
 				aria-label={
-					preview
-						? "Preview"
-						: prTitle !== null
-							? "Pull requests"
-							: references
-								? "References"
-								: "Comments"
+					preview ? "Preview" : prTitle !== null ? "Pull requests" : "Comments"
 				}
 			>
 				<div className="slideout-head">
@@ -130,8 +118,6 @@ export function Slideout({
 						<span className="slideout-title" title={prTitle}>
 							{prTitle}
 						</span>
-					) : references ? (
-						<span className="slideout-title">References</span>
 					) : (
 						<span className="slideout-title">Comments · {commentCount}</span>
 					)}
@@ -158,9 +144,7 @@ export function Slideout({
 								? "Close preview"
 								: prTitle !== null
 									? "Close pull requests"
-									: references
-										? "Close references"
-										: "Close comments"
+									: "Close comments"
 						}
 						onClick={onClose}
 					>

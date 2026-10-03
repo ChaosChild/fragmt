@@ -375,44 +375,15 @@ body {
 	overflow-y: auto;
 	min-width: 0;
 }
-.doc-pane,
-.editor-pane {
+.doc-pane {
 	width: 100%;
 	max-width: var(--reading-max);
 	margin: 0 auto;
 	padding: var(--space-8) var(--space-8) var(--space-12);
 }
 
-.doc-bar {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--space-3);
-	margin-bottom: var(--space-5);
-	flex-wrap: wrap;
-}
-.breadcrumb {
-	font-family: var(--font-mono);
-	font-size: 11px;
-	text-transform: uppercase;
-	letter-spacing: var(--track-label);
-	color: var(--muted);
-	display: flex;
-	align-items: center;
-	gap: 6px;
-}
-.breadcrumb span {
-	color: var(--fg);
-	font-weight: 500;
-}
 /* M4-3 b4: the breadcrumb name + its three file-action icons – rename,
    move, delete – one tight cluster on the doc-bar line, both modes. */
-.doc-bar-main {
-	display: flex;
-	align-items: center;
-	gap: 2px;
-	min-width: 0;
-}
 /* The inline rename box: the name becomes an input with icon confirm/cancel
    (never text buttons – review decision); errors sit inline after it. */
 .rename-form {
@@ -645,58 +616,6 @@ body {
    sync state, and the draft escape hatch. Operator round 4A: the rule's
    margin-bottom halves to space-4 – the gap above the metadata block must
    equal the block's own margin below it (symmetry around the block). */
-.doc-head {
-	display: flex;
-	align-items: center;
-	gap: var(--space-3);
-	padding-bottom: var(--space-5);
-	border-bottom: 1px solid var(--border);
-	margin-bottom: var(--space-4);
-	flex-wrap: wrap;
-}
-.avatar {
-	width: 38px;
-	height: 38px;
-	border-radius: 50%;
-	background: var(--accent-tint);
-	color: var(--accent);
-	font-family: var(--font-mono);
-	font-size: 13px;
-	font-weight: 500;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-	letter-spacing: 0.02em;
-}
-.dh-main {
-	min-width: 0;
-	flex: 1;
-}
-.dh-author {
-	font-size: 14px;
-	font-weight: 600;
-	color: var(--fg);
-	line-height: 1.3;
-}
-.dh-line {
-	font-family: var(--font-mono);
-	font-size: 11px;
-	letter-spacing: 0.03em;
-	color: var(--muted);
-	display: flex;
-	align-items: center;
-	gap: 7px;
-	flex-wrap: wrap;
-	margin-top: 2px;
-}
-.dh-line .led {
-	width: 7px;
-	height: 7px;
-}
-.dh-line .sep {
-	color: var(--border);
-}
 .draft-pill {
 	display: inline-flex;
 	align-items: center;
@@ -741,37 +660,11 @@ body {
    the row renders in OKF mode alone (never gated on reserved) – the chips
    are individually conditional, and the actions render DISABLED on reserved
    files, their tooltip saying why, instead of vanishing. */
-.dh-badges {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	flex-wrap: wrap;
-	margin-top: 5px;
-	min-width: 0;
-}
-.dh-badge-actions {
-	display: inline-flex;
-	align-items: center;
-	gap: 2px;
-}
 
 /* Draft-changed gutter (#18): a 3px amber bar beside the top-level blocks
    the draft's commits touched – a decoration, not a diff surface. The bar
    sits 12px left of the text, inside the doc pane's 32px padding (a wider
    negative offset would clip). */
-.markdown .draft-changed {
-	position: relative;
-}
-.markdown .draft-changed::before {
-	content: "";
-	position: absolute;
-	left: -12px;
-	top: 0;
-	bottom: 0;
-	width: 3px;
-	border-radius: 2px;
-	background: var(--warn);
-}
 
 /* Markdown typography – fragmt reading mode (Newsreader). Both modes
    render through the same ProseMirror div (M4: read mode is the editor
@@ -924,22 +817,6 @@ body {
 }
 
 /* Comment anchors in text – visible by default, click to jump to thread */
-.comment-highlight {
-	background: var(--accent-tint);
-	border-radius: 2px;
-	cursor: pointer;
-	transition: background var(--motion-fast) var(--ease-standard);
-}
-.comment-highlight:hover {
-	background: color-mix(in srgb, var(--accent) 20%, transparent);
-}
-.comment-highlight:focus-visible {
-	outline: none;
-	box-shadow: var(--focus-ring);
-}
-.comment-highlight.flash {
-	animation: anchor-flash 1.4s var(--ease-standard);
-}
 @keyframes anchor-flash {
 	0% {
 		background: color-mix(in srgb, var(--accent) 38%, transparent);
@@ -1010,11 +887,6 @@ body {
    overflow-x. Restore it so long lines overflow identically. */
 .edit-area pre {
 	white-space: pre;
-}
-
-.editor-pane .data-mark {
-	background: var(--accent-tint);
-	border-bottom: 1px dashed var(--accent);
 }
 
 .conflict-banner {
@@ -1298,9 +1170,9 @@ button.comment-quote:hover {
 	border-bottom: 1px solid var(--border);
 	flex-shrink: 0;
 }
-/* The close is preview/references-only on desktop (the rail has no closed
-   state there); the ≤1180px sheet re-shows it as its fold. */
-.slideout:not(.preview):not(.references) .slideout-close {
+/* The close is preview-only on desktop (the rail has no closed state
+   there); the ≤1180px sheet re-shows it as its fold. */
+.slideout:not(.preview) .slideout-close {
 	display: none;
 }
 .slideout-spacer {
@@ -1361,33 +1233,6 @@ button.comment-quote:hover {
 /* References mode body (#33, D1) – the pane's own scroll region, the
    preview body's shape: two quiet sections of path-titled rows that
    navigate the main pane. */
-.refs-pane {
-	flex: 1;
-	min-height: 0;
-	overflow-y: auto;
-	padding: var(--space-3);
-	display: flex;
-	flex-direction: column;
-	gap: var(--space-4);
-}
-.refs-heading {
-	font-family: var(--font-mono);
-	font-size: 10px;
-	font-weight: 500;
-	text-transform: uppercase;
-	letter-spacing: var(--track-label);
-	color: var(--muted);
-	margin: 0 0 var(--space-2);
-}
-.refs-list {
-	list-style: none;
-	margin: 0;
-	padding: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-.refs-row,
 .pr-row {
 	display: block;
 	width: 100%;
@@ -1407,20 +1252,13 @@ button.comment-quote:hover {
 		background var(--motion-fast) var(--ease-standard),
 		color var(--motion-fast) var(--ease-standard);
 }
-.refs-row:hover,
 .pr-row:hover {
 	background: var(--glass-inner);
 	color: var(--accent);
 }
-.refs-row:focus-visible,
 .pr-row:focus-visible {
 	outline: none;
 	box-shadow: var(--focus-ring);
-}
-.refs-empty {
-	margin: 0;
-	font-size: 12px;
-	color: var(--muted);
 }
 /* ── #27 (b4): the PR pane – the slideout's fourth mode ──────────── */
 /* The pane body – the refs pane's scroll-region shape. */
@@ -2328,11 +2166,6 @@ button.pr-file-head svg {
 /* The hard-wrap notice (owner round): one slim warn line pinned above the
    editor content while editing a body whose paragraphs are hard-wrapped –
    stateless, gone after a save that reflows or on leaving edit mode. */
-.hard-wrap-note {
-	margin: 0 0 var(--space-2);
-	font-size: 11px;
-	color: var(--warn);
-}
 .iconbtn.danger {
 	color: var(--danger);
 	border-color: color-mix(in srgb, var(--danger) 45%, transparent);
@@ -2444,10 +2277,6 @@ button.pr-file-head svg {
 	justify-content: flex-end;
 }
 /* The GitHub avatar is a real <img> on the initials slot's metrics. */
-.doc-head img.avatar {
-	display: block;
-	object-fit: cover;
-}
 
 /* ── M4-3 b5: navbar drag & drop ──────────────────────────────── */
 /* Drag sources dim while in flight; grab at rest, grabbing once pressed
@@ -3622,4 +3451,626 @@ button.pr-file-head svg {
 .frow .fn:focus-visible {
 	outline: none;
 	box-shadow: var(--focus);
+}
+
+/* ═══ ui v1 – the sheet: command bar, desk, masthead, prose ═══ */
+/* The doc view fills main: the command bar stays, the desk scrolls. */
+.docview {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+.cmd {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	height: var(--cmd);
+	flex-shrink: 0;
+	padding: 0 20px 0 28px;
+	min-width: 0;
+}
+.cmd-start {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+.cmd-sp {
+	flex: 1;
+}
+.crumb-line {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+}
+.breadcrumb {
+	display: flex;
+	align-items: center;
+	color: var(--ink-3);
+	font-size: 13px;
+	min-width: 0;
+	white-space: nowrap;
+	margin-right: 4px;
+}
+.breadcrumb b {
+	color: var(--ink);
+	font-weight: 500;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.breadcrumb .sep {
+	opacity: 0.6;
+	white-space: pre;
+}
+.btn.icon {
+	width: 32px;
+	padding: 0;
+	color: var(--ink-2);
+}
+.btn svg {
+	width: 15px;
+	height: 15px;
+	flex-shrink: 0;
+}
+.btn.primary {
+	background: var(--accent);
+	color: var(--accent-on);
+	box-shadow:
+		0 1px 0 rgba(255, 255, 255, 0.18) inset,
+		0 4px 12px -4px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.btn.primary:hover {
+	background: var(--accent-hover);
+}
+.btn.primary .kbd {
+	background: transparent;
+	color: inherit;
+	border-color: color-mix(in srgb, var(--accent-on) 35%, transparent);
+}
+/* Verify's already-mine state (operator round D) – the accent holds. */
+.btn.line.verified {
+	color: var(--accent);
+	border-color: var(--accent-mid);
+}
+.chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 9px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 500;
+	white-space: nowrap;
+	border: 1px solid var(--line);
+	color: var(--ink-2);
+	background: var(--sheet);
+}
+.chip.amber {
+	border-color: color-mix(in srgb, var(--amber) 40%, transparent);
+	color: var(--amber);
+	background: var(--amber-soft);
+}
+.chip.accent {
+	border-color: var(--accent-mid);
+	color: var(--accent);
+	background: var(--accent-soft);
+}
+.chip .led {
+	width: 6px;
+	height: 6px;
+}
+.cmd .rename-form input {
+	font: 13px var(--sans);
+	letter-spacing: 0;
+	color: var(--ink);
+	background: var(--sheet);
+	border: 1px solid var(--line);
+}
+
+.desk {
+	flex: 1;
+	min-height: 0;
+	position: relative;
+	overflow: auto;
+	scrollbar-width: thin;
+	scrollbar-color: var(--line) transparent;
+}
+/* ponytail: one column until the margin has content – phase 5 adds the
+   292px marginalia column (the comments rail still sits beside main). */
+.page {
+	display: grid;
+	grid-template-columns: minmax(0, 820px);
+	gap: 36px;
+	justify-content: center;
+	padding: 28px 32px 96px;
+	position: relative;
+}
+.sheet {
+	background: var(--sheet);
+	border-radius: var(--r-lg);
+	box-shadow: var(--sheet-shadow);
+	padding: 56px 76px 72px;
+	position: relative;
+	min-width: 0;
+}
+.sheet.editing {
+	box-shadow:
+		var(--sheet-shadow),
+		0 0 0 1.5px var(--accent);
+}
+.edit-ribbon {
+	position: absolute;
+	top: 0;
+	left: 76px;
+	transform: translateY(-50%);
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 26px;
+	padding: 0 12px;
+	border-radius: 999px;
+	background: var(--accent);
+	color: var(--accent-on);
+	font-size: 12px;
+	font-weight: 500;
+	white-space: nowrap;
+}
+.edit-ribbon svg {
+	width: 14px;
+	height: 14px;
+}
+.edit-ribbon .mono {
+	font-size: 11.5px;
+	opacity: 0.85;
+}
+.sheet > .conflict-banner {
+	margin: 0 0 20px;
+}
+
+/* Masthead */
+.kicker {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	font: 500 11.5px var(--mono);
+	color: var(--ink-3);
+	letter-spacing: 0.02em;
+	min-width: 0;
+}
+.kicker .type {
+	color: var(--accent);
+	text-transform: uppercase;
+	letter-spacing: 0.12em;
+}
+.kicker .rule {
+	flex: 0 0 28px;
+	height: 1px;
+	background: var(--line);
+}
+h1.title {
+	font: 500 54px / 1.04 var(--serif);
+	letter-spacing: -0.022em;
+	margin: 18px 0 14px;
+	text-wrap: balance;
+	font-optical-sizing: auto;
+	overflow-wrap: anywhere;
+}
+h1.title::after {
+	content: ".";
+	color: var(--accent);
+}
+.standfirst {
+	font: italic 400 21px / 1.45 var(--serif);
+	color: var(--ink-2);
+	max-width: 40em;
+	text-wrap: pretty;
+}
+.byline {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	margin-top: 28px;
+	padding-top: 20px;
+	border-top: 1px solid var(--line-soft);
+}
+.byline .avatar {
+	width: 36px;
+	height: 36px;
+	border-radius: 11px;
+	display: grid;
+	place-items: center;
+	font: 600 12.5px var(--sans);
+	color: #fff;
+	background: linear-gradient(135deg, #55657d, #2b3647);
+	flex-shrink: 0;
+	object-fit: cover;
+}
+.who {
+	display: flex;
+	flex-direction: column;
+	line-height: 1.3;
+	min-width: 0;
+}
+.who b {
+	font-weight: 500;
+}
+.who span {
+	color: var(--ink-3);
+	font-size: 12.5px;
+}
+.byline .sp {
+	flex: 1;
+}
+/* The trust seal – the OKF tier as a stamped object, not a chip. The
+   ring's glyph carries the tier without colour. */
+.seal {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 6px 12px 6px 6px;
+	border-radius: 999px;
+	border: 1px dashed var(--line);
+	color: var(--ink-2);
+	font-size: 12.5px;
+	min-width: 0;
+}
+.seal .ring {
+	width: 28px;
+	height: 28px;
+	border-radius: 50%;
+	display: grid;
+	place-items: center;
+	flex-shrink: 0;
+	border: 1.5px solid var(--ink-3);
+	color: var(--ink-3);
+	font: 600 10px var(--mono);
+}
+.seal b {
+	color: var(--ink);
+	font-weight: 500;
+	display: block;
+	line-height: 1.2;
+}
+.seal span {
+	font-size: 11.5px;
+	color: var(--ink-3);
+}
+.seal.m .ring {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+.seal.h {
+	border-style: solid;
+	border-color: color-mix(in srgb, var(--green) 35%, transparent);
+	background: var(--green-soft);
+}
+.seal.h .ring {
+	border-color: var(--green);
+	background: var(--green);
+	color: #fff;
+}
+.seal.s {
+	border-color: color-mix(in srgb, var(--amber) 45%, transparent);
+}
+.seal.s .ring {
+	border: 1.5px dashed var(--amber);
+	color: var(--amber);
+}
+
+/* Details – the metadata block as a spec sheet, folded by default. */
+.sheet .meta-block {
+	margin: 18px 0 0;
+	padding: 0;
+	gap: 0;
+	border: 0;
+	border-radius: var(--r);
+	background: var(--sheet-2);
+	font-size: 13px;
+}
+.sheet .meta-block summary {
+	list-style: none;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 9px 14px;
+	min-height: 36px;
+	cursor: pointer;
+	color: var(--ink-2);
+	border-radius: var(--r);
+}
+.sheet .meta-block summary::-webkit-details-marker {
+	display: none;
+}
+.sheet .meta-block summary .ch {
+	width: 15px;
+	height: 15px;
+	transition: transform 0.15s;
+}
+.sheet .meta-block[open] summary .ch {
+	transform: rotate(90deg);
+}
+.sheet .meta-block .meta-title {
+	font: 500 13px var(--sans);
+	text-transform: none;
+	letter-spacing: 0;
+	color: var(--ink-2);
+}
+.sheet .meta-block summary .pv {
+	color: var(--ink-3);
+	font: 12px var(--mono);
+	margin-left: auto;
+}
+.sheet .meta-rows {
+	display: block;
+	padding: 2px 14px 12px;
+}
+.sheet .meta-row {
+	display: grid;
+	grid-template-columns: 140px minmax(0, 1fr);
+	align-items: center;
+	gap: 0 12px;
+	padding: 7px 0;
+	border-top: 1px solid var(--line-soft);
+}
+.sheet .meta-key {
+	font: 500 12px var(--mono);
+	color: var(--ink-3);
+	text-transform: none;
+	letter-spacing: 0;
+}
+.sheet .meta-readonly-value {
+	font-size: 13px;
+	color: var(--ink);
+}
+.sheet .meta-block input,
+.sheet .meta-block select {
+	width: 100%;
+	height: 30px;
+	padding: 0 10px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--sheet);
+	font: 13px var(--sans);
+	color: var(--ink);
+}
+.sheet .meta-block input:focus-visible,
+.sheet .meta-block select:focus-visible {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: var(--focus);
+}
+.sheet .meta-note {
+	padding: 4px 14px 12px;
+}
+.sheet .meta-add-key {
+	color: var(--accent);
+	font-weight: 500;
+	font-size: 12.5px;
+	margin-top: 8px;
+}
+
+/* The amber notice (the hard-wrap warning and friends). */
+.notice {
+	display: flex;
+	gap: 10px;
+	align-items: flex-start;
+	margin-top: 18px;
+	padding: 10px 14px;
+	border-radius: var(--r);
+	background: var(--amber-soft);
+	border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+	color: var(--ink);
+	font-size: 13px;
+	line-height: 1.5;
+}
+.notice svg {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+	margin-top: 2px;
+	color: var(--amber);
+}
+
+/* Prose – serif 18/1.7 for read AND edit (one mounted editor, no reflow). */
+.prose {
+	margin-top: 40px;
+	counter-reset: h2;
+}
+.prose .markdown,
+.slideout .markdown {
+	font-size: 18px;
+	line-height: 1.7;
+	color: var(--ink);
+}
+.prose .edit-area {
+	min-height: 30vh;
+}
+.prose .markdown p {
+	text-wrap: pretty;
+}
+.prose .markdown h2 {
+	font: 500 30px / 1.2 var(--serif);
+	letter-spacing: -0.012em;
+	margin: 2em 0 0.6em;
+	counter-increment: h2;
+}
+/* The section number – CSS only, nothing is written to the markdown. */
+.prose .markdown h2::before {
+	content: counter(h2, decimal-leading-zero);
+	font: 500 12px var(--mono);
+	color: var(--accent);
+	letter-spacing: 0.06em;
+	margin-right: 14px;
+	vertical-align: 0.6em;
+}
+.markdown code {
+	font: 400 0.8em var(--mono);
+	padding: 2px 6px;
+	border-radius: 5px;
+	background: var(--sheet-2);
+	border: 1px solid var(--line-soft);
+}
+.markdown pre {
+	font: 400 13.5px / 1.75 var(--mono);
+	padding: 18px 22px;
+	border-radius: var(--r);
+	background: var(--sheet-2);
+	border: 1px solid var(--line-soft);
+	color: var(--ink-2);
+}
+.markdown pre code {
+	font-size: inherit;
+}
+.markdown a {
+	text-decoration-color: var(--accent-mid);
+	text-underline-offset: 3px;
+}
+/* Doc links (relative .md hrefs – the shape resolveLinkTarget turns into
+   in-app navigation) wear the arrow mark; works live while editing. */
+.markdown a:not([href*=":"]):is([href$=".md"], [href*=".md#"]) {
+	text-decoration: none;
+	border-bottom: 1px solid var(--accent-mid);
+	padding-bottom: 1px;
+}
+.markdown a:not([href*=":"]):is([href$=".md"], [href*=".md#"])::before {
+	content: "↗";
+	font: 500 12px var(--mono);
+	margin-right: 3px;
+	opacity: 0.7;
+}
+/* Comment anchors in text – the highlighter's yellow and a thin amber
+   underline; the focused one darker. */
+.comment-highlight {
+	background: var(--hl);
+	color: inherit;
+	border-radius: 2px;
+	padding: 0 1px;
+	box-shadow: 0 2px 0 -1px color-mix(in srgb, #c7921a 60%, transparent);
+	cursor: pointer;
+	transition: background var(--motion-fast) var(--ease-standard);
+}
+.comment-highlight:hover,
+.comment-highlight.on {
+	background: color-mix(in srgb, #e2b33c 42%, transparent);
+}
+.comment-highlight:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+}
+.comment-highlight.flash {
+	animation: anchor-flash 1.4s var(--ease-standard);
+}
+/* Draft-changed gutter (#18): a 3px amber bar 28px left of the text
+   column, beside the blocks the draft's commits touched. */
+.markdown .draft-changed {
+	position: relative;
+}
+.markdown .draft-changed::before {
+	content: "";
+	position: absolute;
+	left: -28px;
+	top: 4px;
+	bottom: 4px;
+	width: 3px;
+	border-radius: 3px;
+	background: var(--amber);
+}
+
+/* Connections – the reference graph, local and inline. */
+.conn {
+	margin-top: 64px;
+	padding-top: 28px;
+	border-top: 1px solid var(--line);
+}
+.conn-h {
+	display: flex;
+	align-items: baseline;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+.conn-h h3 {
+	font: italic 500 20px var(--serif);
+}
+.conn-h span,
+.conn-note {
+	color: var(--ink-3);
+	font-size: 12.5px;
+}
+.conn-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+	gap: 10px;
+}
+.cc {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 12px 14px;
+	border-radius: var(--r);
+	border: 1px solid var(--line-soft);
+	background: var(--sheet);
+	color: var(--ink);
+	text-align: left;
+	cursor: pointer;
+	min-width: 0;
+	transition:
+		border-color 0.15s,
+		transform 0.15s var(--ease);
+}
+.cc:hover {
+	border-color: var(--accent-mid);
+	transform: translateY(-1px);
+}
+.cc:focus-visible {
+	outline: none;
+	box-shadow: var(--focus);
+}
+.cc .p {
+	display: flex;
+	align-items: center;
+	gap: 7px;
+	font: 400 11.5px var(--mono);
+	color: var(--ink-3);
+	min-width: 0;
+}
+.cc .cc-path {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.cc .t {
+	font: 500 16px var(--serif);
+}
+.cc.in .p::after {
+	content: "links here";
+	margin-left: auto;
+	font-family: var(--sans);
+	color: var(--ink-3);
+	white-space: nowrap;
+}
+.cc.missing .t {
+	color: var(--ink-3);
+	font-style: italic;
+}
+.history {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-top: 28px;
+	color: var(--ink-3);
+	font-size: 12.5px;
+}
+.history svg {
+	width: 15px;
+	height: 15px;
+}
+.history a {
+	color: var(--accent);
+	text-decoration: none;
+}
+.history a:hover {
+	text-decoration: underline;
 }

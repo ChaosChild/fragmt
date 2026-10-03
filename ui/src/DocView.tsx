@@ -1,10 +1,12 @@
 import {
 	BadgeCheck,
 	Check,
+	ChevronRight,
+	Clock,
 	FolderInput,
-	Link2,
 	Pencil,
 	Trash2,
+	TriangleAlert,
 	X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -14,21 +16,27 @@ import {
 	type DocMetaEdit,
 	type DocResponse,
 	getDraftDiff,
+	type RepoMeta,
 	SaveError,
 	STATUS_VALUES,
 	saveDoc,
 	setTitle,
 	verifyDoc,
 } from "./api";
+import { CommandBar } from "./CommandBar";
 import {
 	avatarUser,
+	collapseCrumb,
 	displayTitle,
 	extensionRows,
 	isoToLocal,
 	isReservedDoc,
-	isStaleIso,
 	metaViewRows,
+	readMinutes,
+	TRUST_WORD,
 	toIsoUtc,
+	trustClass,
+	wordCount,
 } from "./display";
 import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 import type { AtDoc } from "./editor/at";
@@ -79,6 +87,16 @@ function Avatar({
 		</span>
 	);
 }
+
+/** The trust seal's ring glyph and word per mark (ui v1) – the glyph
+ *  carries the tier without colour (DESIGN.md §9). */
+const SEAL_GLYPH = { u: "?", m: "M", h: "✓", s: "!" } as const;
+const SEAL_WORD = {
+	u: "Unverified",
+	m: "Machine-confirmed",
+	h: "Human-reviewed",
+	s: "Stale",
+} as const;
 
 /** The metadata form's five fields (#33, D2) – status "" means unset (null
  *  on save, which REMOVES the key); stale is the datetime-local value. */
@@ -159,8 +177,8 @@ export function DocView({
 	onDeleteDoc,
 	onRenamed,
 	okf,
-	referencesOpen,
-	onOpenReferences,
+	docMetas,
+	repo,
 }: {
 	doc: DocResponse | null;
 	selected: string | null;
@@ -237,15 +255,13 @@ export function DocView({
 	/** A frontmatter write landed (rename or metadata edit, #33) – App
 	 *  reloads the doc (frontmatter changed) + meta. */
 	onRenamed: () => void;
-	/** OKF mode (#33) – gates the doc-head metadata chips/editor, the
-	 *  Verify affordances, and the references toggle (App, from meta). */
+	/** OKF mode (#33) – gates the kicker's type, the trust seal, the
+	 *  metadata block, the Verify affordances and Connections (App, meta). */
 	okf: boolean;
-	/** The slideout's References mode is showing this doc (#33, D1) – the
-	 *  toggle's pressed state. */
-	referencesOpen: boolean;
-	/** Open the References pane (App toggles the slideout's third mode and
-	 *  lifts the ≤1180px sheet). */
-	onOpenReferences: () => void;
+	/** Every doc's git/OKF meta (App, meta.docs) – Connections' trust marks. */
+	docMetas: Record<string, DocMeta>;
+	/** The repo identity (meta.repo) – the history line's GitHub link. */
+	repo?: RepoMeta["repo"];
 }) {
 	const [editing, setEditing] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -417,7 +433,6 @@ export function DocView({
 	}
 	const segs = selected.split("/");
 	const file = segs[segs.length - 1];
-	const dir = segs.slice(0, -1).join(" / ");
 	// The display-name model (M4-3 b4): frontmatter title, else the basename
 	// sans .md – the sidebar cards and the @ menu resolve the same way.
 	const displayName = displayTitle(doc?.frontmatter.title, file);
@@ -569,7 +584,12 @@ export function DocView({
 		onRenamed();
 	}
 
-	const docBar =
+	// The command bar's start slot (ui v1): the breadcrumb – folder segments
+	// quiet, the doc name in ink, the middle collapsed past 3 segments – and
+	// the three file actions right after it, both modes (M4-3 b4). The
+	// rename box takes the crumb's place while it is open.
+	const crumbSegs = collapseCrumb([...segs.slice(0, -1), displayName]);
+	const cmdStart =
 		renaming && doc ? (
 			<form
 				className="rename-form"
@@ -597,7 +617,7 @@ export function DocView({
 				/>
 				<button
 					type="submit"
-					className="tool-btn"
+					className="btn icon"
 					aria-label="Confirm rename"
 					title="Confirm rename"
 					disabled={renameBusy}
@@ -606,7 +626,7 @@ export function DocView({
 				</button>
 				<button
 					type="button"
-					className="tool-btn"
+					className="btn icon"
 					aria-label="Cancel rename"
 					title="Cancel rename"
 					onClick={closeRename}
@@ -621,19 +641,25 @@ export function DocView({
 				)}
 			</form>
 		) : (
-			<div className="doc-bar-main">
-				<nav className="breadcrumb" aria-label="Breadcrumb">
-					{dir ? `${dir} / ` : ""}
-					<span>{displayName}</span>
+			<div className="crumb-line">
+				<nav className="breadcrumb" aria-label="Breadcrumb" title={selected}>
+					{crumbSegs.map((seg, i) =>
+						i === crumbSegs.length - 1 ? (
+							<b key="name">{seg}</b>
+						) : (
+							// biome-ignore lint/suspicious/noArrayIndexKey: segments repeat ("…", same-named folders) – the position is the identity.
+							<span key={i}>
+								{seg}
+								<span className="sep"> / </span>
+							</span>
+						),
+					)}
 				</nav>
-				{/* Read AND edit mode (M4-3 b4): the three file actions live on
-			    the breadcrumb line itself; each is a ≥32px target with an
-			    aria-label. */}
 				{doc && (
 					<>
 						<button
 							type="button"
-							className="tool-btn"
+							className="btn icon"
 							aria-label="Rename document"
 							title="Rename"
 							onClick={requestRename}
@@ -643,7 +669,7 @@ export function DocView({
 						<span className="menu-wrap" ref={moveMenu.wrapRef}>
 							<button
 								type="button"
-								className="tool-btn"
+								className="btn icon"
 								aria-label="Move document"
 								title="Move"
 								aria-expanded={moveMenu.open}
@@ -687,7 +713,7 @@ export function DocView({
 						</span>
 						<button
 							type="button"
-							className="tool-btn"
+							className="btn icon"
 							aria-label="Delete document"
 							title="Delete"
 							onClick={() => onDeleteDoc(displayName)}
@@ -877,321 +903,85 @@ export function DocView({
 			() => void proceedRename(),
 		);
 
-	// The doc-head meta line (item 3): "vN · branch · saved <time>" in read
-	// mode, "editing vN · branch" in edit mode. The sync LED lives in the
-	// status bar alone (ui v1, DESIGN.md §7).
-	const lineSegs: string[] = [];
-	if (docMeta)
-		lineSegs.push(
-			editing ? `editing v${docMeta.version}` : `v${docMeta.version}`,
-		);
-	if (branch) lineSegs.push(branch);
-	if (!editing && docMeta) lineSegs.push(`saved ${shortDate(docMeta.date)}`);
-
-	// One rendering path (M4 review decision 3): the editor is mounted in
-	// BOTH modes – read is `editable: false` on the same instance, Edit/Save/
-	// Cancel are mode flips with no remount (only a discard bumps the key to
-	// drop the buffer). The pane classes share their layout rule; the editor
-	// carries the `markdown` typography class, so the document reads
-	// identically in both modes (M2 pixel parity).
-	return (
-		<div className={editing ? "editor-pane" : "doc-pane"} ref={paneRef}>
-			<div className="doc-bar">{docBar}</div>
-			{/* Dead-link note (M4-3 b6): a relative link that looks like a doc but
-			    matches nothing – said plainly under the breadcrumb, dismissable,
-			    never a tab hijack. Same visual family as the conflict banner. */}
-			{linkNotFound && (
-				<div className="conflict-banner" role="status">
-					<div>
-						<strong>Link not found</strong>
-						{linkNotFound}
-					</div>
-					<button
-						type="button"
-						className="iconbtn subtle dismiss"
-						onClick={() => setLinkNotFound(null)}
-					>
-						Dismiss
-					</button>
-				</div>
-			)}
-			{doc && (
-				<header className="doc-head">
-					<Avatar
-						author={docMeta?.author ?? ""}
-						email={docMeta?.authorEmail ?? ""}
-						authors={authors}
-					/>
-					<div className="dh-main">
-						<div className="dh-author">{docMeta?.author ?? "–"}</div>
-						<div className="dh-line">
-							{lineSegs.map((s, i) => (
-								<span key={s}>
-									{i > 0 && <span className="sep">·</span>}
-									{s}
-								</span>
-							))}
-						</div>
-						{/* #33: the metadata chips + the references toggle. Quiet by
-						    default – tier always (lowest emphasis), type/status only
-						    when they say something (absent status renders NOTHING,
-						    never implied-stable; stable is silence too), stale in the
-						    warn tint. Tier comes from meta's derived walk; the rest
-						    from the doc payload. Operator round A: the block renders
-						    on okf ALONE – every chip is individually conditional and
-						    meta's walk omits the okf fields for reserved docs (§3.1),
-						    so reserved files show the ACTIONS, never vanishing chips.
-						    Operator round D: the separate Edit-metadata button is
-						    GONE – the metadata block below is the viewing surface,
-						    and the one Edit button edits content and metadata
-						    together. */}
-						{okf && (
-							<div className="dh-badges">
-								{typeof doc.frontmatter.type === "string" &&
-									doc.frontmatter.type.trim() !== "" && (
-										<span className="okf-chip">{doc.frontmatter.type}</span>
-									)}
-								{typeof doc.frontmatter.status === "string" &&
-									doc.frontmatter.status !== "" &&
-									doc.frontmatter.status !== "stable" && (
-										<span className="okf-chip">{doc.frontmatter.status}</span>
-									)}
-								{docMeta?.okf && (
-									<span className="okf-chip" title="trust tier (OKF §5.3)">
-										{docMeta.okf.tier}
-									</span>
-								)}
-								{isStaleIso(doc.frontmatter.stale_after) && (
-									<span className="okf-chip warn">stale</span>
-								)}
-								<span className="dh-badge-actions">
-									<button
-										type="button"
-										className={`tool-btn${referencesOpen ? " active" : ""}`}
-										aria-label="References"
-										title={
-											reserved
-												? "References (reserved file – §3.1 note)"
-												: "References"
-										}
-										aria-pressed={referencesOpen}
-										onClick={onOpenReferences}
-									>
-										<Link2 aria-hidden="true" />
-									</button>
-								</span>
-							</div>
-						)}
-					</div>
-					{/* The draft pill (item 3): only on main, when a draft elsewhere
-					    touches this doc – click checks the draft out (App). Its flip
-					    side (M4-3): on a draft branch touching THIS doc, a
-					    NON-clickable "on draft" badge (span – nothing to click). */}
-					{draftBranch && (
-						<button type="button" className="draft-pill" onClick={onOpenDraft}>
-							<Pencil aria-hidden="true" />
-							draft exists – open
-						</button>
-					)}
-					{onDraft && <span className="draft-pill on-draft">on draft</span>}
-					<div className="doc-actions">
-						{editing ? (
-							<>
-								<button
-									type="button"
-									className="iconbtn subtle"
-									onClick={requestCancel}
-									disabled={saving}
-								>
-									<X aria-hidden="true" />
-									<span className="label">Cancel</span>
-								</button>
-								<button
-									type="button"
-									className="iconbtn primary"
-									onClick={() => void handleSave()}
-									disabled={saving}
-								>
-									<Check aria-hidden="true" />
-									<span className="label">{saving ? "Saving…" : "Save"}</span>
-								</button>
-								{/* #33 (A1): Save as Verified – the event lands in the
-								    save's own commit (the PUT's verified flag). */}
-								{okf && !reserved && (
-									<button
-										type="button"
-										className="iconbtn"
-										onClick={() => void handleSave(true)}
-										disabled={saving}
-									>
-										<BadgeCheck aria-hidden="true" />
-										<span className="label">Save as Verified</span>
-									</button>
-								)}
-							</>
-						) : (
-							<>
-								{/* #33 (A1): Verify beside Edit, read mode only – the
-								    verified event in its own commit, the mode never
-								    flips (comment resolve's sibling). Operator round D:
-								    verifiedByYou reflects an own verification that
-								    postdates the generated stamp – the filled style and
-								    "Verified" word say so, and the button STAYS
-								    clickable (events are append-only; re-verify is
-								    legal). Operator round E: Edit REFUSES on a
-								    reserved file (disabled + the §3.1 tooltip) –
-								    index.md/log.md are fragmt-generated, and a saved
-								    edit would be overwritten by the next regen. The
-								    core writeDoc stays permissive; only the UI's
-								    affordance is withdrawn. */}
-								{okf && !reserved && (
-									<button
-										type="button"
-										className={`iconbtn${doc.verifiedByYou ? " verified" : ""}`}
-										onClick={() => void handleVerify()}
-										disabled={verifying || saving}
-										title={
-											doc.verifiedByYou && latestVerifiedAt
-												? `verified by you · ${shortDate(latestVerifiedAt)} – click to re-verify`
-												: undefined
-										}
-									>
-										<BadgeCheck aria-hidden="true" />
-										<span className="label">
-											{verifying
-												? "Verifying…"
-												: doc.verifiedByYou
-													? "Verified"
-													: "Verify"}
-										</span>
-									</button>
-								)}
-								<button
-									type="button"
-									className="iconbtn"
-									disabled={reserved}
-									title={
-										reserved
-											? "Reserved file – generated by fragmt; edits would be overwritten (OKF §3.1)"
-											: undefined
-									}
-									onClick={() => {
-										// App gates the flip (protected main: draft
-										// first) – only a true enters edit mode. The
-										// flip IS the unified session: content AND
-										// metadata (operator round D) – the seed lands
-										// with it, fresh per session.
-										void onBeforeEdit().then((proceed) => {
-											if (!proceed) return;
-											if (doc) seedMetaForm(doc);
-											setEditing(true);
-											setSaveError(null);
-										});
-									}}
-								>
-									<Pencil aria-hidden="true" />
-									<span className="label">Edit</span>
-								</button>
-							</>
-						)}
-					</div>
-				</header>
-			)}
-			{/* #33 (D2, operator round D): the unified metadata block – ONE
-			    surface for viewing and editing, between the doc head and the
-			    content. Read mode: a native collapsed details/summary ("metadata
-			    · N keys") with one read-only `key: value` row per key – the
-			    curated five, the §4.1 extensions, and the managed/derived family
-			    friendly-formatted (metaViewRows). Edit mode: the block
-			    auto-expands (the `open` attribute rides the mode; a read-mode
-			    toggle is the user's own) and its rows become inputs – the
-			    doc-actions Save/Cancel own the session, content and metadata
-			    together. Reserved docs render the §3.1 note inside the block,
-			    never rows (§3.1). */}
-			{doc && okf && (
-				<details className="meta-block" open={editing || undefined}>
-					<summary>
-						<span className="meta-title">
-							{reserved ? "metadata" : `metadata · ${viewRows.length} keys`}
-						</span>
-					</summary>
-					{reserved ? (
-						<p className="meta-note">
-							This is a reserved OKF file – index.md and log.md hold no concept
-							frontmatter (type, status, trust, references; §3.1), so there is
-							nothing to edit. A directory index is generated by fragmt and
-							regenerated whenever its folder's docs change.
-						</p>
-					) : editing ? (
-						<div className="meta-rows">
-							<label className="meta-row">
-								<span className="meta-key">type:</span>
-								<input
-									value={metaForm.type}
-									onChange={(e) => {
-										setMetaForm({ ...metaForm, type: e.target.value });
-										touchMeta();
-									}}
-									disabled={saving}
-								/>
-							</label>
-							<label className="meta-row">
-								<span className="meta-key">description:</span>
-								<input
-									value={metaForm.description}
-									onChange={(e) => {
-										setMetaForm({ ...metaForm, description: e.target.value });
-										touchMeta();
-									}}
-									disabled={saving}
-								/>
-							</label>
-							<label className="meta-row">
-								<span className="meta-key">tags:</span>
-								<input
-									value={metaForm.tags}
-									placeholder="comma-separated"
-									onChange={(e) => {
-										setMetaForm({ ...metaForm, tags: e.target.value });
-										touchMeta();
-									}}
-									disabled={saving}
-								/>
-							</label>
-							<label className="meta-row">
-								<span className="meta-key">status:</span>
-								{/* Enum-only (A2): the select is the convenience, the API
+	// The metadata block's rows: the §3.1 note on reserved files, inputs
+	// while editing, read-only rows otherwise.
+	const metaBody = reserved ? (
+		<p className="meta-note">
+			This is a reserved OKF file – index.md and log.md hold no concept
+			frontmatter (type, status, trust, references; §3.1), so there is nothing
+			to edit. A directory index is generated by fragmt and regenerated whenever
+			its folder's docs change.
+		</p>
+	) : editing ? (
+		<div className="meta-rows">
+			<label className="meta-row">
+				<span className="meta-key">type:</span>
+				<input
+					value={metaForm.type}
+					onChange={(e) => {
+						setMetaForm({ ...metaForm, type: e.target.value });
+						touchMeta();
+					}}
+					disabled={saving}
+				/>
+			</label>
+			<label className="meta-row">
+				<span className="meta-key">description:</span>
+				<input
+					value={metaForm.description}
+					onChange={(e) => {
+						setMetaForm({ ...metaForm, description: e.target.value });
+						touchMeta();
+					}}
+					disabled={saving}
+				/>
+			</label>
+			<label className="meta-row">
+				<span className="meta-key">tags:</span>
+				<input
+					value={metaForm.tags}
+					placeholder="comma-separated"
+					onChange={(e) => {
+						setMetaForm({ ...metaForm, tags: e.target.value });
+						touchMeta();
+					}}
+					disabled={saving}
+				/>
+			</label>
+			<label className="meta-row">
+				<span className="meta-key">status:</span>
+				{/* Enum-only (A2): the select is the convenience, the API
 								    seam is the guard; a stored out-of-enum value stays
 								    visible as its own option. */}
-								<select
-									value={metaForm.status}
-									onChange={(e) => {
-										setMetaForm({ ...metaForm, status: e.target.value });
-										touchMeta();
-									}}
-									disabled={saving}
-								>
-									<option value="">unset</option>
-									{statusOptions(metaForm.status).map((s) => (
-										<option key={s} value={s}>
-											{s}
-										</option>
-									))}
-								</select>
-							</label>
-							<label className="meta-row">
-								<span className="meta-key">stale_after:</span>
-								<input
-									type="datetime-local"
-									value={metaForm.stale}
-									onChange={(e) => {
-										setMetaForm({ ...metaForm, stale: e.target.value });
-										touchMeta();
-									}}
-									disabled={saving}
-								/>
-							</label>
-							{/* §4.1 extension rows (operator round C): arbitrary scalar
+				<select
+					value={metaForm.status}
+					onChange={(e) => {
+						setMetaForm({ ...metaForm, status: e.target.value });
+						touchMeta();
+					}}
+					disabled={saving}
+				>
+					<option value="">unset</option>
+					{statusOptions(metaForm.status).map((s) => (
+						<option key={s} value={s}>
+							{s}
+						</option>
+					))}
+				</select>
+			</label>
+			<label className="meta-row">
+				<span className="meta-key">stale_after:</span>
+				<input
+					type="datetime-local"
+					value={metaForm.stale}
+					onChange={(e) => {
+						setMetaForm({ ...metaForm, stale: e.target.value });
+						touchMeta();
+					}}
+					disabled={saving}
+				/>
+			</label>
+			{/* §4.1 extension rows (operator round C): arbitrary scalar
 							    keys, editable like the curated five (a cleared value
 							    removes the key on save); string-array values and
 							    anything else render READ-ONLY – hand-editing complex
@@ -1199,221 +989,578 @@ export function DocView({
 							    ponytail: no structured editor for array-valued keys –
 							    they display only; a chip editor can ride these rows
 							    if ever wanted. */}
-							{extRows?.editable.map((r) => (
-								<label className="meta-row" key={r.key}>
-									<span className="meta-key">{r.key}:</span>
-									<input
-										value={metaExt[r.key] ?? ""}
-										onChange={(e) => {
-											setMetaExt({ ...metaExt, [r.key]: e.target.value });
-											touchMeta();
-										}}
-										disabled={saving}
-									/>
-								</label>
-							))}
-							{extRows?.readOnly.map((r) => (
-								<div className="meta-row readonly" key={r.key} title={r.value}>
-									<span className="meta-key">{r.key}:</span>
-									<span className="meta-readonly-value">{r.value}</span>
-								</div>
-							))}
-							{extRows !== null && extRows.readOnly.length > 0 && (
-								<p className="meta-note">
-									list-valued keys are read-only here – edit the raw file for
-									complex YAML
-								</p>
-							)}
-							{/* The managed/derived rows (operator round D): the view
+			{extRows?.editable.map((r) => (
+				<label className="meta-row" key={r.key}>
+					<span className="meta-key">{r.key}:</span>
+					<input
+						value={metaExt[r.key] ?? ""}
+						onChange={(e) => {
+							setMetaExt({ ...metaExt, [r.key]: e.target.value });
+							touchMeta();
+						}}
+						disabled={saving}
+					/>
+				</label>
+			))}
+			{extRows?.readOnly.map((r) => (
+				<div className="meta-row readonly" key={r.key} title={r.value}>
+					<span className="meta-key">{r.key}:</span>
+					<span className="meta-readonly-value">{r.value}</span>
+				</div>
+			))}
+			{extRows !== null && extRows.readOnly.length > 0 && (
+				<p className="meta-note">
+					list-valued keys are read-only here – edit the raw file for complex
+					YAML
+				</p>
+			)}
+			{/* The managed/derived rows (operator round D): the view
 							    block's friendly formatting, read-only in edit mode
 							    too – generated/verified are stamped and append-only,
 							    references/referenced-by derive from the body. */}
-							{viewRows
-								.filter((r) =>
-									[
-										"generated",
-										"verified",
-										"references",
-										"referenced-by",
-									].includes(r.key),
-								)
-								.map((r) => (
-									<div
-										className="meta-row readonly"
-										key={r.key}
-										title={r.value}
-									>
-										<span className="meta-key">{r.key}:</span>
-										<span className="meta-readonly-value">{r.value}</span>
-									</div>
-								))}
-							{/* The pending add-key rows (operator round D): "+ add key"
+			{viewRows
+				.filter((r) =>
+					["generated", "verified", "references", "referenced-by"].includes(
+						r.key,
+					),
+				)
+				.map((r) => (
+					<div className="meta-row readonly" key={r.key} title={r.value}>
+						<span className="meta-key">{r.key}:</span>
+						<span className="meta-readonly-value">{r.value}</span>
+					</div>
+				))}
+			{/* The pending add-key rows (operator round D): "+ add key"
 							    appends a removable name+value pair; every filled name
 							    joins the SAME save's edits (the server's grammar gate
 							    answers a bad name with an inline error, the session
 							    stays open). */}
-							{metaAdds.map((row) => (
-								<div className="meta-row add" key={row.id}>
-									<span className="meta-key">add:</span>
-									<span className="meta-add">
-										<input
-											value={row.name}
-											placeholder="name"
-											aria-label="New key name"
-											onChange={(e) => {
-												setMetaAdds(
-													metaAdds.map((r) =>
-														r.id === row.id
-															? { ...r, name: e.target.value }
-															: r,
-													),
-												);
-												touchMeta();
-											}}
-											disabled={saving}
-										/>
-										<input
-											value={row.value}
-											placeholder="value"
-											aria-label="New key value"
-											onChange={(e) => {
-												setMetaAdds(
-													metaAdds.map((r) =>
-														r.id === row.id
-															? { ...r, value: e.target.value }
-															: r,
-													),
-												);
-												touchMeta();
-											}}
-											disabled={saving}
-										/>
-										<button
-											type="button"
-											className="tool-btn"
-											aria-label="Remove pending key"
-											title="Remove"
-											onClick={() =>
-												setMetaAdds(metaAdds.filter((r) => r.id !== row.id))
-											}
-											disabled={saving}
-										>
-											<X aria-hidden="true" />
-										</button>
-									</span>
-								</div>
-							))}
-							<button
-								type="button"
-								className="meta-add-key"
-								onClick={() => {
-									addSeq.current += 1;
-									setMetaAdds([
-										...metaAdds,
-										{ id: addSeq.current, name: "", value: "" },
-									]);
-								}}
-								disabled={saving}
-							>
-								+ add key
-							</button>
-						</div>
-					) : (
-						<div className="meta-rows">
-							{viewRows.map((r) => (
-								<div className="meta-row readonly" key={r.key} title={r.value}>
-									<span className="meta-key">{r.key}:</span>
-									<span className="meta-readonly-value">{r.value}</span>
-								</div>
-							))}
-						</div>
-					)}
-					{metaError && (
-						<span className="rename-error" role="alert">
-							{metaError}
-						</span>
-					)}
-				</details>
-			)}
-			{conflictBanner}
-			{pendingBanner}
-			{pendingRenameBanner}
-			{confirmingCancel && (
-				<div className="conflict-banner" role="alert">
-					<div>
-						<strong>Discard unsaved changes?</strong>
-						Your edits will be lost.
-					</div>
-					<div className="doc-actions">
+			{metaAdds.map((row) => (
+				<div className="meta-row add" key={row.id}>
+					<span className="meta-key">add:</span>
+					<span className="meta-add">
+						<input
+							value={row.name}
+							placeholder="name"
+							aria-label="New key name"
+							onChange={(e) => {
+								setMetaAdds(
+									metaAdds.map((r) =>
+										r.id === row.id ? { ...r, name: e.target.value } : r,
+									),
+								);
+								touchMeta();
+							}}
+							disabled={saving}
+						/>
+						<input
+							value={row.value}
+							placeholder="value"
+							aria-label="New key value"
+							onChange={(e) => {
+								setMetaAdds(
+									metaAdds.map((r) =>
+										r.id === row.id ? { ...r, value: e.target.value } : r,
+									),
+								);
+								touchMeta();
+							}}
+							disabled={saving}
+						/>
 						<button
 							type="button"
-							className="iconbtn subtle dismiss"
-							onClick={() => setConfirmingCancel(false)}
+							className="tool-btn"
+							aria-label="Remove pending key"
+							title="Remove"
+							onClick={() =>
+								setMetaAdds(metaAdds.filter((r) => r.id !== row.id))
+							}
+							disabled={saving}
 						>
-							Keep editing
+							<X aria-hidden="true" />
 						</button>
-						<button type="button" className="iconbtn" onClick={discardAndClose}>
-							Discard
-						</button>
-					</div>
+					</span>
 				</div>
-			)}
-			{saveError && (
-				<div className="conflict-banner" role="alert">
-					<div>
-						<strong>Save failed</strong>
-						{saveError}
-					</div>
-					<button
-						type="button"
-						className="iconbtn subtle dismiss"
-						onClick={() => {
-							setEditing(false);
-							setSaveError(null);
-							clearDirty();
-							onReload();
-						}}
-					>
-						Reload
+			))}
+			<button
+				type="button"
+				className="meta-add-key"
+				onClick={() => {
+					addSeq.current += 1;
+					setMetaAdds([
+						...metaAdds,
+						{ id: addSeq.current, name: "", value: "" },
+					]);
+				}}
+				disabled={saving}
+			>
+				+ add key
+			</button>
+		</div>
+	) : (
+		<div className="meta-rows">
+			{viewRows.map((r) => (
+				<div className="meta-row readonly" key={r.key} title={r.value}>
+					<span className="meta-key">{r.key}:</span>
+					<span className="meta-readonly-value">{r.value}</span>
+				</div>
+			))}
+		</div>
+	);
+
+	// The byline line (ui v1): "vN · saved <date> · N min read" – the same in
+	// both modes, so entering edit mode never reflows the masthead; the
+	// ribbon and the command bar say "editing". The sync LED lives in the
+	// status bar alone (DESIGN.md §7).
+	const words = doc ? wordCount(doc.markdown) : 0;
+	const lineSegs: string[] = [];
+	if (docMeta) lineSegs.push(`v${docMeta.version}`);
+	if (docMeta) lineSegs.push(`saved ${shortDate(docMeta.date)}`);
+	if (doc) lineSegs.push(`${readMinutes(words)} min read`);
+
+	// The masthead's standfirst follows the live form while editing (the
+	// description is a metadata field), the stored value otherwise.
+	const description = editing
+		? metaForm.description.trim()
+		: typeof doc?.frontmatter.description === "string"
+			? doc.frontmatter.description.trim()
+			: "";
+	const docType =
+		typeof doc?.frontmatter.type === "string"
+			? doc.frontmatter.type.trim()
+			: "";
+
+	// The trust seal (information only – Verify lives in the command bar):
+	// the tier as a stamped object, then who stands behind it – the latest
+	// verification when one exists, else the generated stamp's actor.
+	const trust = trustClass(docMeta?.okf);
+	const latestVerified = Array.isArray(latestVerifiedEvents)
+		? latestVerifiedEvents[latestVerifiedEvents.length - 1]
+		: undefined;
+	const sealLine = latestVerified?.by
+		? `verified by ${latestVerified.by}${latestVerified.at ? ` · ${shortDate(latestVerified.at)}` : ""}`
+		: doc?.frontmatter.generated?.by
+			? `generated by ${doc.frontmatter.generated.by}`
+			: null;
+
+	// Connections (OKF): outgoing references, then backlinks, as cards.
+	const references = doc?.frontmatter.references ?? [];
+	const referencedBy = doc?.frontmatter["referenced-by"] ?? [];
+	const connection = (path: string, backlink: boolean) => {
+		const known = docs.find((d) => d.path === path);
+		const mark = trustClass(docMetas[path]?.okf);
+		return (
+			<button
+				key={`${backlink ? "in" : "out"}:${path}`}
+				type="button"
+				className={`cc${backlink ? " in" : ""}${known ? "" : " missing"}`}
+				title={
+					backlink
+						? `${path} links here – Shift+click to preview`
+						: `${path} – Shift+click to preview`
+				}
+				onClick={(e) => (e.shiftKey ? onOpenPreview(path) : onSelectDoc(path))}
+			>
+				<span className="p">
+					{mark && (
+						<span
+							className={`tr ${mark}`}
+							role="img"
+							aria-label={TRUST_WORD[mark]}
+						/>
+					)}
+					<span className="cc-path">{path}</span>
+				</span>
+				<span className="t">{known ? known.title : "missing"}</span>
+			</button>
+		);
+	};
+
+	// The history line's GitHub link: the doc's commit log on this branch.
+	const docRepoPath = [repo?.docsRoot, selected].filter(Boolean).join("/");
+	const historyUrl =
+		repo?.slug && branch
+			? `https://github.com/${encodeURIComponent(repo.slug.owner)}/${encodeURIComponent(repo.slug.repo)}/commits/${[...branch.split("/"), ...docRepoPath.split("/")].map(encodeURIComponent).join("/")}`
+			: null;
+
+	// One rendering path (M4 review decision 3): the editor is mounted in
+	// BOTH modes – read is `editable: false` on the same instance, Edit/Save/
+	// Cancel are mode flips with no remount (only a discard bumps the key to
+	// drop the buffer). The editor carries the `markdown` typography class,
+	// so the document reads identically in both modes (M2 pixel parity).
+	return (
+		<div className="docview">
+			<CommandBar
+				start={
+					<>
+						{cmdStart}
+						{editing && dirty && (
+							<span className="chip amber">
+								<span className="led amber" aria-hidden="true" />
+								Unsaved changes
+							</span>
+						)}
+					</>
+				}
+			>
+				{/* The draft pill (item 3): only on main, when a draft elsewhere
+				    touches this doc – click checks the draft out (App). Its flip
+				    side (M4-3): on a draft branch touching THIS doc, a
+				    NON-clickable "on draft" chip (span – nothing to click). */}
+				{doc && draftBranch && (
+					<button type="button" className="draft-pill" onClick={onOpenDraft}>
+						<Pencil aria-hidden="true" />
+						draft exists – open
 					</button>
+				)}
+				{doc && onDraft && <span className="chip accent">on draft</span>}
+				{doc &&
+					(editing ? (
+						<>
+							<button
+								type="button"
+								className="btn"
+								onClick={requestCancel}
+								disabled={saving}
+							>
+								<X aria-hidden="true" />
+								<span className="label">Cancel</span>
+							</button>
+							{/* #33 (A1): Save as Verified – the event lands in the
+							    save's own commit (the PUT's verified flag). */}
+							{okf && !reserved && (
+								<button
+									type="button"
+									className="btn line"
+									onClick={() => void handleSave(true)}
+									disabled={saving}
+								>
+									<BadgeCheck aria-hidden="true" />
+									<span className="label">Save as verified</span>
+								</button>
+							)}
+							<button
+								type="button"
+								className="btn primary"
+								onClick={() => void handleSave()}
+								disabled={saving}
+							>
+								<Check aria-hidden="true" />
+								<span className="label">{saving ? "Saving…" : "Save"}</span>
+								<span className="kbd" aria-hidden="true">
+									Ctrl S
+								</span>
+							</button>
+						</>
+					) : (
+						<>
+							{/* #33 (A1): Verify beside Edit, read mode only – the
+							    verified event in its own commit, the mode never flips
+							    (comment resolve's sibling). Operator round D:
+							    verifiedByYou reflects an own verification that
+							    postdates the generated stamp – the filled style and
+							    "Verified" word say so, and the button STAYS clickable
+							    (events are append-only; re-verify is legal). Operator
+							    round E: Edit REFUSES on a reserved file (disabled +
+							    the §3.1 tooltip) – index.md/log.md are
+							    fragmt-generated, and a saved edit would be
+							    overwritten by the next regen. The core writeDoc stays
+							    permissive; only the UI's affordance is withdrawn. */}
+							{okf && !reserved && (
+								<button
+									type="button"
+									className={`btn line${doc.verifiedByYou ? " verified" : ""}`}
+									onClick={() => void handleVerify()}
+									disabled={verifying || saving}
+									title={
+										doc.verifiedByYou && latestVerifiedAt
+											? `verified by you · ${shortDate(latestVerifiedAt)} – click to re-verify`
+											: undefined
+									}
+								>
+									<BadgeCheck aria-hidden="true" />
+									<span className="label">
+										{verifying
+											? "Verifying…"
+											: doc.verifiedByYou
+												? "Verified"
+												: "Verify"}
+									</span>
+								</button>
+							)}
+							<button
+								type="button"
+								className="btn primary"
+								disabled={reserved}
+								title={
+									reserved
+										? "Reserved file – generated by fragmt; edits would be overwritten (OKF §3.1)"
+										: undefined
+								}
+								onClick={() => {
+									// App gates the flip (protected main: draft first)
+									// – only a true enters edit mode. The flip IS the
+									// unified session: content AND metadata (operator
+									// round D) – the seed lands with it, fresh per
+									// session.
+									void onBeforeEdit().then((proceed) => {
+										if (!proceed) return;
+										if (doc) seedMetaForm(doc);
+										setEditing(true);
+										setSaveError(null);
+									});
+								}}
+							>
+								<Pencil aria-hidden="true" />
+								<span className="label">Edit</span>
+							</button>
+						</>
+					))}
+			</CommandBar>
+			<div className="desk">
+				<div className="page">
+					<article
+						className={`sheet${editing ? " editing" : ""}`}
+						ref={paneRef}
+					>
+						{editing && (
+							<div className="edit-ribbon">
+								<Pencil aria-hidden="true" />
+								Editing on a draft
+								{branch && <span className="mono">{branch}</span>}
+							</div>
+						)}
+						{/* Dead-link note (M4-3 b6): a relative link that looks like a
+						    doc but matches nothing – said plainly at the top of the
+						    sheet, dismissable, never a tab hijack. */}
+						{linkNotFound && (
+							<div className="conflict-banner" role="status">
+								<div>
+									<strong>Link not found</strong>
+									{linkNotFound}
+								</div>
+								<button
+									type="button"
+									className="iconbtn subtle dismiss"
+									onClick={() => setLinkNotFound(null)}
+								>
+									Dismiss
+								</button>
+							</div>
+						)}
+						{conflictBanner}
+						{pendingBanner}
+						{pendingRenameBanner}
+						{confirmingCancel && (
+							<div className="conflict-banner" role="alert">
+								<div>
+									<strong>Discard unsaved changes?</strong>
+									Your edits will be lost.
+								</div>
+								<div className="doc-actions">
+									<button
+										type="button"
+										className="iconbtn subtle dismiss"
+										onClick={() => setConfirmingCancel(false)}
+									>
+										Keep editing
+									</button>
+									<button
+										type="button"
+										className="iconbtn"
+										onClick={discardAndClose}
+									>
+										Discard
+									</button>
+								</div>
+							</div>
+						)}
+						{saveError && (
+							<div className="conflict-banner" role="alert">
+								<div>
+									<strong>Save failed</strong>
+									{saveError}
+								</div>
+								<button
+									type="button"
+									className="iconbtn subtle dismiss"
+									onClick={() => {
+										setEditing(false);
+										setSaveError(null);
+										clearDirty();
+										onReload();
+									}}
+								>
+									Reload
+								</button>
+							</div>
+						)}
+						{doc && (
+							<header className="masthead">
+								<div className="kicker">
+									{okf && docType && <span className="type">{docType}</span>}
+									{okf && docType && <span className="rule" />}
+									<span>{selected}</span>
+								</div>
+								<h1 className="title">{displayName}</h1>
+								{description && <p className="standfirst">{description}</p>}
+								<div className="byline">
+									<Avatar
+										author={docMeta?.author ?? ""}
+										email={docMeta?.authorEmail ?? ""}
+										authors={authors}
+									/>
+									<div className="who">
+										<b>{docMeta?.author ?? "–"}</b>
+										<span>{lineSegs.join(" · ")}</span>
+									</div>
+									<span className="sp" />
+									{okf && trust && (
+										<div
+											className={`seal ${trust}`}
+											title="OKF trust tier (§5.3)"
+										>
+											<span className="ring" aria-hidden="true">
+												{SEAL_GLYPH[trust]}
+											</span>
+											<div>
+												<b>{SEAL_WORD[trust]}</b>
+												{sealLine && <span>{sealLine}</span>}
+											</div>
+										</div>
+									)}
+								</div>
+							</header>
+						)}
+						{/* #33 (D2, operator round D): the unified metadata block – ONE
+						    surface for viewing and editing, between the masthead and
+						    the content. Read mode: a native collapsed details/summary
+						    with one read-only row per key – the curated five, the
+						    §4.1 extensions, and the managed/derived family
+						    friendly-formatted (metaViewRows). Edit mode: the block
+						    auto-expands (the `open` attribute rides the mode; a
+						    read-mode toggle is the user's own) and its rows become
+						    inputs – the command bar's Save/Cancel own the session,
+						    content and metadata together. Reserved docs render the
+						    §3.1 note inside the block, never rows (§3.1). */}
+						{doc && okf && (
+							<details className="meta-block" open={editing || undefined}>
+								<summary>
+									<ChevronRight className="ch" aria-hidden="true" />
+									<span className="meta-title">Details</span>
+									<span className="pv">
+										{reserved
+											? "reserved file"
+											: [
+													docType,
+													typeof doc.frontmatter.status === "string"
+														? doc.frontmatter.status
+														: "",
+													`${viewRows.length} keys`,
+												]
+													.filter(Boolean)
+													.join(" · ")}
+									</span>
+								</summary>
+								{metaBody}
+								{metaError && (
+									<span className="rename-error" role="alert">
+										{metaError}
+									</span>
+								)}
+							</details>
+						)}
+						{/* The hard-wrap warning (owner round): stateless – visible
+						    while editing AND the loaded body still hard-wraps; a save
+						    that reflows (onSaved updates doc.markdown) or leaving
+						    edit mode removes it. No dismiss button by design. */}
+						{editing && doc && hasHardWraps(doc.markdown) && (
+							<p className="notice hard-wrap-note">
+								<TriangleAlert aria-hidden="true" />
+								<span>
+									This document has hard-wrapped paragraphs. The editor saves
+									each paragraph as a single line, so saving will reflow the
+									document and the diff will show it fully changed – the content
+									itself is unaffected.
+								</span>
+							</p>
+						)}
+						{doc ? (
+							<div className="prose">
+								<EditorPane
+									key={`${doc.path}#${resetCount}`}
+									ref={editorRef}
+									markdown={doc.markdown}
+									editable={editing}
+									saving={saving}
+									onDirtyChange={editorDirty}
+									onSave={() => void handleSave()}
+									onCancel={requestCancel}
+									onEscapeSurfacesClear={onEscapeSurfacesClear}
+									onComment={(id, quote, body) =>
+										void handleComment(id, quote, body)
+									}
+									onSpanClick={onSpanClick}
+									docPath={selected ?? doc.path}
+									docs={docs}
+									folders={folders}
+									onSelectDoc={onSelectDoc}
+									onOpenPreview={onOpenPreview}
+									onSelectFolder={onSelectFolder}
+									onLinkNotFound={setLinkNotFound}
+									anchor={pendingAnchor}
+									onAnchorConsumed={onAnchorConsumed}
+									changedLines={changedLines}
+								/>
+							</div>
+						) : null}
+						{doc && okf && (
+							<section className="conn" aria-label="Connections">
+								<div className="conn-h">
+									<h3>Connections</h3>
+									<span>
+										{references.length}{" "}
+										{references.length === 1 ? "reference" : "references"} ·{" "}
+										{referencedBy.length}{" "}
+										{referencedBy.length === 1 ? "backlink" : "backlinks"}
+									</span>
+								</div>
+								{reserved ? (
+									<p className="conn-note">
+										Reserved file – index.md and log.md carry no reference
+										fields (OKF §3.1). An index's links are its generated
+										content.
+									</p>
+								) : references.length + referencedBy.length === 0 ? (
+									<p className="conn-note">
+										No connections yet – body links land here on save.
+									</p>
+								) : (
+									<div className="conn-grid">
+										{references.map((p) => connection(p, false))}
+										{referencedBy.map((p) => connection(p, true))}
+									</div>
+								)}
+							</section>
+						)}
+						{doc && docMeta && (
+							<p className="history">
+								<Clock aria-hidden="true" />
+								<span>
+									{docMeta.version}{" "}
+									{docMeta.version === 1 ? "version" : "versions"} · last by{" "}
+									{docMeta.author}, {shortDate(docMeta.date)}
+								</span>
+								{historyUrl && (
+									<a href={historyUrl} target="_blank" rel="noreferrer">
+										History on GitHub ↗
+									</a>
+								)}
+							</p>
+						)}
+					</article>
 				</div>
-			)}
-			{/* The hard-wrap warning (owner round): stateless – visible while
-			    editing AND the loaded body still hard-wraps; a save that
-			    reflows (onSaved updates doc.markdown) or leaving edit mode
-			    removes it. No dismiss button by design. */}
-			{editing && doc && hasHardWraps(doc.markdown) && (
-				<p className="hard-wrap-note">
-					This document has hard-wrapped paragraphs. The editor saves each
-					paragraph as a single line, so saving will reflow the document and the
-					diff will show it fully changed – the content itself is unaffected.
-				</p>
-			)}
-			{doc ? (
-				<EditorPane
-					key={`${doc.path}#${resetCount}`}
-					ref={editorRef}
-					markdown={doc.markdown}
-					editable={editing}
-					saving={saving}
-					onDirtyChange={editorDirty}
-					onSave={() => void handleSave()}
-					onCancel={requestCancel}
-					onEscapeSurfacesClear={onEscapeSurfacesClear}
-					onComment={(id, quote, body) => void handleComment(id, quote, body)}
-					onSpanClick={onSpanClick}
-					docPath={selected ?? doc.path}
-					docs={docs}
-					folders={folders}
-					onSelectDoc={onSelectDoc}
-					onOpenPreview={onOpenPreview}
-					onSelectFolder={onSelectFolder}
-					onLinkNotFound={setLinkNotFound}
-					anchor={pendingAnchor}
-					onAnchorConsumed={onAnchorConsumed}
-					changedLines={changedLines}
-				/>
-			) : null}
+			</div>
 		</div>
 	);
 }

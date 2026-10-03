@@ -59,6 +59,7 @@ test("GET /api/meta: repo is the folder name without a GitHub origin, the slug's
 	expect(meta.repo).toEqual({
 		name: basename(root),
 		slug: null,
+		docsRoot: "",
 	});
 
 	gitOut(["remote", "add", "origin", "https://github.com/acme/handbook.git"]);
@@ -66,6 +67,7 @@ test("GET /api/meta: repo is the folder name without a GitHub origin, the slug's
 	expect(meta.repo).toEqual({
 		name: "handbook",
 		slug: { owner: "acme", repo: "handbook" },
+		docsRoot: "",
 	});
 });
 

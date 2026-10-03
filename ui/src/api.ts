@@ -317,7 +317,12 @@ export interface RepoMeta {
 	merge: { branch: string | null; remaining: number } | null;
 	/** The navigator head's repo line (ui v1). Optional: older servers and
 	 *  fixtures omit it, and the head just drops the parts it can't name. */
-	repo?: { name: string; slug: { owner: string; repo: string } | null };
+	repo?: {
+		name: string;
+		slug: { owner: string; repo: string } | null;
+		/** Repo-relative POSIX path of the docs root, "" at the repo root. */
+		docsRoot: string;
+	};
 }
 
 export const getMeta = () => request<RepoMeta>("/api/meta");

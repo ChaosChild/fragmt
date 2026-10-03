@@ -251,3 +251,17 @@ export const TRUST_WORD = {
 	h: "human-reviewed",
 	s: "stale",
 } as const;
+
+/** The command bar's breadcrumb (ui v1): folder segments then the doc name;
+ *  past 3 segments the middle collapses to "…" – first folder, last folder,
+ *  name stay (the full path rides the crumb's title). */
+export function collapseCrumb(segments: string[]): string[] {
+	return segments.length > 3
+		? [segments[0], "…", ...segments.slice(-2)]
+		: segments;
+}
+
+/** The byline's "N min read": 230 words a minute, rounded up, never 0. */
+export function readMinutes(words: number): number {
+	return Math.max(1, Math.ceil(words / 230));
+}
