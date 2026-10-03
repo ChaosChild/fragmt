@@ -92,6 +92,14 @@ describe("diffWords", () => {
 		]);
 	});
 
+	test("a rewrap inside a changed block is no change – only the words are", () => {
+		expect(diffWords("one two\nthree four", "one two three five")).toEqual([
+			{ type: "same", text: "one two three " },
+			{ type: "del", text: "four" },
+			{ type: "ins", text: "five" },
+		]);
+	});
+
 	test("an inserted sentence at the end is one ins", () => {
 		expect(diffWords("Done.", "Done. And more.")).toEqual([
 			{ type: "same", text: "Done." },

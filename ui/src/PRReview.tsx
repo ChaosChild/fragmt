@@ -381,13 +381,26 @@ function InlineCode({ text }: { text: string }) {
 }
 
 /** One block's text in the rendered view: fences and tables keep their
- *  layout (pre), everything else reads as a paragraph. */
+ *  layout (pre); a heading reads as a heading (its #s dropped); lists and
+ *  quotes keep their line breaks; the rest reads as a paragraph. Plain
+ *  text throughout – nothing but backtick code is interpreted. */
 function BlockText({ block, text }: { block: BlockDiff; text: string }) {
-	return block.kind === "fence" || block.kind === "table" ? (
-		<pre>{text}</pre>
-	) : (
-		<p>
-			<InlineCode text={text} />
+	if (block.kind === "fence" || block.kind === "table")
+		return <pre>{text}</pre>;
+	if (block.kind === "heading")
+		return (
+			<p className="rd-h">
+				<InlineCode text={text.replace(/^\s*#{1,6}\s+/, "")} />
+			</p>
+		);
+	// Lists and quotes keep one line per item; a hard-wrapped continuation
+	// line joins its item.
+	const lined = block.kind === "list" || block.kind === "quote";
+	return (
+		<p className={lined ? "keep-lines" : undefined}>
+			<InlineCode
+				text={lined ? text.replace(/\n(?!\s*([-*+>]|\d+[.)])\s)/g, " ") : text}
+			/>
 		</p>
 	);
 }
@@ -520,7 +533,10 @@ function RenderedDiff({
 					);
 				else if (r.type === "changed")
 					out.push(
-						<p key={rk} className="chg">
+						<p
+							key={rk}
+							className={`chg${r.kind === "list" || r.kind === "quote" ? " keep-lines" : ""}${r.kind === "heading" ? " rd-h" : ""}`}
+						>
 							{diffWords(r.a ?? "", r.b ?? "").map((w, wi) =>
 								w.type === "same" ? (
 									// biome-ignore lint/suspicious/noArrayIndexKey: a fixed word diff

@@ -192,7 +192,9 @@ export interface WordPart {
 const WORD_DIFF_LIMIT = 250_000;
 
 /** Word-level diff of two changed blocks: whitespace runs are kept as
- *  tokens, adjacent parts of one type coalesce. */
+ *  tokens (the head's spelling wins) but any whitespace equals any other –
+ *  a rewrap inside a changed block is no change. Adjacent parts of one
+ *  type coalesce. */
 export function diffWords(a: string, b: string): WordPart[] {
 	const ta = a.split(/(\s+)/).filter(Boolean);
 	const tb = b.split(/(\s+)/).filter(Boolean);
@@ -209,10 +211,12 @@ export function diffWords(a: string, b: string): WordPart[] {
 	};
 	let i = 0;
 	let j = 0;
-	for (const [pi, pj] of lcsPairs(ta, tb, (x, y) => x === y)) {
+	const blank = (t: string) => /^\s+$/.test(t);
+	const eq = (x: string, y: string) => x === y || (blank(x) && blank(y));
+	for (const [pi, pj] of lcsPairs(ta, tb, eq)) {
 		for (; i < pi; i++) push("del", ta[i]);
 		for (; j < pj; j++) push("ins", tb[j]);
-		push("same", ta[pi]);
+		push("same", tb[pj]);
 		i = pi + 1;
 		j = pj + 1;
 	}

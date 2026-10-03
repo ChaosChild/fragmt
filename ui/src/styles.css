@@ -1395,6 +1395,17 @@ button.pr-file-head svg {
 	grid-template-rows: minmax(0, 100vh);
 	height: 100vh;
 }
+/* Explicit columns: a collapsed (display:none) navigator must not let the
+   stage slide into its auto column and leave the 1fr one empty. */
+.app-frame > .rail {
+	grid-column: 1;
+}
+.app-frame > .sidebar {
+	grid-column: 2;
+}
+.app-frame > .stage {
+	grid-column: 3;
+}
 .stage {
 	display: grid;
 	grid-template-rows: minmax(0, 1fr) var(--status);
@@ -3522,19 +3533,22 @@ button.pr-file-head svg {
 	scrollbar-color: var(--line) transparent;
 }
 /* The sheet column; .has-margin adds the 292px marginalia column. */
+/* The sheet grows to 1060px – wide screens get a wide page, not empty
+   desk; the side padding scales with the viewport. */
 .page {
 	display: grid;
-	grid-template-columns: minmax(0, 820px);
-	gap: 36px;
+	grid-template-columns: minmax(0, 1060px);
+	gap: 28px;
 	justify-content: center;
-	padding: 28px 32px 96px;
+	padding: 28px 24px 96px;
 	position: relative;
+	--sheet-pad: clamp(40px, 4vw, 76px);
 }
 .sheet {
 	background: var(--sheet);
 	border-radius: var(--r-lg);
 	box-shadow: var(--sheet-shadow);
-	padding: 56px 76px 72px;
+	padding: 56px var(--sheet-pad, 76px) 72px;
 	position: relative;
 	min-width: 0;
 }
@@ -3546,7 +3560,7 @@ button.pr-file-head svg {
 .edit-ribbon {
 	position: absolute;
 	top: 0;
-	left: 76px;
+	left: var(--sheet-pad, 76px);
 	transform: translateY(-50%);
 	display: flex;
 	align-items: center;
@@ -4019,7 +4033,7 @@ h1.title::after {
 
 /* ═══ ui v1 – marginalia: comments beside their text ═══ */
 .page.has-margin {
-	grid-template-columns: minmax(0, 820px) 292px;
+	grid-template-columns: minmax(0, 1060px) 260px;
 }
 .margin {
 	position: relative;
@@ -4192,7 +4206,7 @@ h1.title::after {
 /* ≤1180px: the margin is the bottom sheet again – notes in a plain list. */
 @media (max-width: 1180px) {
 	.page.has-margin {
-		grid-template-columns: minmax(0, 820px);
+		grid-template-columns: minmax(0, 1060px);
 	}
 	.margin {
 		position: fixed;
@@ -4245,8 +4259,10 @@ h1.title::after {
 /* ═══ ui v1 – the preview as a second sheet beside the first ═══ */
 /* The split (main | divider | pane) is the #15 flex machinery; the pane
    now reads as a sheet on the desk, and each column scrolls on its own. */
+/* Level with the main sheet: the pane sits beside the whole doc view, its
+   command bar included, so its top clears the bar plus the page's 28px. */
 .slideout.preview {
-	margin: 28px 16px 12px 0;
+	margin: calc(var(--cmd) + 28px) 16px 12px 0;
 	background: var(--sheet);
 	border-radius: var(--r-lg);
 	box-shadow: var(--sheet-shadow);
@@ -4302,10 +4318,36 @@ h1.title::after {
 }
 
 /* Marginalia fold to pins while two sheets share the desk. */
+/* Two sheets on the desk: both height-bound and scrolling inside, tops and
+   bottoms level. The margin's pins follow the main sheet's own scroll
+   (CommentsRail re-lays out on it). */
+.desk:has(> .page.pins) {
+	overflow: hidden;
+}
 .page.has-margin.pins {
 	grid-template-columns: minmax(0, 1fr) 40px;
+	grid-template-rows: minmax(0, 1fr);
 	gap: 10px;
-	padding: 28px 0 96px 24px;
+	height: 100%;
+	padding: 28px 0 12px 24px;
+}
+.page.pins .sheet {
+	overflow-y: auto;
+	scrollbar-width: thin;
+	scrollbar-color: var(--line) transparent;
+}
+.page.pins .margin {
+	overflow: hidden;
+}
+/* Inside a scrolling sheet the ribbon can't hang over the edge – it rides
+   the top of the scroll instead. */
+.page.pins .edit-ribbon {
+	position: sticky;
+	top: 12px;
+	transform: none;
+	width: fit-content;
+	margin: -40px 0 16px;
+	z-index: 3;
 }
 .page.pins .margin-h b,
 .page.pins .margin-h .show-resolved {
@@ -4363,8 +4405,15 @@ h1.title::after {
 		box-shadow: var(--float-shadow);
 	}
 	.page.has-margin.pins {
-		grid-template-columns: minmax(0, 820px);
-		padding: 28px 32px 96px;
+		grid-template-columns: minmax(0, 1060px);
+		height: auto;
+		padding: 28px 24px 96px;
+	}
+	.desk:has(> .page.pins) {
+		overflow: auto;
+	}
+	.page.pins .sheet {
+		overflow: visible;
 	}
 }
 
@@ -4963,4 +5012,14 @@ h1.title::after {
 	.rv-side {
 		position: static;
 	}
+}
+
+/* Rendered diff blocks: headings read as headings, lists keep lines. */
+.rd .rd-h {
+	font: 500 26px / 1.25 var(--serif);
+	letter-spacing: -0.01em;
+	margin-top: 1.4em;
+}
+.rd .keep-lines {
+	white-space: pre-line;
 }

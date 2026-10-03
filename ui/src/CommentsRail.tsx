@@ -501,7 +501,13 @@ export function CommentsRail({
 						height: el.offsetHeight,
 					};
 				});
-			const next = layoutNotes(items, { gap: 12, top: 0, focused });
+			// Pins ride a sheet that scrolls on its own (preview mode): an
+			// anchor scrolled above the view takes its pin out with it.
+			const next = layoutNotes(items, {
+				gap: 12,
+				top: pinsRef.current ? Number.NEGATIVE_INFINITY : 0,
+				focused,
+			});
 			let bottom = 0;
 			for (const it of items) {
 				const y = next.get(it.id);
@@ -538,6 +544,9 @@ export function CommentsRail({
 			typeof ResizeObserver === "undefined" ? null : new ResizeObserver(layout);
 		ro?.observe(sheet);
 		for (const el of Array.from(root.children)) ro?.observe(el);
+		// In preview mode the sheet is its own scroller – its anchors move
+		// under a still margin, so the pins follow every scroll.
+		sheet.addEventListener("scroll", layout, { passive: true });
 		const mo = new MutationObserver(layout);
 		mo.observe(sheet, { childList: true, subtree: true, characterData: true });
 		void document.fonts?.ready.then(layout);
@@ -546,6 +555,7 @@ export function CommentsRail({
 		// again rather than rely on an observer firing.
 		layout();
 		return () => {
+			sheet.removeEventListener("scroll", layout);
 			ro?.disconnect();
 			mo.disconnect();
 			cancelAnimationFrame(frame.current);
