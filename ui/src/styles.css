@@ -3869,7 +3869,6 @@ h1.title::after {
 /* Prose – serif 18/1.7 for read AND edit (one mounted editor, no reflow). */
 .prose {
 	margin-top: 40px;
-	counter-reset: h2;
 }
 .prose .markdown,
 .slideout .markdown {
@@ -3887,16 +3886,6 @@ h1.title::after {
 	font: 500 30px / 1.2 var(--serif);
 	letter-spacing: -0.012em;
 	margin: 2em 0 0.6em;
-	counter-increment: h2;
-}
-/* The section number – CSS only, nothing is written to the markdown. */
-.prose .markdown h2::before {
-	content: counter(h2, decimal-leading-zero);
-	font: 500 12px var(--mono);
-	color: var(--accent);
-	letter-spacing: 0.06em;
-	margin-right: 14px;
-	vertical-align: 0.6em;
 }
 .markdown code {
 	font: 400 0.8em var(--mono);
@@ -5247,4 +5236,14 @@ h1.title::after {
 		border-right: 0;
 		border-bottom: 1px solid var(--line-soft);
 	}
+}
+
+/* Text for assistive tech only (e.g. why the status LED is red). */
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
 }
