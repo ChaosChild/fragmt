@@ -79,6 +79,16 @@ describe("@ reference insertion", () => {
 		editor.destroy();
 	});
 
+	test("text typed right after the reference stays outside the link", () => {
+		const editor = atEditor();
+		editor.commands.setContent("see @plan");
+		applyAtReference(editor, { from: 5, to: 10 }, docs[0]);
+		editor.commands.insertContent(" and more");
+		const out: string = editor.storage.markdown.getMarkdown();
+		expect(out).toContain("[Plan](docs/plan.md) and more");
+		editor.destroy();
+	});
+
 	test("with the linking doc's path the href is relative to its folder", () => {
 		const editor = atEditor();
 		editor.commands.setContent("see @plan here");

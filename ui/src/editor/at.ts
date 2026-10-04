@@ -85,6 +85,9 @@ export function applyAtReference(
 			text: doc.title,
 			marks: [{ type: "link", attrs: { href } }],
 		})
+		// Link is inclusive (autolink), so the cursor at its end would carry
+		// it into whatever is typed next – drop it from the stored marks.
+		.unsetMark("link")
 		.run();
 }
 
