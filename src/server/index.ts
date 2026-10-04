@@ -149,6 +149,21 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		app.get("/api/auth/session", (c) => sessionDisabled(c));
 	}
 
+	// One write at a time: every non-GET request runs to completion before the
+	// next starts. Two syncs (focus + interval + edit entry), or a sync and a
+	// save, otherwise race in the one working tree – the second pull --rebase
+	// sees the first's rebase mid-flight ("You have unstaged changes"). Ahead
+	// of the merge guard so that guard is checked inside the queue.
+	// ponytail: one global queue per server (= per repo); a slow push holds
+	// saves for its duration – split per branch only if that ever bites.
+	let writes: Promise<unknown> = Promise.resolve();
+	app.use("*", async (c, next) => {
+		if (c.req.method === "GET" || c.req.method === "HEAD") return next();
+		const turn = writes.then(() => next());
+		writes = turn.catch(() => {});
+		await turn;
+	});
+
 	// M4-4 b3: the write guard – a standing merge owns every write. Registered
 	// before all write routes (incl. the comment fall-through below), so a
 	// stray save/draft/checkout/comment mid-merge 409s instead of racing the

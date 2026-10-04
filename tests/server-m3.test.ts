@@ -182,3 +182,36 @@ test("POST /api/sync on a repo with no remote is a clean no-op", async () => {
 	expect(res.status).toBe(200);
 	expect(await res.json()).toEqual({ conflict: false });
 });
+
+test("concurrent writes queue: three syncs at once against a moved origin all succeed", {
+	timeout: 30_000,
+}, async () => {
+	const git = (cwd: string, args: string[]) =>
+		execFileSync("git", args, { cwd, encoding: "utf8" });
+	const origin = mkdtempSync(join(tmpdir(), "fragmt-m3-origin-"));
+	const other = mkdtempSync(join(tmpdir(), "fragmt-m3-other-"));
+	try {
+		git(origin, ["init", "-q", "--bare", "-b", "main"]);
+		git(root, ["remote", "add", "origin", origin]);
+		git(root, ["push", "-q", "-u", "origin", "main"]);
+		git(other, ["clone", "-q", origin, "."]);
+		git(other, ["config", "user.name", "Other"]);
+		git(other, ["config", "user.email", "other@example.com"]);
+		for (let i = 0; i < 3; i++) {
+			writeFileSync(join(other, `o${i}.md`), `# o${i}\n`);
+			git(other, ["add", "-A"]);
+			git(other, ["commit", "-q", "-m", `o${i}`]);
+			git(other, ["push", "-q"]);
+			// Unserialized, the second pull sees the first one's rebase
+			// mid-flight: "cannot pull with rebase: You have unstaged changes".
+			const res = await Promise.all(
+				[1, 2, 3].map(() => api("POST", "/api/sync")),
+			);
+			expect(res.map((r) => r.status)).toEqual([200, 200, 200]);
+		}
+		expect(git(root, ["status", "--porcelain"]).trim()).toBe("");
+	} finally {
+		rmSync(origin, { recursive: true, force: true });
+		rmSync(other, { recursive: true, force: true });
+	}
+});

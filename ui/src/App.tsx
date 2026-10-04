@@ -160,6 +160,9 @@ export function App() {
 	// files must be reconciled in the terminal before merging again.
 	const [mergeConflict, setMergeConflict] = useState<string | null>(null);
 	const [ledRed, setLedRed] = useState(false);
+	// Why the last sync failed (not a conflict – those get the banner);
+	// the status bar's tooltip, so a red LED is never unexplained.
+	const [syncError, setSyncError] = useState<string | null>(null);
 	// M4-3 b3: drag-resized sidebar width – applied as --sidebar-w on the
 	// .sidebar element itself (not :root), so the ≤768px drawer override
 	// keeps owning the width there. Persisted on pointerup only.
@@ -474,6 +477,7 @@ export function App() {
 				return;
 			}
 			setConflict(null);
+			setSyncError(null);
 			setLedRed(false);
 			setSynced(true);
 			setLastSyncAt(Date.now());
@@ -491,7 +495,8 @@ export function App() {
 					// keep prior doc
 				}
 			}
-		} catch {
+		} catch (e) {
+			setSyncError(e instanceof Error ? e.message : String(e));
 			setLedRed(true);
 		} finally {
 			setSyncing(false);
@@ -1181,7 +1186,9 @@ export function App() {
 	// failure; holds until the next clean sync).
 	const led = ledRed ? "red" : dirty || syncing || !synced ? "amber" : "green";
 	const ledLabel = ledRed
-		? "Error"
+		? syncError
+			? "Sync failed"
+			: "Error"
 		: dirty
 			? "Unsaved"
 			: syncing
@@ -1666,6 +1673,7 @@ export function App() {
 					<StatusBar
 						led={led}
 						ledLabel={ledLabel}
+						ledDetail={ledRed ? syncError : null}
 						lastSyncAt={lastSyncAt}
 						branch={branch}
 						words={doc ? wordCount(doc.markdown) : null}

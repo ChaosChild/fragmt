@@ -18,6 +18,7 @@ export function minutesAgo(at: number, now: number): string {
 export function StatusBar({
 	led,
 	ledLabel,
+	ledDetail,
 	lastSyncAt,
 	branch,
 	words,
@@ -25,6 +26,8 @@ export function StatusBar({
 }: {
 	led: string;
 	ledLabel: string;
+	/** Why the LED is red (a failed sync's message); null otherwise. */
+	ledDetail?: string | null;
 	/** Epoch ms of the last clean sync; null until the first one. */
 	lastSyncAt: number | null;
 	branch: string | null;
@@ -65,9 +68,10 @@ export function StatusBar({
 	const findingDocs = new Set(okfFindings?.map((f) => f.path)).size;
 	return (
 		<footer className="status">
-			<span className="s" role="status">
+			<span className="s" role="status" title={ledDetail ?? undefined}>
 				<span className={`led ${led}`} aria-hidden="true" />
 				{ledLabel}
+				{ledDetail && <span className="sr-only">: {ledDetail}</span>}
 				{lastSyncAt !== null &&
 					` · pulled ${minutesAgo(lastSyncAt, Math.max(now, lastSyncAt))}`}
 			</span>
