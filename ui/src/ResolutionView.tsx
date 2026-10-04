@@ -16,7 +16,7 @@ import {
 	resolveMergeFile,
 } from "./api";
 import { CommandBar } from "./CommandBar";
-import { askConfirm } from "./ConfirmDialog";
+import { askConfirm } from "./confirm";
 import { diffWords } from "./prose-diff";
 import { assembleContent, hunkPlace, sidecarSummaryLine } from "./resolve";
 import { shortDate } from "./Sidebar";

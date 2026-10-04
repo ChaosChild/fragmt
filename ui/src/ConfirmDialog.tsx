@@ -1,29 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-
-/** What a confirmation asks: a title, one line of consequence, the action. */
-export interface ConfirmOptions {
-	title: string;
-	body?: string;
-	/** The confirming button's label – the action's verb ("Delete"). */
-	confirmLabel: string;
-	/** Destructive – the confirm button wears the danger colour. */
-	danger?: boolean;
-}
-
-type Pending = ConfirmOptions & { resolve: (ok: boolean) => void };
-let show: ((p: Pending) => void) | null = null;
-
-/**
- * The house replacement for window.confirm: resolves true on confirm, false
- * on Cancel / Escape / backdrop. Needs <ConfirmHost /> mounted (App mounts
- * it); without one it resolves false – nothing destructive runs unasked.
- */
-export function askConfirm(opts: ConfirmOptions): Promise<boolean> {
-	return new Promise((resolve) => {
-		if (!show) return resolve(false);
-		show({ ...opts, resolve });
-	});
-}
+import { type ConfirmRequest, registerConfirmHost } from "./confirm";
 
 /**
  * One themed modal on the native <dialog> (focus trap, inert backdrop, top
@@ -32,21 +8,21 @@ export function askConfirm(opts: ConfirmOptions): Promise<boolean> {
  * Escape chain (preview, PR view) leaves the surface behind alone.
  */
 export function ConfirmHost() {
-	const [pending, setPending] = useState<Pending | null>(null);
+	const [pending, setPending] = useState<ConfirmRequest | null>(null);
 	const ref = useRef<HTMLDialogElement>(null);
 	const cancelRef = useRef<HTMLButtonElement>(null);
 
-	useEffect(() => {
-		show = (p) =>
-			setPending((cur) => {
-				// A second ask while one is open: the older one is declined.
-				cur?.resolve(false);
-				return p;
-			});
-		return () => {
-			show = null;
-		};
-	}, []);
+	useEffect(
+		() =>
+			registerConfirmHost((p) =>
+				setPending((cur) => {
+					// A second ask while one is open: the older one is declined.
+					cur?.resolve(false);
+					return p;
+				}),
+			),
+		[],
+	);
 
 	useEffect(() => {
 		const d = ref.current;

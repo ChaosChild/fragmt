@@ -32,7 +32,8 @@ import type {
 	RepoMeta,
 	TreeNode,
 } from "../ui/src/api.js";
-import { askConfirm, ConfirmHost } from "../ui/src/ConfirmDialog.js";
+import { ConfirmHost } from "../ui/src/ConfirmDialog.js";
+import { askConfirm, registerConfirmHost } from "../ui/src/confirm.js";
 import { DocView } from "../ui/src/DocView.js";
 import { GraphView } from "../ui/src/GraphView.js";
 import { hasHardWraps } from "../ui/src/hard-wraps.js";
@@ -1979,6 +1980,22 @@ describe("ConfirmDialog: the house confirm (no window.confirm)", () => {
 		expect(await askConfirm({ title: "Delete?", confirmLabel: "Delete" })).toBe(
 			false,
 		);
+	});
+
+	test("a remount's late cleanup never unregisters the newer host", async () => {
+		const seen: string[] = [];
+		const offOld = registerConfirmHost((r) => {
+			seen.push(`old:${r.title}`);
+			r.resolve(false);
+		});
+		const offNew = registerConfirmHost((r) => {
+			seen.push(`new:${r.title}`);
+			r.resolve(true);
+		});
+		offOld(); // the old host's cleanup runs after the new one registered
+		expect(await askConfirm({ title: "x", confirmLabel: "Go" })).toBe(true);
+		expect(seen).toEqual(["new:x"]);
+		offNew();
 	});
 
 	test("confirm resolves true; Cancel and Escape resolve false; focus starts on Cancel", async () => {

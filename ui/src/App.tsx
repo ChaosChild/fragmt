@@ -46,8 +46,9 @@ import {
 	type TreeNode,
 } from "./api";
 import { CommentsRail } from "./CommentsRail";
-import { askConfirm, ConfirmHost } from "./ConfirmDialog";
+import { ConfirmHost } from "./ConfirmDialog";
 import { commentSpanTitle } from "./comment-summary";
+import { askConfirm } from "./confirm";
 import { DocPreview } from "./DocPreview";
 import { DocView, type DocViewHandle } from "./DocView";
 import { displayTitle, wordCount } from "./display";
