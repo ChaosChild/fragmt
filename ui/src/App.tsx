@@ -46,6 +46,7 @@ import {
 	type TreeNode,
 } from "./api";
 import { CommentsRail } from "./CommentsRail";
+import { askConfirm, ConfirmHost } from "./ConfirmDialog";
 import { commentSpanTitle } from "./comment-summary";
 import { DocPreview } from "./DocPreview";
 import { DocView, type DocViewHandle } from "./DocView";
@@ -448,7 +449,15 @@ export function App() {
 	// and no refetch (it would drop unsaved edits).
 	async function railDelete(id: string) {
 		if (!selected) return;
-		if (!window.confirm("Delete this comment thread?")) return;
+		if (
+			!(await askConfirm({
+				title: "Delete this comment thread?",
+				body: "The thread and its replies are removed in one commit.",
+				confirmLabel: "Delete thread",
+				danger: true,
+			}))
+		)
+			return;
 		try {
 			await deleteComment(
 				selected,
@@ -651,7 +660,15 @@ export function App() {
 	// never touched – no dirty guard. BranchMenu refetches its list on open;
 	// meta and the branch line refresh here.
 	async function runDeleteBranch(name: string) {
-		if (!window.confirm(`Delete branch "${name}"?`)) return;
+		if (
+			!(await askConfirm({
+				title: `Delete branch ${name}?`,
+				body: "The local branch is removed – any copy on GitHub stays.",
+				confirmLabel: "Delete branch",
+				danger: true,
+			}))
+		)
+			return;
 		try {
 			await deleteBranch(name);
 		} catch (e) {
@@ -761,8 +778,15 @@ export function App() {
 	// Delete: the guard first, then the house confirm, then the existing
 	// delete op – selection clears (the path left the tree).
 	function deleteDocAt(path: string, displayName: string) {
-		guardAction("Delete this document", () => {
-			if (!window.confirm(`Delete "${displayName}"? The removal is committed.`))
+		guardAction("Delete this document", async () => {
+			if (
+				!(await askConfirm({
+					title: `Delete "${displayName}"?`,
+					body: "The removal is committed. You can restore it from Deleted.",
+					confirmLabel: "Delete",
+					danger: true,
+				}))
+			)
 				return;
 			void runFileOp({ kind: "delete-doc", path });
 		});
@@ -777,11 +801,14 @@ export function App() {
 	// The bin's folder drop (M4-3 b5): the dirty guard (an open doc may sit in
 	// the subtree), then a confirm that names the cost, then deleteFolder.
 	function requestDeleteFolder(path: string, name: string) {
-		guardAction(`Delete folder ${name}`, () => {
+		guardAction(`Delete folder ${name}`, async () => {
 			if (
-				!window.confirm(
-					`Delete folder "${name}" and everything in it? The removal is committed.`,
-				)
+				!(await askConfirm({
+					title: `Delete folder "${name}"?`,
+					body: "Everything in it goes too. The removal is committed.",
+					confirmLabel: "Delete folder",
+					danger: true,
+				}))
 			)
 				return;
 			void runFileOp({ kind: "delete-folder", path });
@@ -1681,6 +1708,8 @@ export function App() {
 					/>
 				</div>
 			</div>
+			{/* The house confirm (replaces window.confirm everywhere). */}
+			<ConfirmHost />
 			{/* The Ctrl+K search dialog (#14) – a layout sibling, above
 			    everything; its opens route through guardAction (the
 			    navigation queue), so a dirty buffer never silently drops. */}

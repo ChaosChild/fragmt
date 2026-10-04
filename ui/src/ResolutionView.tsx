@@ -16,6 +16,7 @@ import {
 	resolveMergeFile,
 } from "./api";
 import { CommandBar } from "./CommandBar";
+import { askConfirm } from "./ConfirmDialog";
 import { diffWords } from "./prose-diff";
 import { assembleContent, hunkPlace, sidecarSummaryLine } from "./resolve";
 import { shortDate } from "./Sidebar";
@@ -153,11 +154,14 @@ export function ResolutionView({ onDone }: { onDone: () => void }) {
 		});
 	};
 
-	const abort = () => {
+	const abort = async () => {
 		if (
-			!window.confirm(
-				"Abort this merge? Nothing merges – you stay on the draft branch.",
-			)
+			!(await askConfirm({
+				title: "Abort this merge?",
+				body: "Nothing merges – you stay on the draft branch, and your picks here are dropped.",
+				confirmLabel: "Abort merge",
+				danger: true,
+			}))
 		)
 			return;
 		void run(async () => {

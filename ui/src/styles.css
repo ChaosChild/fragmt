@@ -5247,3 +5247,54 @@ h1.title::after {
 	clip-path: inset(50%);
 	white-space: nowrap;
 }
+
+/* The house confirm (ConfirmDialog) – a sheet floating over a dimmed desk. */
+.confirm {
+	/* The global margin reset would pin the modal top-left. */
+	margin: auto;
+	width: min(440px, calc(100vw - 32px));
+	padding: 0;
+	border: 0;
+	border-radius: var(--r-lg);
+	background: var(--sheet);
+	color: var(--ink);
+	box-shadow: var(--float-shadow);
+}
+.confirm::backdrop {
+	background: color-mix(in srgb, var(--desk-2) 60%, transparent);
+	backdrop-filter: blur(3px);
+}
+.confirm-in {
+	padding: 26px 28px 22px;
+}
+.confirm h2 {
+	margin: 0;
+	font: 500 22px / 1.25 var(--serif);
+	letter-spacing: -0.01em;
+	overflow-wrap: anywhere;
+}
+.confirm p {
+	margin: 10px 0 0;
+	font-size: 13.5px;
+	line-height: 1.55;
+	color: var(--ink-2);
+}
+.confirm-act {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 24px;
+}
+.btn.primary.danger {
+	background: var(--red);
+	color: #fff;
+	box-shadow:
+		0 1px 0 rgba(255, 255, 255, 0.18) inset,
+		0 4px 12px -4px color-mix(in srgb, var(--red) 60%, transparent);
+}
+.btn.primary.danger:hover {
+	background: color-mix(in srgb, var(--red) 86%, var(--ink));
+}
+[data-theme="dark"] .btn.primary.danger {
+	color: #1a0d0e;
+}

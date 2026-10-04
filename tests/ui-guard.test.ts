@@ -32,6 +32,7 @@ import type {
 	RepoMeta,
 	TreeNode,
 } from "../ui/src/api.js";
+import { askConfirm, ConfirmHost } from "../ui/src/ConfirmDialog.js";
 import { DocView } from "../ui/src/DocView.js";
 import { GraphView } from "../ui/src/GraphView.js";
 import { hasHardWraps } from "../ui/src/hard-wraps.js";
@@ -1970,5 +1971,54 @@ describe("AuthGate: the sign-in page (ui v1 phase 12)", () => {
 		expect(
 			screen.getByRole("link", { name: "Continue with GitHub" }),
 		).toBeTruthy();
+	});
+});
+
+describe("ConfirmDialog: the house confirm (no window.confirm)", () => {
+	test("no host mounted: resolves false – nothing destructive runs unasked", async () => {
+		expect(await askConfirm({ title: "Delete?", confirmLabel: "Delete" })).toBe(
+			false,
+		);
+	});
+
+	test("confirm resolves true; Cancel and Escape resolve false; focus starts on Cancel", async () => {
+		render(createElement(ConfirmHost));
+
+		let p = askConfirm({
+			title: "Delete branch drafts/x?",
+			body: "The local branch is removed.",
+			confirmLabel: "Delete branch",
+			danger: true,
+		});
+		const dlg = await screen.findByRole("dialog", {
+			name: "Delete branch drafts/x?",
+		});
+		expect(within(dlg).getByText("The local branch is removed.")).toBeTruthy();
+		const cancel = within(dlg).getByRole("button", { name: "Cancel" });
+		expect(document.activeElement).toBe(cancel);
+		const go = within(dlg).getByRole("button", { name: "Delete branch" });
+		expect(go.classList.contains("danger")).toBe(true);
+		fireEvent.click(go);
+		expect(await p).toBe(true);
+		expect(screen.queryByRole("dialog")).toBeNull();
+
+		p = askConfirm({ title: "Again?", confirmLabel: "Go" });
+		fireEvent.click(
+			within(await screen.findByRole("dialog")).getByRole("button", {
+				name: "Cancel",
+			}),
+		);
+		expect(await p).toBe(false);
+
+		p = askConfirm({ title: "Escape me", confirmLabel: "Go" });
+		const esc = new KeyboardEvent("keydown", {
+			key: "Escape",
+			bubbles: true,
+			cancelable: true,
+		});
+		(await screen.findByRole("dialog")).dispatchEvent(esc);
+		expect(await p).toBe(false);
+		// Prevented, so the window-level Escape chain leaves the stage alone.
+		expect(esc.defaultPrevented).toBe(true);
 	});
 });
