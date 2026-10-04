@@ -130,3 +130,17 @@ describe("stripCommentSpans mirrors core's stripCommentSpan", () => {
 			expect(stripCommentSpans(body)).toBe(core);
 		});
 });
+
+test("diffWords keeps an inline code span whole – no stray backticks", () => {
+	expect(
+		diffWords(
+			"run `git pull --rebase` now",
+			"run `git pull --rebase=merges` now",
+		),
+	).toEqual([
+		{ type: "same", text: "run " },
+		{ type: "del", text: "`git pull --rebase`" },
+		{ type: "ins", text: "`git pull --rebase=merges`" },
+		{ type: "same", text: " now" },
+	]);
+});

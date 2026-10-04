@@ -538,13 +538,19 @@ function RenderedDiff({
 							{diffWords(r.a ?? "", r.b ?? "").map((w, wi) =>
 								w.type === "same" ? (
 									// biome-ignore lint/suspicious/noArrayIndexKey: a fixed word diff
-									<span key={wi}>{w.text}</span>
+									<span key={wi}>
+										<InlineCode text={w.text} />
+									</span>
 								) : w.type === "ins" ? (
 									// biome-ignore lint/suspicious/noArrayIndexKey: a fixed word diff
-									<ins key={wi}>{w.text}</ins>
+									<ins key={wi}>
+										<InlineCode text={w.text} />
+									</ins>
 								) : (
 									// biome-ignore lint/suspicious/noArrayIndexKey: a fixed word diff
-									<del key={wi}>{w.text}</del>
+									<del key={wi}>
+										<InlineCode text={w.text} />
+									</del>
 								),
 							)}
 						</p>,

@@ -193,11 +193,14 @@ const WORD_DIFF_LIMIT = 250_000;
 
 /** Word-level diff of two changed blocks: whitespace runs are kept as
  *  tokens (the head's spelling wins) but any whitespace equals any other –
- *  a rewrap inside a changed block is no change. Adjacent parts of one
- *  type coalesce. */
+ *  a rewrap inside a changed block is no change. An inline code span is
+ *  one token, so a change inside it marks the whole span and the backticks
+ *  always pair (the renderer turns them into <code>). Adjacent parts of
+ *  one type coalesce. */
+const WORD_TOKEN = /(`[^`\n]+`|\s+)/;
 export function diffWords(a: string, b: string): WordPart[] {
-	const ta = a.split(/(\s+)/).filter(Boolean);
-	const tb = b.split(/(\s+)/).filter(Boolean);
+	const ta = a.split(WORD_TOKEN).filter(Boolean);
+	const tb = b.split(WORD_TOKEN).filter(Boolean);
 	if (ta.length * tb.length > WORD_DIFF_LIMIT)
 		return [
 			{ type: "del", text: a },
