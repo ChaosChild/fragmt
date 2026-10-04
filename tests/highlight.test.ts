@@ -104,4 +104,10 @@ describe("plainExcerpt (search preview)", () => {
 		expect(out[0].endsWith("…")).toBe(true);
 		expect(out[0].length).toBeLessThanOrEqual(41);
 	});
+
+	test("nested tags strip until nothing tag-shaped is left", () => {
+		const out = plainExcerpt("Hi <scr<b>ipt>alert(1)</scr</b>ipt> there");
+		expect(out.join("")).not.toContain("<");
+		expect(out.join("")).toContain("alert(1)");
+	});
 });

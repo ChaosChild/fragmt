@@ -36,9 +36,14 @@ export function highlightSegments(text: string, q: string): HighlightPart[] {
  * block markers and emphasis characters go. The last paragraph may be cut.
  */
 export function plainExcerpt(markdown: string, limit = 600): string[] {
-	const text = markdown
-		.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "")
-		.replace(/<[^>]+>/g, "")
+	// Tags strip until stable – one pass turns "<scr<b>ipt>" back into a tag.
+	// (Display text only – React escapes it anyway; this keeps it readable.)
+	let stripped = markdown.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "");
+	for (let prev = ""; prev !== stripped; ) {
+		prev = stripped;
+		stripped = stripped.replace(/<[^>]*>/g, "");
+	}
+	const text = stripped
 		.replace(/!\[[^\]]*\]\([^)]*\)/g, "")
 		.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
 		.replace(

@@ -1656,7 +1656,7 @@ describe("App: the rendered PR diff (ui v1 phase 9)", () => {
 					base: { frontmatter: {}, body: wrapped.join("\n\n") },
 					head: {
 						frontmatter: {},
-						body: wrapped.map((p) => p.replace("\n", " ")).join("\n\n"),
+						body: wrapped.map((p) => p.replaceAll("\n", " ")).join("\n\n"),
 					},
 				},
 			}),
