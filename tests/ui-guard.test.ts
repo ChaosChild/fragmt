@@ -235,16 +235,19 @@ async function expectReadMode(path: string, bodyText: string) {
 		segs.length > 1
 			? `${segs.slice(0, -1).join(" / ")} / ${segs.at(-1)}`
 			: (segs[0] ?? "");
+	// One wait for the whole read-mode state: the edit session's exit can
+	// land a render after the new doc's text (a CI flake on 7b19b75 – Edit
+	// was asserted between the two).
 	await waitFor(
 		() => {
 			expect(breadcrumbText()).toBe(crumb);
 			expect(screen.getByText(bodyText)).toBeTruthy();
+			expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+			expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+			expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
 		},
 		{ timeout: 3000 },
 	);
-	expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
-	expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
-	expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
 }
 
 // --- App-level regression seams ----------------------------------------------
