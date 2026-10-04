@@ -3922,6 +3922,17 @@ h1.title::after {
 	margin-right: 3px;
 	opacity: 0.7;
 }
+/* A link to a doc that does not exist (DeadLinks decoration): red with a
+   dashed underline – the dash is the non-colour cue. */
+.markdown a:has(.link-dead),
+.markdown .link-dead {
+	color: var(--red);
+}
+.markdown a:has(.link-dead) {
+	text-decoration: none;
+	border-bottom: 1px dashed currentColor;
+	cursor: help;
+}
 /* Comment anchors in text – the highlighter's yellow and a thin amber
    underline; the focused one darker. */
 .comment-highlight {

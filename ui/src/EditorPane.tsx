@@ -11,6 +11,7 @@ import {
 import { mapRangesToBlocks, sourceBlockSpans } from "./draft-gutter";
 import { type AtDoc, type AtMenuState, applyAtReference } from "./editor/at";
 import { BubbleToolbar } from "./editor/BubbleToolbar";
+import { DeadLinksKey } from "./editor/dead-links";
 import { editorExtensions } from "./editor/extensions";
 import { ImagePopover } from "./editor/ImageForm";
 import { resolveLinkTarget, slugifyHeading } from "./editor/links";
@@ -141,6 +142,10 @@ export function EditorPane({
 	docsRef.current = docs;
 	const knownDocPaths = new Set(docs.map((d) => d.path));
 	const knownFolderPaths = new Set(folders);
+	// The dead-link decoration reads the live tree through this ref, so a
+	// tree refresh needs no extension rebuild – just a poke (effect below).
+	const knownRef = useRef({ docs: knownDocPaths, folders: knownFolderPaths });
+	knownRef.current = { docs: knownDocPaths, folders: knownFolderPaths };
 
 	const editor = useEditor({
 		extensions: editorExtensions(
@@ -154,6 +159,15 @@ export function EditorPane({
 				docPath: () => docPathRef.current,
 				onState: setAtState,
 				onKeyDown: (event) => atKeydown.current(event),
+			},
+			{
+				isDead: (href) =>
+					resolveLinkTarget(
+						href,
+						docPathRef.current,
+						knownRef.current.docs,
+						knownRef.current.folders,
+					).kind === "dead",
 			},
 		),
 		content: "",
@@ -190,6 +204,15 @@ export function EditorPane({
 		}
 		setDirty(false);
 	}, [editor, markdown]);
+
+	// The tree changed (a doc created, deleted, restored, renamed): re-check
+	// which links are broken. Keyed on the path lists' contents, not identity.
+	const treeKey = `${[...knownDocPaths].join("\n")}|${folders.join("\n")}`;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: treeKey is the trigger – the decoration reads knownRef.
+	useEffect(() => {
+		if (!editor || editor.isDestroyed) return;
+		editor.view.dispatch(editor.state.tr.setMeta(DeadLinksKey, true));
+	}, [editor, treeKey]);
 
 	// A cross-doc #fragment (a doc link click carried one): scroll once the
 	// new content and its heading ids exist (the load effect above runs first
@@ -353,7 +376,7 @@ export function EditorPane({
 						case "raw":
 							e.preventDefault();
 							window.open(
-								`/api/raw/${encodeURI(resolved.path)}`,
+								`/api/raw/$encodeURI(resolved.path)`,
 								"_blank",
 								"noopener,noreferrer",
 							);
@@ -451,7 +474,7 @@ export function EditorPane({
 				// Same shape as the slash menu – keyed by query so a new filter
 				// remounts it, resetting the highlight to the first item.
 				<SlashMenuView
-					key={`at-${atState.query}`}
+					key={`at-$atState.query`}
 					editor={editor}
 					state={atState}
 					ariaLabel="Reference a document"

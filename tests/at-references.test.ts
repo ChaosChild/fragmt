@@ -15,6 +15,7 @@ import {
 	filterAtDocs,
 	relativeDocHref,
 } from "../ui/src/editor/at.js";
+import { DeadLinksKey } from "../ui/src/editor/dead-links.js";
 import { editorExtensions } from "../ui/src/editor/extensions.js";
 import { resolveLinkTarget, slugifyHeading } from "../ui/src/editor/links.js";
 
@@ -363,5 +364,35 @@ describe("relativeDocHref", () => {
 				resolveLinkTarget(href, from, new Set(all), new Set()),
 			).toMatchObject({ kind: "doc", path: to });
 		}
+	});
+});
+
+describe("DeadLinks: links to missing docs render broken (owner round)", () => {
+	test("only the missing target is marked; a tree change re-checks; markdown untouched", () => {
+		const known = new Set(["ok.md"]);
+		const editor = new Editor({
+			extensions: editorExtensions(undefined, undefined, {
+				isDead: (href) => href.endsWith(".md") && !known.has(href),
+			}),
+			content: "",
+		});
+		const md = "See [ok](ok.md) and [gone](gone.md).";
+		editor.commands.setContent(md);
+		const dead = () =>
+			[...editor.view.dom.querySelectorAll(".link-dead")].map(
+				(e) => e.textContent,
+			);
+		expect(dead()).toEqual(["gone"]);
+		expect(
+			editor.view.dom.querySelector(".link-dead")?.getAttribute("title"),
+		).toBe("No such document: gone.md");
+
+		// The doc comes back (restore): the poke re-runs the check.
+		known.add("gone.md");
+		editor.view.dispatch(editor.state.tr.setMeta(DeadLinksKey, true));
+		expect(dead()).toEqual([]);
+		// A view decoration only – the saved markdown is the source, unchanged.
+		expect(editor.storage.markdown.getMarkdown()).toBe(md);
+		editor.destroy();
 	});
 });
