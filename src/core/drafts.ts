@@ -24,6 +24,7 @@ import {
 } from "./git.js";
 import { localUser } from "./identity.js";
 import { mainBranch } from "./meta.js";
+import { generateIndexes, okfEnabled, recomputeGraph } from "./okf.js";
 
 /**
  * Draft naming (M4-2 spec, #45 path-aware): `drafts/<slug>` where slug =
@@ -527,6 +528,14 @@ export async function restoreDoc(
 
 	mkdirSync(dirname(abs), { recursive: true });
 	writeFileSync(abs, body);
+	// OKF: the delete took this doc out of both derived fields repo-wide –
+	// the restore puts its edges (both directions) and the indexes back.
+	if (okfEnabled(repoRoot)) {
+		for (const p of await recomputeGraph(repoRoot, docsRoot))
+			if (!files.includes(p)) files.push(p);
+		for (const p of await generateIndexes(repoRoot, docsRoot))
+			if (!files.includes(p)) files.push(p);
+	}
 	const sha = await commitAs(
 		who,
 		{ files, message: `Restore ${docPath}` },

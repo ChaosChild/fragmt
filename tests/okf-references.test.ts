@@ -17,11 +17,14 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import {
+	deleteDoc,
+	deleteFolder,
 	docHash,
 	extractRefs,
 	fixOkf,
 	propagateRefs,
 	readDoc,
+	restoreDoc,
 	StaleDocError,
 	updateRefsField,
 	validateOkf,
@@ -263,4 +266,77 @@ test("fixOkf populates both fields across the repo in its single pass", async ()
 	expect(run(root, ["log", "-1", "--format=%s"])).toBe(
 		"OKF: apply conformance fixes",
 	);
+});
+
+// --- delete / restore keep both derived fields honest (owner round) ---------
+
+/** new.md links arch + okf; other.md links new.md – populated by fixOkf. */
+async function linkedRepo(): Promise<string> {
+	const root = repo();
+	seedDoc(root, "arch.md", CONFORMANT("Arch"));
+	seedDoc(root, "okf.md", CONFORMANT("Okf"));
+	seedDoc(
+		root,
+		"t/new.md",
+		"---\ntype: Concept\n---\n\nSee [Arch](../arch.md) and [OKF](/okf.md).\n",
+	);
+	seedDoc(
+		root,
+		"other.md",
+		"---\ntype: Concept\n---\n\nPoints at [New](/t/new.md).\n",
+	);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	await fixOkf(root, ".");
+	expect(readDoc(root, ".", "arch.md").frontmatter["referenced-by"]).toEqual([
+		"t/new.md",
+	]);
+	expect(readDoc(root, ".", "other.md").frontmatter.references).toEqual([
+		"t/new.md",
+	]);
+	return root;
+}
+
+test("deleting a doc drops it from its targets' referenced-by and its referrers' references, in the delete commit", async () => {
+	const root = await linkedRepo();
+	await deleteDoc(root, ".", "t/new.md");
+
+	for (const p of ["arch.md", "okf.md"])
+		expect(readDoc(root, ".", p).frontmatter["referenced-by"]).toBeUndefined();
+	const other = readDoc(root, ".", "other.md");
+	expect(other.frontmatter.references).toBeUndefined();
+	// The referrer's prose is the author's – its (now broken) link stays.
+	expect(other.markdown).toContain("[New](/t/new.md)");
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe("Delete t/new.md");
+	expect(commitFiles(root)).toEqual(
+		expect.arrayContaining(["t/new.md", "arch.md", "okf.md", "other.md"]),
+	);
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("restoring the doc puts both directions back in the restore commit", async () => {
+	const root = await linkedRepo();
+	const { sha } = await deleteDoc(root, ".", "t/new.md");
+	await restoreDoc(root, ".", "t/new.md", sha);
+
+	expect(readDoc(root, ".", "arch.md").frontmatter["referenced-by"]).toEqual([
+		"t/new.md",
+	]);
+	expect(readDoc(root, ".", "okf.md").frontmatter["referenced-by"]).toEqual([
+		"t/new.md",
+	]);
+	expect(readDoc(root, ".", "other.md").frontmatter.references).toEqual([
+		"t/new.md",
+	]);
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("deleting a folder heals the edges of every doc inside it", async () => {
+	const root = await linkedRepo();
+	await deleteFolder(root, ".", "t");
+	expect(
+		readDoc(root, ".", "arch.md").frontmatter["referenced-by"],
+	).toBeUndefined();
+	expect(readDoc(root, ".", "other.md").frontmatter.references).toBeUndefined();
+	expect(run(root, ["status", "--porcelain"])).toBe("");
 });

@@ -27,6 +27,7 @@ import {
 	isReservedBase,
 	okfEnabled,
 	propagateRefs,
+	recomputeGraph,
 	refsList,
 	saveWithRefs,
 } from "./okf.js";
@@ -254,9 +255,11 @@ export async function moveDoc(
 
 /**
  * Delete a doc in one commit. Missing path → DocNotFoundError (server: 404).
- * OKF mode regenerates the affected indexes on the same commit; the deleted
- * doc's referrers keep their (now broken, spec-tolerated) body links and
- * `references` entries – #33's move/delete-time rewriting heals them.
+ * OKF mode settles the derived fields and regenerates the affected indexes
+ * on the same commit: the docs it referenced drop it from `referenced-by`,
+ * its referrers drop it from `references` (derived = links to docs that
+ * exist). Their body links are the author's prose and stay – broken links
+ * are spec-tolerated, and the UI marks them.
  */
 export async function deleteDoc(
 	repoRoot: string,
@@ -272,6 +275,7 @@ export async function deleteDoc(
 	rmSync(abs);
 	const files = new Set([repoRel(repoRoot, abs)]);
 	if (okfEnabled(repoRoot)) {
+		for (const p of await recomputeGraph(repoRoot, docsRoot)) files.add(p);
 		for (const p of await generateIndexes(repoRoot, docsRoot)) files.add(p);
 	}
 	const sha = await commitAs(
@@ -368,9 +372,8 @@ export async function renameFolder(
 /**
  * Delete a folder and everything under it in one commit (the fs-level
  * equivalent of `git rm -r` – see the note atop this file). Missing folder →
- * DocNotFoundError (server: 404). OKF mode regenerates the indexes on the
- * same commit (the deleted docs' referrers keep their broken-but-tolerated
- * links, as in deleteDoc).
+ * DocNotFoundError (server: 404). OKF mode settles the derived fields and
+ * regenerates the indexes on the same commit, as in deleteDoc.
  */
 export async function deleteFolder(
 	repoRoot: string,
@@ -387,6 +390,7 @@ export async function deleteFolder(
 	rmSync(abs, { recursive: true });
 	const files = new Set([repoRel(repoRoot, abs)]);
 	if (okf) {
+		for (const p of await recomputeGraph(repoRoot, docsRoot)) files.add(p);
 		for (const p of await generateIndexes(repoRoot, docsRoot)) files.add(p);
 	}
 	const sha = await commitAs(
