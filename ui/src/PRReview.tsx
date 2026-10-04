@@ -228,6 +228,8 @@ export function PRReview({
 										<span className="del">−{f.deletions}</span>
 									</button>
 								))}
+								{/* It pages this list, so it lives with it. */}
+								<PrPager page={page} count={files.length} onPage={setPage} />
 							</div>
 							<div>
 								<h4>Status</h4>
@@ -340,12 +342,8 @@ export function PRReview({
 									onTooLarge={() => setTab("source")}
 								/>
 							) : (
-								<>
-									{files.map((f) => (
-										<PrFileBlock key={f.filename} file={f} />
-									))}
-									<PrPager page={page} count={files.length} onPage={setPage} />
-								</>
+								// The file picked on the left – the same one Rendered shows.
+								file && <PrFileBlock key={file.filename} file={file} />
 							)}
 						</article>
 					</div>

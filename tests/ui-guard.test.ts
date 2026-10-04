@@ -1683,6 +1683,35 @@ describe("App: the rendered PR diff (ui v1 phase 9)", () => {
 		);
 	});
 
+	test("Source shows only the file picked on the left – a sidecar too", async () => {
+		const sidecar: PrFile = {
+			filename: ".docs/comments/docs/a.md.json",
+			status: "modified",
+			additions: 1,
+			deletions: 0,
+			patch: '@@ -1 +1,2 @@\n {\n+  "x": 1',
+		};
+		const s = await openPrDetail(
+			prFetch({ detail: { files: [PR_FILE, sidecar] } }),
+		);
+		showSource(s);
+		const shown = () =>
+			[...s.querySelectorAll(".pr-file .pr-file-head")].map(
+				(h) => h.textContent ?? "",
+			);
+		expect(shown()).toHaveLength(1);
+		expect(shown()[0]).toContain("docs/a.md");
+		expect(shown()[0]).not.toContain(".docs/comments");
+		// Picking the JSON sidecar shows it alone (Source is its only view).
+		fireEvent.click(
+			within(s).getByRole("button", {
+				name: /\.docs\/comments\/docs\/a\.md\.json/,
+			}),
+		);
+		expect(shown()).toHaveLength(1);
+		expect(shown()[0]).toContain(".docs/comments/docs/a.md.json");
+	});
+
 	test("consecutive reflowed paragraphs collapse into one row with a Show toggle", async () => {
 		const wrapped = [
 			"One line\nwrapped.",
