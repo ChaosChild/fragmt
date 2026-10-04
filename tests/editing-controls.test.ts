@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Editor } from "@tiptap/core";
 import { NodeSelection } from "@tiptap/pm/state";
-import { beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { shouldShowBubble } from "../ui/src/editor/bubble.js";
 import { editorExtensions } from "../ui/src/editor/extensions.js";
 import { filterSlashItems, slashItems } from "../ui/src/editor/slash.js";
@@ -24,14 +24,23 @@ type JNode = {
 };
 const blocks = (e: Editor): JNode[] => (e.getJSON().content ?? []) as JNode[];
 
+// Every editor made here is destroyed after its test: a live one keeps
+// ProseMirror's DOM-observer timers pending, and one firing after the
+// happy-dom teardown is an unhandled "document is not defined" (CI flake).
+const made: Editor[] = [];
 function makeEditor(markdown = ""): Editor {
 	const e = new Editor({ extensions: editorExtensions(), content: "" });
+	made.push(e);
 	if (markdown) e.commands.setContent(markdown);
 	return e;
 }
 
 beforeEach(() => {
 	editor = makeEditor();
+});
+
+afterEach(() => {
+	for (const e of made.splice(0)) if (!e.isDestroyed) e.destroy();
 });
 
 describe("slash items", () => {
