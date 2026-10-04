@@ -22,6 +22,7 @@ import {
 	docHash,
 	extractRefs,
 	fixOkf,
+	moveDoc,
 	propagateRefs,
 	readDoc,
 	restoreDoc,
@@ -338,5 +339,26 @@ test("deleting a folder heals the edges of every doc inside it", async () => {
 		readDoc(root, ".", "arch.md").frontmatter["referenced-by"],
 	).toBeUndefined();
 	expect(readDoc(root, ".", "other.md").frontmatter.references).toBeUndefined();
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("renaming a doc rewrites links to it and re-derives both fields, in the rename commit", async () => {
+	const root = await linkedRepo();
+	await moveDoc(root, ".", "t/new.md", "guides/renamed.md");
+
+	const other = readDoc(root, ".", "other.md");
+	expect(other.markdown).toContain("[New](/guides/renamed.md)");
+	expect(other.frontmatter.references).toEqual(["guides/renamed.md"]);
+	const moved = readDoc(root, ".", "guides/renamed.md");
+	// Its own relative link re-aimed from the new folder; the absolute one kept.
+	expect(moved.markdown).toContain("[Arch](../arch.md)");
+	expect(moved.markdown).toContain("[OKF](/okf.md)");
+	expect(moved.frontmatter["referenced-by"]).toEqual(["other.md"]);
+	expect(readDoc(root, ".", "arch.md").frontmatter["referenced-by"]).toEqual([
+		"guides/renamed.md",
+	]);
+	expect(run(root, ["log", "-1", "--format=%s"])).toBe(
+		"Rename t/new.md to guides/renamed.md",
+	);
 	expect(run(root, ["status", "--porcelain"])).toBe("");
 });
