@@ -4036,12 +4036,17 @@ h1.title::after {
 .cc .t {
 	font: 500 16px var(--serif);
 }
-.cc.in .p::after {
-	content: "links here";
+/* Which way the link runs: ↗ this doc references it, ↙ it links here. */
+.cc-dir {
+	display: flex;
+	gap: 2px;
 	margin-left: auto;
-	font-family: var(--sans);
+	flex-shrink: 0;
+}
+.cc-dir svg {
+	width: 14px;
+	height: 14px;
 	color: var(--ink-3);
-	white-space: nowrap;
 }
 .cc.missing .t {
 	color: var(--ink-3);
