@@ -1,6 +1,6 @@
 # UI upgrade – v1 visual pass
 
-**Status: shipped 2026-10-03** on `feat/ui-v1` → PR #51 – all 14 phases, plus the owner-review fixes and `fix(sync): pull --rebase=merges` found in the final retest. `docs/app.v1.html` stays in the repo as the visual contract.
+**Status: shipped 2026-10-04 in v0.10.0** on `feat/ui-v1` → PR #51 – all 14 phases, plus the owner-review fixes and `fix(sync): pull --rebase=merges` found in the final retest. `docs/app.v1.html` stays in the repo as the visual contract.
 
 Implementation plan for the desktop visual redesign approved in the `docs/app.v1.html` mock (owner review round, 2026-10-03). Written for an implementing agent: follow the phases in order, one phase per commit, and do not start a phase until the previous one is green on all three gates (tests, typecheck/lint, visual check).
 
