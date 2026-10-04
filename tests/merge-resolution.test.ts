@@ -170,6 +170,15 @@ test("stand-conflicted merge: stays on main, mergeState details, resolution stag
 		path: "docs/a.md",
 		kind: "doc",
 		parts: [{ ours: "# main\n", theirs: "# draft\n" }],
+		// ui v1: who last touched the path on each side, and when.
+		sides: {
+			ours: { ref: "main", author: "Merge Test", date: expect.any(String) },
+			theirs: {
+				ref: "drafts/c",
+				author: "Merge Test",
+				date: expect.any(String),
+			},
+		},
 	});
 	const sidecar = state.files.find((f) => f.kind === "sidecar");
 	expect(sidecar).toEqual({

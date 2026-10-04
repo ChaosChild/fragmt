@@ -1,13 +1,14 @@
 import { execFileSync } from "node:child_process";
 import {
 	existsSync,
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import {
 	createDoc,
@@ -300,5 +301,82 @@ test("moves roll back when the commit fails (ignored destination)", async () => 
 
 	// Only the createFolder commit landed; the tree and index are clean.
 	expect(count(root)).toBe(before + 1);
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+// --- move-time link rewriting (owner round) ---------------------------------
+
+const read = (root: string, p: string) => readFileSync(join(root, p), "utf8");
+function write(root: string, p: string, text: string): void {
+	mkdirSync(dirname(join(root, p)), { recursive: true });
+	writeFileSync(join(root, p), text);
+}
+
+test("moveDoc rewrites links to the doc and its own relative links, in the rename commit", async () => {
+	const root = repo();
+	write(
+		root,
+		"guides/sync.md",
+		"# Sync\n\nSee [arch](../concepts/arch.md) and [abs](/concepts/arch.md).\n",
+	);
+	write(
+		root,
+		"concepts/arch.md",
+		"# Arch\n\nRead [sync](../guides/sync.md#push) and [s2](/guides/sync.md).\n",
+	);
+	write(
+		root,
+		"readme.md",
+		"# R\n\n[sync](guides/sync.md) [code]\n\n```\n[x](guides/sync.md)\n```\n",
+	);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	await moveDoc(root, ".", "guides/sync.md", "ops/deep/sync.md");
+
+	expect(read(root, "concepts/arch.md")).toBe(
+		"# Arch\n\nRead [sync](../ops/deep/sync.md#push) and [s2](/ops/deep/sync.md).\n",
+	);
+	// Fenced code is never touched.
+	expect(read(root, "readme.md")).toBe(
+		"# R\n\n[sync](ops/deep/sync.md) [code]\n\n```\n[x](guides/sync.md)\n```\n",
+	);
+	expect(read(root, "ops/deep/sync.md")).toBe(
+		"# Sync\n\nSee [arch](../../concepts/arch.md) and [abs](/concepts/arch.md).\n",
+	);
+	expect(lastCommit(root)).toBe(
+		"Files Test|files@example.com|Rename guides/sync.md to ops/deep/sync.md",
+	);
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("renameFolder carries links into the folder and its docs' links out", async () => {
+	const root = repo();
+	write(root, "ref/api/a.md", "[b](b.md) [top](../../top.md)\n");
+	write(root, "ref/api/b.md", "# B\n");
+	write(root, "top.md", "[a](ref/api/a.md) [b](/ref/api/b.md)\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	await renameFolder(root, ".", "ref/api", "api");
+
+	expect(read(root, "top.md")).toBe("[a](api/a.md) [b](/api/b.md)\n");
+	expect(read(root, "api/a.md")).toBe("[b](b.md) [top](../top.md)\n");
+	expect(run(root, ["status", "--porcelain"])).toBe("");
+});
+
+test("a failed rename commit puts every rewritten referrer back", async () => {
+	const root = repo();
+	writeFileSync(join(root, ".gitignore"), "ignored/\n");
+	write(root, "docs/a.md", "# A\n");
+	write(root, "b.md", "[a](docs/a.md)\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+
+	await expect(
+		moveDoc(root, ".", "docs/a.md", "ignored/a.md"),
+	).rejects.toThrow();
+	expect(read(root, "b.md")).toBe("[a](docs/a.md)\n");
+	expect(existsSync(join(root, "docs/a.md"))).toBe(true);
 	expect(run(root, ["status", "--porcelain"])).toBe("");
 });

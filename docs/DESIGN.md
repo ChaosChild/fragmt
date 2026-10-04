@@ -7,7 +7,7 @@ The base for fragmt's UX/UI templates and style guide. North star in one line:
 ## Principles
 
 ### 1. Content is the interface
-The rendered doc IS the product. Chrome (sidebars, toolbars, buttons) must earn every pixel; when in doubt, remove it. Default view = tree + doc, nothing else.
+The rendered doc IS the product. Chrome (sidebars, toolbars, buttons) must earn every pixel; when in doubt, remove it. Default view = tree + doc, nothing else. Since ui v1 (2026-10) the chrome is exactly four pieces: a narrow icon **rail** (Documents, Search, Pull requests, Reference graph; the navigator toggle, theme and the signed-in user at the foot), the **navigator** (repo name, branch, the tree; `Ctrl/Cmd+\` hides it), one **command bar** per stage (breadcrumb left, the stage's actions right), and the **status bar** (sync state, branch, word count). Everything else is the doc.
 
 ### 2. White space is a feature, not waste
 Generous margins, tall line-height, one comfortable reading column. Density is never a goal – a screen that feels half "empty" is correct.
@@ -22,7 +22,7 @@ A first-time user sees: the tree, a doc, an Edit button. That's it. Branch dropd
 At most one hover-revealed affordance per region. Actions live in fixed, predictable places (top-right of the doc pane; right margin for comments). Nothing important is *only* reachable by hovering – hover reveals shortcuts, never hides functionality.
 
 ### 6. Typography does the design
-No cards, no shadows-as-decoration, no icon zoo. Hierarchy comes from type scale, weight, and space. Markdown output should look like a well-typeset article, not an app skin.
+No cards, no shadows-as-decoration, no icon zoo. Hierarchy comes from type scale, weight, and space. Markdown output should look like a well-typeset article, not an app skin. The one deliberate card is **the sheet**: the doc is a sheet of paper on a desk, and it carries the one sheet shadow. Floating layers (menus, the search palette, popovers, the graph inspector) keep one shadow level of their own; nothing else gets a shadow, and nothing is glass.
 
 ### 7. Calm feedback
 - Sync/save state: one small, fixed indicator (e.g. "saved · synced" text in a corner) – no toast parade.
@@ -36,37 +36,63 @@ Every action reachable by keyboard; nothing *requires* memorizing shortcuts. v1 
 Text contrast ≥ 4.5:1, visible focus rings (never `outline: none` without replacement), semantic HTML headings/landmarks, hit targets ≥ 32px, all interactive elements labeled. This never loses a trade-off.
 
 ### 10. Calm is not bland
-Calm is spacious and quiet; it is not anonymous. fragmt has a deliberate editorial voice – a gunmetal/silver metallic palette, a typographic identity (Newsreader headings, a chapter-opening h1, an italic wordmark, mono running-header labels), and one distinctive royal-blue accent. Personality lives in type, space, the machined silver/gunmetal materiality, and that single accent – never in added chrome or decoration (§1, §6 still govern). It must never regress to a default-library or stock-framework look (Primer, Bootstrap): anonymous default-framework chrome – boxed borders and off-the-shelf component skins – is the failure state. The identity carries the distinctiveness; the accent colour is not the problem.
+Calm is spacious and quiet; it is not anonymous. fragmt has a deliberate editorial voice – a gunmetal/silver metallic palette, a typographic identity (Newsreader for headings, prose and the italic wordmark; Geist for UI; Geist Mono for paths, labels and running heads; a chapter-opening h1), and one distinctive royal-blue accent. Personality lives in type, space, the machined silver/gunmetal materiality, and that single accent – never in added chrome or decoration (§1, §6 still govern). It must never regress to a default-library or stock-framework look (Primer, Bootstrap): anonymous default-framework chrome – boxed borders and off-the-shelf component skins – is the failure state. The identity carries the distinctiveness; the accent colour is not the problem.
 
-## Style guide starters (tokens)
+## Tokens
 
-Define these as CSS variables from day one. **Both themes ship in v1**: every color below is a semantic variable (`--bg`, `--fg`, `--fg-muted`, `--accent`, `--border`, `--danger`, `--success`) with a light and a dark value – components only ever reference the variable. Default follows `prefers-color-scheme`; one small toggle in the top-bar corner overrides it (persisted in `localStorage`). The accessibility floor (§9) applies to **both** themes – contrast is checked twice or not at all.
+CSS variables in `ui/src/styles.css`, copied from the visual contract `docs/app.v1.html` – values are never eyeballed. **Both themes ship**: components reference only the variable; the default follows `prefers-color-scheme` and the rail's theme button overrides it (persisted in `localStorage`). The accessibility floor (§9) applies to both themes – contrast is checked twice or not at all.
 
-**Type**
-- Body: 17px / line-height 1.65. UI chrome: 13–14px.
-- Scale (1.25 ratio): h1 ≈ 33px, h2 ≈ 27px, h3 ≈ 21px, body 17px, small 13px.
-- Fonts: system stack for UI; body text may use one high-quality reading face later – start with the system stack, decide during dogfood. Monospace: system mono stack for code.
+**Surfaces – "papers on a machined desk."** Light is platinum, dark is gunmetal; same cool steel temperature so the two read as one object under different light. A fixed grain layer (3.5% light, 5% dark) sits over the desk.
 
-**Layout**
-- Reading column: `max-width: 72ch`, centered in the doc pane, side padding ≥ 24px.
-- Sidebar: 260px, collapsible, hairline border – no contrasting panel background.
-- Vertical rhythm: headings get more space above than below (≈ 2:1).
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `--desk` / `--desk-2` | `#e3e7ec` / `#d9dee5` | `#0f1318` / `#0b0e12` | everything that is not the doc; rail and navigator tint |
+| `--sheet` / `--sheet-2` | `#fbfcfd` / `#f3f5f8` | `#171c23` / `#1c222a` | the doc sheet and floating layers; inset rows |
+| `--ink` / `--ink-2` / `--ink-3` | `#1b2128` / `#47505c` / `#5f6875` | `#e5e9ee` / `#a8b2be` / `#8a95a2` | text, secondary, tertiary |
+| `--line` / `--line-soft` | `#cdd3db` / `#e4e8ed` | `#2b343f` / `#212831` | hairlines |
+| `--accent` | `#1f39b0` | `#7ea4ff` | links, primary actions, focus, the brand period |
+| `--green` / `--amber` / `--red` | `#2b7a4b` / `#94660a` / `#a3292f` | `#72b38d` / `#d9a74e` / `#ef7b81` | success · warning · error, each with a `-soft` tint |
 
-**Space** – 4px base: 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64. No off-scale values.
+One royal-blue accent and three muted semantic colours – nothing else. If a mockup needs a fifth colour, the mockup is wrong, in either theme.
 
-**Color** – light theme: silver/platinum – cool platinum off-white background (not pure `#fff`), gunmetal ink text (dark steel gray with a cool cast). Dark theme: gunmetal – deep blue-steel charcoal background, silver/off-white text; same cool steel temperature as light so the two themes read as one machined object under different light. Per theme: 3–4 cool neutral grays, **one royal-blue accent** – a deep, saturated royal blue (links + primary actions + focus + the brand period + the h1 hairline; lifted brighter in dark), muted *cool* semantic red/amber/green for errors/warnings/success. Nothing else. If a mockup needs a fifth color, the mockup is wrong – in either theme.
+**Contrast** (WCAG ratio, text on surface):
 
-**Shape** – one border radius (6px) everywhere; hairline 1px borders over shadows; shadows only for genuinely floating layers (menus, dialogs), one soft level.
+| | sheet | desk | desk-2 |
+|---|---|---|---|
+| light `--ink` | 15.79 | 13.06 | 11.99 |
+| light `--ink-2` | 7.96 | 6.58 | 6.04 |
+| light `--ink-3` | 5.49 | 4.54 | **4.17** |
+| light `--accent` | 9.00 | 7.45 | 6.84 |
+| dark `--ink` | 14.04 | 15.29 | 15.86 |
+| dark `--ink-2` | 7.97 | 8.68 | 9.00 |
+| dark `--ink-3` | 5.63 | 6.13 | 6.36 |
+| dark `--accent` | 7.04 | 7.67 | 7.96 |
+
+Light `--ink-3` fails on `--desk-2`, so text on the rail and the navigator tint uses `--ink-2`.
+
+**Type** – Newsreader (serif: headings, prose, the wordmark), Geist (sans: UI chrome at 13–14px), Geist Mono (paths, kickers, labels, code). Body prose 17px / 1.65; scale 1.25 (h1 ≈ 33px, h2 ≈ 27px, h3 ≈ 21px). Fonts load from Google Fonts – self-hosting is an open owner decision.
+
+**Layout** – rail 60px · navigator 272px · command bar 56px · status bar 30px. The page is the sheet (up to 1060px) plus a 260px margin for marginalia, 28px apart; sheet padding `clamp(40px, 4vw, 76px)`. Headings get more space above than below (≈ 2:1).
+
+**Space** – 4px base: 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64.
+
+**Shape** – radii 5 / 8 / 14px (`--r-sm`, `--r`, `--r-lg`); hairline 1px borders over shadows; two shadows only – `--sheet-shadow` for the sheet, `--float-shadow` for floating layers.
 
 ## v1 surfaces, in these terms
 
-- **Tree (sidebar):** plain text rows, folder disclosure triangles, current doc highlighted with the accent – no per-doc icons/emoji, no drag handles in v1.
-- **Doc view:** breadcrumb line (small, gray) + typeset content. Edit button top-right. Nothing else in the pane.
-- **Editor (M2 + M2-2):** identical typography to view mode – entering edit mode must not reflow the text. Save / Cancel where Edit was. Formatting surfaces are contextual only, never persistent: a selection/right-click bubble (marks, turn into, table structure, image edit) and a `/` slash menu for inserting blocks; an empty-doc placeholder hints at both. Markdown-native typing (Tiptap input rules) and keyboard shortcuts keep working. *(Amended by M2-2, which reversed the original "no floating toolbars in v1" decision after dogfooding – see milestones/M2-2-editing-controls.md.)*
-- **Branch dropdown (M3):** small control in the top bar, reads as metadata ("on main"), not a headline feature.
-- **Comments (M4):** invisible until text is selected (selection → one small affordance) or a thread is opened; threads in the permanent right-margin rail (316px, always present beside the open doc – #15 generalized it into a pane, the 2026-08-26 dogfood round restored it as the default), resolved hidden by default. Comment highlights in read mode: barely-there tint, never boxes.
-- **Search (#14, shipped 2026-08-26):** Ctrl/Cmd+K opens a centered overlay palette – one input, results as title + snippet, ↑/↓ wrap with hover-sync, Enter opens, Shift+Enter previews in the side pane, Escape dismisses. No persistent search pane, no search chrome beyond the ⌕ in the sidebar brand row. (Was the v1.x roadmap bullet below; shipped as specced.)
-- **Link slideout (#15, shipped 2026-08-26; pane model amended by the same-day dogfood round):** a permanent right pane – the comments rail above – that widens into a 55/45 split (drag divider clamped 40–60%, persisted like the sidebar geometry) only while a preview is open; no mode tabs, no Comments button in the doc header. The preview is a read-only second editor pane whose doc links open inside it; closing it returns the pane to the 316px rail. Gestures: read-mode Shift+click previews from the body, edit-mode Ctrl/Cmd+click previews (a plain edit click is cursor placement, nothing opens) – the hover glyph and its edge hit zone were dropped as unusable. Preview spans carry thread summaries as tooltips (main-doc spans keep "View comment" + jump); an open-in-main button moves the previewed doc into the main pane through the navigation queue. Chrome rule: only a preview open auto-collapses the sidebar once – the user's manual choice wins, and closing restores only the automatic collapse – while a collapsed sidebar gets a compact top bar (brand, branch menu, Merge, ＋, ⌕, theme toggle, LED – the same components, second location) so the fixed actions stay reachable.
+*(Rewritten by ui v1, 2026-10 – see milestones/ui-v1.md. The behaviours are the M1–M5 and backlog-round ones; ui v1 changed where they live and how they look, not what they do.)*
+
+- **Navigator (the tree):** the repo name and branch on top, then plain text rows – folder chevrons with a doc count, the current doc marked with the accent, a trust mark per doc (unverified / machine-confirmed / human-reviewed / stale – each a distinct shape, never colour alone). No per-doc icons or emoji. Drag and drop, rename, move and the bin are unchanged.
+- **Doc view – the sheet:** the command bar carries the breadcrumb (collapsed in the middle when long) and Edit; the sheet opens with a mono kicker (type · status), the title, a masthead line (version, last save, reading time) and the verification seal; details, connections (references in and out) and history fold below the prose. Nothing else on the sheet.
+- **Editor (M2 + M2-2):** identical typography to read mode – entering edit mode must not reflow the text. A sticky edit ribbon swaps Edit for Save / Cancel. Formatting surfaces stay contextual only: a selection/right-click bubble and a `/` slash menu; `@` inserts a doc reference with a doc-relative link. Markdown input rules and shortcuts keep working.
+- **Branches (M3):** a branch chip in the navigator head reads as metadata ("on main"); its menu lists branches with ahead/behind and a "conflicts with main" hint (git ≥ 2.38), plus create, switch, delete and merge.
+- **Comments – marginalia (M4):** threads sit in the 260px margin beside the sheet, each note aligned to its anchor and pushed down only to avoid overlap; invisible until text is selected or a thread exists. Resolved threads are hidden by default; comment highlights are a barely-there tint, never boxes. Doc paths inside a comment open in main on click and in the preview on Ctrl/Cmd+click, both through the navigation queue.
+- **Preview – side-by-side sheets (#15):** a previewed doc opens as a second sheet beside the main one, tops and bottoms aligned; both are height-bound and scroll inside, and the main sheet's marginalia become pins that follow its scroll. "Link at cursor" inserts a reference to the previewed doc while editing. Gestures are unchanged: read-mode Shift+click, edit-mode Ctrl/Cmd+click; open-in-main goes through the navigation queue.
+- **Search (#14):** Ctrl/Cmd+K opens a centered palette in two columns – results (title + plain excerpt) on the left, the highlighted doc's preview on the right – plus an Actions group. ↑/↓ wrap, Enter opens, Shift+Enter previews, Escape dismisses.
+- **Pull requests (#27):** the rail's PR button opens a list drawer (open / closed, age, author); a PR opens as a full-stage review – a rendered prose diff per changed doc (blocks matched, changed words marked, plain text only) with a Source tab for the exact patch – and merges or pushes from the command bar.
+- **Reference graph (OKF rung 5):** a full-stage sheet on a dotted ground; folders draw as dashed hulls (Group: Off / 1 level / 2 levels / All, remembered), a hull label folds its folder into one node and back, and merged edges carry a weight. A click selects and opens an inspector (references in and out, Open, Preview); a double-click or Shift+Enter opens the doc.
+- **Merge resolution (M4-4):** a stood conflict takes the stage – one sheet per conflict with both sides word-marked, who last touched each and when, the nearest heading and line; Keep main / Keep draft / Write my own, folding to one line with Change. Comment sidecars merge on their own. Preview the result, then Conclude (or Abort, confirmed).
+- **Sign-in (#20):** a split page – two paper sheets and the tagline on the left, the wordmark and one "Continue with GitHub" button on the right. Nothing about the repo shows before sign-in.
 
 ## Roadmap surfaces – decided now, built later
 
@@ -84,7 +110,7 @@ Where each **already-established** roadmap item lives, so implementing it never 
 
 ## Anti-patterns (the Notion critique, operationalized)
 
-Never ship: onboarding modals or template pickers on first run · floating "+" buttons and per-block hover handles in read mode · nested hover menus · per-doc emoji/icon pickers · more than one accent color · toast stacks · collapsible-everything sidebars with badges · settings screens for things a config file states once.
+Never ship: onboarding modals or template pickers on first run · floating "+" buttons and per-block hover handles in read mode · nested hover menus · per-doc emoji/icon pickers · more than one accent color · toast stacks · collapsible-everything sidebars with badges · settings screens for things a config file states once · glass (translucent, blurred panels) – a surface is desk, sheet, or one floating layer.
 
 ---
 `ponytail:` this doc is the taste reference, not a component library. Build the style guide (actual CSS variables + a sample doc page) as part of M1's UI task, checking each screen against the principles above.

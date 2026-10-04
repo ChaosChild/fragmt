@@ -1,5 +1,6 @@
 export * from "./agents.js";
 export * from "./authors.js";
+export * from "./branch-status.js";
 export * from "./comments.js";
 export * from "./commit.js";
 export * from "./config.js";

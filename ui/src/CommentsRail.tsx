@@ -1,8 +1,23 @@
-import { Check, Reply, RotateCcw, Trash2 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+	Check,
+	MessageSquare,
+	Reply,
+	RotateCcw,
+	Trash2,
+	X,
+} from "lucide-react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import type { CommentThread } from "./api";
 import { isAgent } from "./display";
 import { type AtDoc, filterAtDocs } from "./editor/at";
+import { layoutNotes } from "./margin-layout";
 
 /** "2h ago" for recent, a locale date once older – the rail's quiet meta. */
 function timeAgo(iso: string): string {
@@ -16,6 +31,17 @@ function timeAgo(iso: string): string {
 	const days = Math.floor(hours / 24);
 	if (days < 7) return `${days}d ago`;
 	return new Date(iso).toLocaleDateString();
+}
+
+/** The pin's two letters – the author's initials. */
+function initials(name: string): string {
+	return name
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, 2)
+		.map((w) => w[0] ?? "")
+		.join("")
+		.toUpperCase();
 }
 
 /** Restart the flash animation (class off → reflow → class on). */
@@ -41,7 +67,7 @@ function DocRefText({
 }: {
 	text: string;
 	docs: AtDoc[];
-	onOpenDoc: (path: string) => void;
+	onOpenDoc: (path: string, opts?: { preview?: boolean }) => void;
 }) {
 	const paths = docs
 		.map((d) => d.path)
@@ -59,7 +85,13 @@ function DocRefText({
 				type="button"
 				className="doc-ref"
 				key={`${m[0]}@${i}`}
-				onClick={() => onOpenDoc(m[0])}
+				title={`${m[0]} – Ctrl/Cmd+click to preview`}
+				onClick={(e) =>
+					onOpenDoc(
+						m[0],
+						e.ctrlKey || e.metaKey ? { preview: true } : undefined,
+					)
+				}
 			>
 				{m[0]}
 			</button>,
@@ -90,7 +122,7 @@ function ThreadCard({
 	agents: string[];
 	/** The tree's docs – @ mentions and body linkification (M4-2). */
 	docs: AtDoc[];
-	onOpenDoc: (path: string) => void;
+	onOpenDoc: (path: string, opts?: { preview?: boolean }) => void;
 	onJump: (id: string) => void;
 	onReply: (id: string, body: string) => Promise<boolean>;
 	onResolve: (id: string) => void;
@@ -361,12 +393,14 @@ function ThreadCard({
 }
 
 /**
- * The comments thread list (M4-5, refactored #15): the rail's body – the
- * pane (Slideout.tsx) supplies the permanent column and, in its preview
- * state, the head row; the sync LED and theme toggle live in the doc head
- * and the sidebar/topbar now. App still owns the sidecar state and the
- * mutations; this stays presentational plus its own UI state (resolved
- * toggle, reply boxes).
+ * The margin (ui v1, phase 5; the thread list since M4-5): marginalia beside
+ * the sheet. Live threads sit level with their highlighted text, placed by
+ * layoutNotes from measured anchor tops; orphans (and, when shown, resolved
+ * threads whose span is gone) list below under "Not anchored". App owns the
+ * sidecar state and the mutations; this owns the layout and its UI state
+ * (resolved toggle, the focused note, reply boxes). It renders inside the
+ * doc's scroll container (DocView's .page), so notes scroll with the text;
+ * ≤1180px the CSS turns it back into the static list of the bottom sheet.
  */
 export function CommentsRail({
 	threads,
@@ -381,6 +415,7 @@ export function CommentsRail({
 	error,
 	docs,
 	onOpenDoc,
+	pins = false,
 }: {
 	threads: CommentThread[];
 	/** Ids whose data-c span is present in the rendered doc (App's reconcile). */
@@ -388,9 +423,9 @@ export function CommentsRail({
 	/** Config agent display names (meta) – the agent chip (M4-4 b5). */
 	agents: string[];
 	/** Fold the ≤1180px sheet – a jump-to-doc target reads best full-width
-	 *  there; the desktop pane is permanent, nothing to close. */
+	 *  there; the desktop margin is permanent, nothing to close. */
 	onClose: () => void;
-	/** Doc→rail jump trigger; `n` re-arms repeated clicks on the same span. */
+	/** Doc→margin focus trigger; `n` re-arms repeated clicks on the same span. */
 	focus: { id: string; n: number } | null;
 	onReply: (id: string, body: string) => Promise<boolean>;
 	onResolve: (id: string) => void;
@@ -400,20 +435,137 @@ export function CommentsRail({
 	error: string | null;
 	/** The tree's docs – @ mentions and body linkification (M4-2). */
 	docs: AtDoc[];
-	/** A linkified doc path was clicked – open that doc (App). */
-	onOpenDoc: (path: string) => void;
+	/** A linkified doc path was clicked – open that doc in the main pane
+	 *  through App's guarded navigation, or (Ctrl/Cmd+click) in the preview. */
+	onOpenDoc: (path: string, opts?: { preview?: boolean }) => void;
+	/** A preview shares the desk (ui v1, phase 6): notes fold to 34px author
+	 *  pins at the same positions; a pin (or its highlight) expands that one
+	 *  note as a popover, Escape folds it again. */
+	pins?: boolean;
 }) {
 	const [showResolved, setShowResolved] = useState(false);
-	const bodyRef = useRef<HTMLDivElement>(null);
+	const [focused, setFocused] = useState<string | null>(null);
+	const [expanded, setExpanded] = useState<string | null>(null);
+	useEffect(() => {
+		if (!pins) setExpanded(null);
+	}, [pins]);
+	// Escape folds the popover – on document, so it is consumed before App's
+	// window-level chain would close the preview itself.
+	useEffect(() => {
+		if (!expanded) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || e.defaultPrevented) return;
+			e.preventDefault();
+			setExpanded(null);
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [expanded]);
+	const notesRef = useRef<HTMLDivElement>(null);
+	const [tops, setTops] = useState<Map<string, number>>(() => new Map());
+	const [notesHeight, setNotesHeight] = useState(0);
 	// Read inside the focus effect without re-running it on every refetch.
 	const threadsRef = useRef(threads);
 	threadsRef.current = threads;
+	// Read at focus time only – toggling pins must not replay the last focus.
+	const pinsRef = useRef(pins);
+	pinsRef.current = pins;
 
 	const resolvedCount = threads.filter((t) => t.resolved).length;
+	const openCount = threads.length - resolvedCount;
+	const visible = (t: CommentThread) => !t.resolved || showResolved;
+	const placedThreads = threads.filter((t) => liveIds.has(t.id) && visible(t));
+	const unanchored = threads.filter((t) => !liveIds.has(t.id) && visible(t));
 
-	// A highlighted span was clicked in the doc: reveal it (a resolved target
-	// forces the toggle on – the showResolved dep re-runs this once the card
-	// exists), scroll it into view, flash it.
+	// Measure and place. Anchors are the sheet's own data-c spans (read mode
+	// and the editor render the same ones); tops are relative to the notes
+	// container, which scrolls with the sheet.
+	const frame = useRef(0);
+	const layout = useCallback(() => {
+		cancelAnimationFrame(frame.current);
+		frame.current = requestAnimationFrame(() => {
+			const root = notesRef.current;
+			const sheet = root?.closest(".page")?.querySelector(".sheet");
+			if (!root || !sheet) return;
+			const base = root.getBoundingClientRect().top;
+			const items = (Array.from(root.children) as HTMLElement[])
+				.filter((el) => el.classList.contains("note"))
+				.map((el) => {
+					const id = el.dataset.note ?? "";
+					const anchor = sheet.querySelector(`[data-c="${CSS.escape(id)}"]`);
+					return {
+						id,
+						anchorTop: anchor
+							? anchor.getBoundingClientRect().top - base
+							: null,
+						height: el.offsetHeight,
+					};
+				});
+			// Pins ride a sheet that scrolls on its own (preview mode): an
+			// anchor scrolled above the view takes its pin out with it.
+			const next = layoutNotes(items, {
+				gap: 12,
+				top: pinsRef.current ? Number.NEGATIVE_INFINITY : 0,
+				focused,
+			});
+			let bottom = 0;
+			for (const it of items) {
+				const y = next.get(it.id);
+				if (y !== undefined) bottom = Math.max(bottom, y + it.height);
+			}
+			setTops((prev) =>
+				prev.size === next.size &&
+				[...next].every(([id, y]) => prev.get(id) === y)
+					? prev
+					: next,
+			);
+			setNotesHeight(bottom);
+		});
+	}, [focused]);
+
+	// Re-layout on everything that can move an anchor or resize a note: the
+	// thread list and toggles (this render), the sheet's size (typing that
+	// adds a line, image loads, window and theme changes), any edit inside
+	// the sheet (a MutationObserver – the editor's updates without plumbing a
+	// callback through DocView), each note's size, and late web fonts.
+	// Every render may move the notes; layout() is rAF-throttled and bails
+	// out when nothing moved.
+	useLayoutEffect(() => {
+		layout();
+	});
+	// biome-ignore lint/correctness/useExhaustiveDependencies: placedThreads.length is the re-observe trigger – a new note needs its own ResizeObserver entry.
+	useEffect(() => {
+		const root = notesRef.current;
+		const sheet = root?.closest(".page")?.querySelector(".sheet");
+		if (!root || !sheet) return;
+		// (happy-dom and older engines lack ResizeObserver – the mutation
+		// and render triggers still lay out.)
+		const ro =
+			typeof ResizeObserver === "undefined" ? null : new ResizeObserver(layout);
+		ro?.observe(sheet);
+		for (const el of Array.from(root.children)) ro?.observe(el);
+		// In preview mode the sheet is its own scroller – its anchors move
+		// under a still margin, so the pins follow every scroll.
+		sheet.addEventListener("scroll", layout, { passive: true });
+		const mo = new MutationObserver(layout);
+		mo.observe(sheet, { childList: true, subtree: true, characterData: true });
+		void document.fonts?.ready.then(layout);
+		// The previous run's cleanup cancelled any pending frame – including
+		// the one this render's layout effect just scheduled – so lay out
+		// again rather than rely on an observer firing.
+		layout();
+		return () => {
+			sheet.removeEventListener("scroll", layout);
+			ro?.disconnect();
+			mo.disconnect();
+			cancelAnimationFrame(frame.current);
+		};
+	}, [layout, placedThreads.length]);
+
+	// A highlighted span was clicked in the doc: focus its note (a resolved
+	// target forces the toggle on – the showResolved dep re-runs this once
+	// the note exists) and flash it. The re-layout lands the note level with
+	// its anchor.
 	useEffect(() => {
 		if (!focus) return;
 		if (
@@ -422,86 +574,157 @@ export function CommentsRail({
 		) {
 			setShowResolved(true);
 		}
-		const card = bodyRef.current?.querySelector(
+		setFocused(focus.id);
+		if (pinsRef.current) setExpanded(focus.id);
+		const card = notesRef.current?.parentElement?.querySelector(
 			`[data-c="${CSS.escape(focus.id)}"]`,
 		);
 		if (card) {
-			card.scrollIntoView({ behavior: "smooth", block: "center" });
+			// ≤1180px the margin is the bottom sheet's list – bring it in view.
+			card.scrollIntoView({ behavior: "smooth", block: "nearest" });
 			flash(card);
 		}
 	}, [focus, showResolved]);
 
 	// The reverse direction: the quote button scrolls the doc's span into view
-	// and flashes it (app.html's jump). onClose folds the pane away so the
-	// target reads full-width – the mobile sheet especially.
+	// and flashes it (app.html's jump). onClose folds the ≤1180px sheet away
+	// so the target reads full-width.
 	function jumpToDoc(id: string) {
-		const target = document.querySelector(`.main [data-c="${CSS.escape(id)}"]`);
+		const target = document.querySelector(
+			`.sheet [data-c="${CSS.escape(id)}"]`,
+		);
 		if (!target) return;
 		onClose();
 		target.scrollIntoView({ behavior: "smooth", block: "center" });
 		flash(target);
 	}
 
+	const card = (t: CommentThread) => (
+		<ThreadCard
+			key={t.id}
+			thread={t}
+			orphan={!liveIds.has(t.id)}
+			agents={agents}
+			docs={docs}
+			onOpenDoc={onOpenDoc}
+			onJump={jumpToDoc}
+			onReply={onReply}
+			onResolve={onResolve}
+			onReopen={onReopen}
+			onDelete={onDelete}
+		/>
+	);
+
 	return (
-		<div className="rail-body" ref={bodyRef}>
+		<div className="margin-body">
+			<div className="margin-h">
+				<MessageSquare aria-hidden="true" />
+				<b>Notes</b>
+				<span className="n">{openCount}</span>
+				<span className="sp" />
+				{resolvedCount > 0 && (
+					<button
+						type="button"
+						className="show-resolved"
+						aria-pressed={showResolved}
+						onClick={() => setShowResolved((v) => !v)}
+					>
+						{showResolved
+							? "Hide resolved"
+							: `Show resolved · ${resolvedCount}`}
+					</button>
+				)}
+				{/* The ≤1180px sheet's fold (hidden on desktop – the margin has
+				    no closed state there). */}
+				<button
+					type="button"
+					className="margin-close"
+					aria-label="Close comments"
+					title="Close comments"
+					onClick={onClose}
+				>
+					<X aria-hidden="true" />
+				</button>
+			</div>
 			{error && (
 				<p className="rail-error" role="alert">
 					{error}
 				</p>
 			)}
-			{threads.length === 0 && (
-				<p className="label-meta" style={{ padding: "4px 4px 16px" }}>
-					No comments yet &mdash; select text in the document to anchor a note.
-				</p>
-			)}
-			{/* Open threads always sit on top; the resolved block renders
-				    after them (and after the toggle) so expanding it never
-				    pushes the open ones down the rail. */}
-			{threads
-				.filter((t) => !t.resolved)
-				.map((t) => (
-					<ThreadCard
-						key={t.id}
-						thread={t}
-						orphan={!liveIds.has(t.id)}
-						agents={agents}
-						docs={docs}
-						onOpenDoc={onOpenDoc}
-						onJump={jumpToDoc}
-						onReply={onReply}
-						onResolve={onResolve}
-						onReopen={onReopen}
-						onDelete={onDelete}
-					/>
-				))}
-			{resolvedCount > 0 && (
-				<button
-					type="button"
-					className="label-meta show-resolved"
-					aria-pressed={showResolved}
-					onClick={() => setShowResolved((v) => !v)}
-				>
-					{showResolved ? "Hide resolved" : `Show resolved (${resolvedCount})`}
-				</button>
-			)}
-			{showResolved &&
-				threads
-					.filter((t) => t.resolved)
-					.map((t) => (
-						<ThreadCard
+			<div
+				className="margin-notes"
+				ref={notesRef}
+				style={{ height: notesHeight }}
+			>
+				{pins &&
+					placedThreads.map((t) => (
+						<div
 							key={t.id}
-							thread={t}
-							orphan={!liveIds.has(t.id)}
-							agents={agents}
-							docs={docs}
-							onOpenDoc={onOpenDoc}
-							onJump={jumpToDoc}
-							onReply={onReply}
-							onResolve={onResolve}
-							onReopen={onReopen}
-							onDelete={onDelete}
-						/>
+							className={`note pin${expanded === t.id ? " on" : ""}`}
+							data-note={t.id}
+							style={
+								tops.has(t.id)
+									? { top: tops.get(t.id) }
+									: { visibility: "hidden" }
+							}
+						>
+							<button
+								type="button"
+								className="pin-btn"
+								aria-label={`Comment by ${t.author}: ${t.quote}`}
+								title={`${t.author}: ${t.replies[0]?.body ?? ""}`}
+								aria-expanded={expanded === t.id}
+								onClick={() => {
+									setFocused(t.id);
+									setExpanded((x) => (x === t.id ? null : t.id));
+								}}
+							>
+								{initials(t.author)}
+							</button>
+						</div>
 					))}
+				{pins &&
+					expanded &&
+					tops.has(expanded) &&
+					placedThreads
+						.filter((t) => t.id === expanded)
+						.map((t) => (
+							<div
+								key={t.id}
+								className="pin-pop"
+								style={{ top: tops.get(t.id) }}
+							>
+								{card(t)}
+							</div>
+						))}
+				{!pins &&
+					placedThreads.map((t) => (
+						// biome-ignore lint/a11y/noStaticElementInteractions: a pointer convenience – the card's own buttons are the keyboard path; focusing only re-runs the layout.
+						// biome-ignore lint/a11y/useKeyWithClickEvents: as above.
+						<div
+							key={t.id}
+							className={`note${focused === t.id ? " on" : ""}`}
+							data-note={t.id}
+							style={
+								tops.has(t.id)
+									? { top: tops.get(t.id) }
+									: { visibility: "hidden" }
+							}
+							onClick={() => setFocused(t.id)}
+						>
+							{card(t)}
+						</div>
+					))}
+			</div>
+			{!pins && unanchored.length > 0 && (
+				<div className="margin-rest">
+					<p className="margin-group">Not anchored</p>
+					{unanchored.map(card)}
+				</div>
+			)}
+			{!pins && (
+				<p className="margin-hint">Select text in the doc to leave a note.</p>
+			)}
 		</div>
 	);
 }

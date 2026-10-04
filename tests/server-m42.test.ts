@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { RepoMeta } from "../src/core/index.js";
 import { createApp, startServer } from "../src/server/index.js";
@@ -51,6 +51,53 @@ function api(method: string, path: string, body?: unknown): Promise<Response> {
 function gitOut(args: string[]): string {
 	return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 }
+
+test("GET /api/meta: repo is the folder name without a GitHub origin, the slug's repo with one", async () => {
+	let meta = (await (await api("GET", "/api/meta")).json()) as {
+		repo: { name: string; slug: unknown };
+	};
+	expect(meta.repo).toEqual({
+		name: basename(root),
+		slug: null,
+		docsRoot: "",
+	});
+
+	gitOut(["remote", "add", "origin", "https://github.com/acme/handbook.git"]);
+	meta = await (await api("GET", "/api/meta")).json();
+	expect(meta.repo).toEqual({
+		name: "handbook",
+		slug: { owner: "acme", repo: "handbook" },
+		docsRoot: "",
+	});
+});
+
+test("GET /api/branches/status: every non-main branch with ahead/behind, conflicts and tip date", async () => {
+	gitOut(["switch", "-q", "-c", "drafts/a"]);
+	writeFileSync(join(root, "b.md"), "draft\n");
+	gitOut(["add", "-A"]);
+	gitOut(["commit", "-q", "-m", "draft"]);
+	gitOut(["switch", "-q", "main"]);
+
+	const res = await api("GET", "/api/branches/status");
+	expect(res.status).toBe(200);
+	const body = (await res.json()) as {
+		branches: {
+			name: string;
+			ahead: number;
+			behind: number;
+			conflicts: boolean | null;
+			lastCommitAt: string;
+		}[];
+	};
+	expect(body.branches).toHaveLength(1);
+	expect(body.branches[0]).toMatchObject({
+		name: "drafts/a",
+		ahead: 1,
+		behind: 0,
+		conflicts: false,
+	});
+	expect(typeof body.branches[0].lastCommitAt).toBe("string");
+});
 
 test("GET /api/meta: main/current/docs/drafts/deleted, docs paths docsRoot-relative", async () => {
 	const res = await api("GET", "/api/meta");

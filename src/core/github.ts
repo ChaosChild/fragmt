@@ -21,9 +21,11 @@ export interface PullRequest {
 	mergeable: boolean | null;
 	html_url: string;
 	head: { ref: string; sha: string };
-	base: { ref: string };
+	base: { ref: string; sha: string };
 	user: { login: string };
 	changed_files: number;
+	created_at: string;
+	merged_at: string | null;
 	commits?: number;
 	additions?: number;
 	deletions?: number;
@@ -35,6 +37,14 @@ export interface PullRequestFile {
 	additions: number;
 	deletions: number;
 	patch?: string;
+	/** Set on renames – the base side's path. */
+	previous_filename?: string;
+}
+
+export interface PullCommit {
+	sha: string;
+	commit: { message: string; author: { name: string } | null };
+	author: { login: string } | null;
 }
 
 /** One REST call. `body` is JSON-encoded when present; the answer's body is
@@ -62,12 +72,18 @@ export async function ghApi(
 
 const pulls = (slug: GithubSlug) => `/repos/${slug.owner}/${slug.repo}/pulls`;
 
-/** Open PRs – the branch→PR map's source. */
+/** PRs by state (open: the branch→PR map's source; closed: the list's
+ *  Merged/Closed tabs – the newest 50). */
 export async function listPulls(
 	slug: GithubSlug,
 	{ fetchImpl = globalThis.fetch, token }: GhApiOpts,
+	state: "open" | "closed" = "open",
 ): Promise<{ status: number; body: PullRequest[] }> {
-	const r = await ghApi(fetchImpl, token, `${pulls(slug)}?state=open`);
+	const r = await ghApi(
+		fetchImpl,
+		token,
+		`${pulls(slug)}?state=${state}&per_page=50`,
+	);
 	return {
 		status: r.status,
 		body: Array.isArray(r.body) ? (r.body as PullRequest[]) : [],
@@ -140,4 +156,47 @@ export async function repoDefaultBranch(
 ): Promise<{ status: number; body: { default_branch?: string } }> {
 	const r = await ghApi(fetchImpl, token, `/repos/${slug.owner}/${slug.repo}`);
 	return { status: r.status, body: r.body as { default_branch?: string } };
+}
+
+/** A PR's commits (first 50) – the review's commit list. */
+export async function getPullCommits(
+	slug: GithubSlug,
+	n: number,
+	{ fetchImpl = globalThis.fetch, token }: GhApiOpts,
+): Promise<{ status: number; body: PullCommit[] }> {
+	const r = await ghApi(
+		fetchImpl,
+		token,
+		`${pulls(slug)}/${n}/commits?per_page=50`,
+	);
+	return {
+		status: r.status,
+		body: Array.isArray(r.body) ? (r.body as PullCommit[]) : [],
+	};
+}
+
+/**
+ * One file's raw content at `ref` (the contents API's raw media type) –
+ * the rendered PR diff's two sides. `path` is repo-relative; each segment
+ * is encoded, so nothing in it can reshape the API path. Non-2xx is a
+ * returned status with an empty text.
+ */
+export async function getFileRaw(
+	slug: GithubSlug,
+	path: string,
+	ref: string,
+	{ fetchImpl = globalThis.fetch, token }: GhApiOpts,
+): Promise<{ status: number; text: string }> {
+	const enc = path.split("/").map(encodeURIComponent).join("/");
+	const res = await fetchImpl(
+		`https://api.github.com/repos/${slug.owner}/${slug.repo}/contents/${enc}?ref=${encodeURIComponent(ref)}`,
+		{
+			headers: {
+				authorization: `Bearer ${token}`,
+				accept: "application/vnd.github.raw+json",
+				"x-github-api-version": "2022-11-28",
+			},
+		},
+	);
+	return { status: res.status, text: res.ok ? await res.text() : "" };
 }

@@ -59,9 +59,11 @@ function pr(
 		mergeable: true,
 		html_url: `https://github.com/o/r/pull/${n}`,
 		head: { ref: head, sha: "f".repeat(40) },
-		base: { ref: "main" },
+		base: { ref: "main", sha: "b".repeat(40) },
 		user: { login: "ada" },
 		changed_files: 2,
+		created_at: "2026-09-01T00:00:00Z",
+		merged_at: null,
 		...over,
 	};
 }
@@ -77,6 +79,11 @@ function prApp(
 		defaultBranch?: string;
 		files?: unknown[];
 		fetchThrows?: boolean;
+		/** ui v1: the Merged/Closed list, a PR's commits, and raw file
+		 *  contents keyed path@ref (absent = 404). */
+		closed?: PullRequest[];
+		commits?: unknown[];
+		contents?: Record<string, string>;
 	} = {},
 	users: Record<string, string> = { ada: "write" },
 ) {
@@ -112,9 +119,33 @@ function prApp(
 			calls.push("GET repo");
 			return Response.json({ default_branch: script.defaultBranch ?? "main" });
 		}
-		if (url === "https://api.github.com/repos/o/r/pulls?state=open") {
+		if (
+			url === "https://api.github.com/repos/o/r/pulls?state=open&per_page=50"
+		) {
 			calls.push("GET pulls");
 			return Response.json(script.pulls ?? []);
+		}
+		if (
+			url === "https://api.github.com/repos/o/r/pulls?state=closed&per_page=50"
+		) {
+			calls.push("GET pulls closed");
+			return Response.json(script.closed ?? []);
+		}
+		if (/\/pulls\/\d+\/commits\?per_page=50$/.test(url)) {
+			calls.push("GET commits");
+			return Response.json(script.commits ?? []);
+		}
+		const contents =
+			/^https:\/\/api\.github\.com\/repos\/o\/r\/contents\/(.+)\?ref=(.+)$/.exec(
+				url,
+			);
+		if (contents) {
+			const key = `${decodeURIComponent(contents[1])}@${decodeURIComponent(contents[2])}`;
+			calls.push(`GET raw ${key}`);
+			const text = script.contents?.[key];
+			return text === undefined
+				? new Response(null, { status: 404 })
+				: new Response(text, { status: 200 });
 		}
 		if (url === "https://api.github.com/repos/o/r/pulls" && method === "POST") {
 			calls.push("POST pulls");
@@ -267,6 +298,8 @@ test("list: minimal pr fields and the byBranch fold", async () => {
 		base: { ref: "main" },
 		user: { login: "ada" },
 		changed_files: 2,
+		created_at: "2026-09-01T00:00:00Z",
+		merged_at: null,
 	});
 	expect(body.byBranch).toEqual({
 		"drafts/x": { number: 1, title: "PR 1", state: "open" },
@@ -453,4 +486,163 @@ test("a read-only session cannot create a PR – the gate 403s", async () => {
 	expect(((await res.json()) as { error: string }).error).toBe(
 		"read-only access – you don't have write permission",
 	);
+});
+
+// --- ui v1 phase 9: closed list, commits, local freshness, the /doc route ---
+
+test("list: ?state=closed passes through, leaves byBranch empty, and rejects other states", async () => {
+	const { app, calls } = prApp(gitRepo("https://github.com/o/r.git"), {
+		closed: [
+			pr(3, "drafts/old", {
+				state: "closed",
+				merged_at: "2026-09-02T00:00:00Z",
+			}),
+		],
+	});
+	const session = await signIn(app, "ada");
+	const res = await app.request("/api/prs?state=closed", {
+		headers: { cookie: session },
+	});
+	const body = (await res.json()) as {
+		prs: { number: number; merged_at: string | null }[];
+		byBranch: Record<string, unknown>;
+	};
+	expect(body.prs.map((p) => [p.number, p.merged_at])).toEqual([
+		[3, "2026-09-02T00:00:00Z"],
+	]);
+	expect(body.byBranch).toEqual({});
+	expect(calls).toContain("GET pulls closed");
+	const bad = await app.request("/api/prs?state=all", {
+		headers: { cookie: session },
+	});
+	expect(bad.status).toBe(400);
+});
+
+test("detail: commits (first message line) and localUpToDate against the local branch", async () => {
+	const root = gitRepo("https://github.com/o/r.git");
+	const tip = branchWithCommit(root, "feature");
+	const commits = [
+		{
+			sha: "c1",
+			commit: {
+				message: "Reword the intro\n\nlonger body",
+				author: { name: "Ada L" },
+			},
+			author: { login: "ada" },
+		},
+	];
+	const { app } = prApp(root, {
+		pull: pr(5, "feature", { head: { ref: "feature", sha: tip } }),
+		commits,
+	});
+	const session = await signIn(app, "ada");
+	let body = (await (
+		await app.request("/api/prs/5", { headers: { cookie: session } })
+	).json()) as {
+		commits: { sha: string; message: string; author: string }[];
+		localUpToDate: boolean | null;
+	};
+	expect(body.commits).toEqual([
+		{ sha: "c1", message: "Reword the intro", author: "ada" },
+	]);
+	expect(body.localUpToDate).toBe(true);
+
+	// GitHub's head moved on: the local branch is behind.
+	const behind = prApp(root, {
+		pull: pr(5, "feature", { head: { ref: "feature", sha: "e".repeat(40) } }),
+	});
+	const s2 = await signIn(behind.app, "ada");
+	body = await (
+		await behind.app.request("/api/prs/5", { headers: { cookie: s2 } })
+	).json();
+	expect(body.localUpToDate).toBe(false);
+
+	// No local branch of that name: unknown.
+	const none = prApp(root, { pull: pr(5, "elsewhere") });
+	const s3 = await signIn(none.app, "ada");
+	body = await (
+		await none.app.request("/api/prs/5", { headers: { cookie: s3 } })
+	).json();
+	expect(body.localUpToDate).toBeNull();
+});
+
+test("doc: refuses a path outside the PR, a non-.md path and a bad PR number – before any raw fetch", async () => {
+	const { app, calls } = prApp(gitRepo("https://github.com/o/r.git"));
+	const session = await signIn(app, "ada");
+	const get = (q: string) =>
+		app.request(`/api/prs/${q}`, { headers: { cookie: session } });
+	expect((await get("5/doc?path=docs/secret.md")).status).toBe(404);
+	expect((await get("5/doc?path=docs/a.txt")).status).toBe(400);
+	expect((await get("5/doc?path=../../etc/passwd")).status).toBe(400);
+	expect((await get("5/doc")).status).toBe(400);
+	expect((await get("0/doc?path=docs/a.md")).status).toBe(400);
+	expect((await get("x/doc?path=docs/a.md")).status).toBe(400);
+	expect(calls.some((c) => c.startsWith("GET raw"))).toBe(false);
+});
+
+test("doc: modified, added, removed and renamed files fetch the right sides at the PR's shas", async () => {
+	const base = "b".repeat(40);
+	const head = "f".repeat(40);
+	const files = [
+		{ filename: "docs/a.md", status: "modified", additions: 1, deletions: 1 },
+		{ filename: "docs/new.md", status: "added", additions: 1, deletions: 0 },
+		{ filename: "docs/gone.md", status: "removed", additions: 0, deletions: 1 },
+		{
+			filename: "docs/moved.md",
+			previous_filename: "docs/old.md",
+			status: "renamed",
+			additions: 0,
+			deletions: 0,
+		},
+	];
+	const { app } = prApp(gitRepo("https://github.com/o/r.git"), {
+		files,
+		contents: {
+			[`docs/a.md@${base}`]: "---\ntitle: A\n---\nold body\n",
+			[`docs/a.md@${head}`]: "---\ntitle: B\n---\nnew body\n",
+			[`docs/new.md@${head}`]: "fresh\n",
+			[`docs/gone.md@${base}`]: "bye\n",
+			[`docs/old.md@${base}`]: "same\n",
+			[`docs/moved.md@${head}`]: "same\n",
+		},
+	});
+	const session = await signIn(app, "ada");
+	const doc = async (path: string) =>
+		(await (
+			await app.request(`/api/prs/5/doc?path=${encodeURIComponent(path)}`, {
+				headers: { cookie: session },
+			})
+		).json()) as {
+			base: { frontmatter: Record<string, unknown>; body: string } | null;
+			head: { frontmatter: Record<string, unknown>; body: string } | null;
+		};
+	expect(await doc("docs/a.md")).toEqual({
+		base: { frontmatter: { title: "A" }, body: "old body\n" },
+		head: { frontmatter: { title: "B" }, body: "new body\n" },
+	});
+	expect(await doc("docs/new.md")).toEqual({
+		base: null,
+		head: { frontmatter: {}, body: "fresh\n" },
+	});
+	expect(await doc("docs/gone.md")).toEqual({
+		base: { frontmatter: {}, body: "bye\n" },
+		head: null,
+	});
+	const moved = await doc("docs/moved.md");
+	expect(moved.base?.body).toBe("same\n");
+	expect(moved.head?.body).toBe("same\n");
+});
+
+test("doc: a side over 1 MB answers tooLarge", async () => {
+	const { app } = prApp(gitRepo("https://github.com/o/r.git"), {
+		contents: {
+			[`docs/a.md@${"b".repeat(40)}`]: "small\n",
+			[`docs/a.md@${"f".repeat(40)}`]: "x".repeat(1024 * 1024 + 1),
+		},
+	});
+	const session = await signIn(app, "ada");
+	const res = await app.request("/api/prs/5/doc?path=docs/a.md", {
+		headers: { cookie: session },
+	});
+	expect(await res.json()).toEqual({ tooLarge: true });
 });

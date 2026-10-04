@@ -43,12 +43,37 @@ export interface AtMenuState {
 export type AtRenderer = (state: AtMenuState | null) => void;
 export type AtKeydownHandler = (event: KeyboardEvent) => boolean;
 
-/** Delete the "@query" range, then insert the title carrying a link mark. */
+/**
+ * The href for a link from `fromDoc` to `toDoc` (both docsRoot-relative):
+ * relative to the linking doc's own folder – `../reference/cli.md` from
+ * `concepts/a.md` – the form every reader resolves the same way (the
+ * server's references walk, resolveLinkTarget's first candidate, GitHub's
+ * markdown view).
+ */
+export function relativeDocHref(fromDoc: string, toDoc: string): string {
+	const from = fromDoc.split("/").slice(0, -1);
+	const to = toDoc.split("/");
+	let shared = 0;
+	while (
+		shared < from.length &&
+		shared < to.length - 1 &&
+		from[shared] === to[shared]
+	)
+		shared++;
+	return [...from.slice(shared).map(() => ".."), ...to.slice(shared)].join("/");
+}
+
+/** Delete the "@query" range, then insert the title carrying a link mark.
+ *  With `fromDoc` (the linking doc's path) the href is relative to its
+ *  folder (relativeDocHref) – the form the server's references walk and
+ *  GitHub resolve; without it, the docsRoot-relative path. */
 export function applyAtReference(
 	editor: Editor,
 	range: { from: number; to: number },
 	doc: AtDoc,
+	fromDoc?: string,
 ): void {
+	const href = fromDoc ? relativeDocHref(fromDoc, doc.path) : doc.path;
 	// insertContentAt (not insertContent): the position-explicit form
 	// Suggestion's range implies – the chain's selection may sit elsewhere.
 	editor
@@ -58,13 +83,18 @@ export function applyAtReference(
 		.insertContentAt(range.from, {
 			type: "text",
 			text: doc.title,
-			marks: [{ type: "link", attrs: { href: doc.path } }],
+			marks: [{ type: "link", attrs: { href } }],
 		})
+		// Link is inclusive (autolink), so the cursor at its end would carry
+		// it into whatever is typed next – drop it from the stored marks.
+		.unsetMark("link")
 		.run();
 }
 
 export interface AtReferencesOptions {
 	docs: () => AtDoc[];
+	/** The linking doc's path – inserted hrefs are relative to its folder. */
+	docPath?: () => string;
 	/** Called with menu state on open/change, and with null on close. */
 	onState?: AtRenderer;
 	/** Keydown while the menu is open (arrows/enter/escape); true = handled. */
@@ -77,7 +107,7 @@ export const AtReferences = Extension.create<AtReferencesOptions>({
 	name: "atReferences",
 
 	addProseMirrorPlugins() {
-		const { docs, onState, onKeyDown } = this.options;
+		const { docs, docPath, onState, onKeyDown } = this.options;
 		return [
 			Suggestion({
 				editor: this.editor,
@@ -85,7 +115,7 @@ export const AtReferences = Extension.create<AtReferencesOptions>({
 				char: "@",
 				items: ({ query }) => filterAtDocs(docs(), query),
 				command: ({ editor, range, props: doc }) =>
-					applyAtReference(editor, range, doc),
+					applyAtReference(editor, range, doc, docPath?.()),
 				render: () => ({
 					onStart: (props) => onState?.(toMenuState(props)),
 					onUpdate: (props) => onState?.(toMenuState(props)),

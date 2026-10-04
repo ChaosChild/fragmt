@@ -4,7 +4,11 @@
 // card's one readable line from the b2 mergeSidecars counts.
 import { describe, expect, test } from "vitest";
 import type { ConflictPart, SidecarMergeSummary } from "../ui/src/api.js";
-import { assembleContent, sidecarSummaryLine } from "../ui/src/resolve.js";
+import {
+	assembleContent,
+	hunkPlace,
+	sidecarSummaryLine,
+} from "../ui/src/resolve.js";
 
 describe("assembleContent", () => {
 	test("no conflicts – text passes through verbatim", () => {
@@ -72,5 +76,37 @@ describe("sidecarSummaryLine", () => {
 		expect(sidecarSummaryLine(s({ keptFromOurs: 0, repliesMerged: 1 }))).toBe(
 			"0 threads kept · 0 resolves carried · 1 reply merged",
 		);
+	});
+});
+
+describe("hunkPlace (nearest heading + line)", () => {
+	const parts: ConflictPart[] = [
+		{ text: "# Title\n\nIntro.\n\n## Setup\n\nSome text.\n" },
+		{ ours: "main line\n", theirs: "draft line\n" },
+		{ text: "\n## Usage\n\n" },
+		{ ours: "a\nb\n", theirs: "c\n" },
+	];
+
+	test("the heading above each hunk, and its start line", () => {
+		expect(hunkPlace(parts, 0)).toEqual({ heading: "Setup", line: 8 });
+		// The second hunk: the plain text between them brought "Usage".
+		expect(hunkPlace(parts, 1)).toEqual({ heading: "Usage", line: 12 });
+	});
+
+	test("no heading above is null; a heading inside an earlier hunk counts (main's side)", () => {
+		expect(hunkPlace([{ ours: "x\n", theirs: "y\n" }], 0)).toEqual({
+			heading: null,
+			line: 1,
+		});
+		expect(
+			hunkPlace(
+				[
+					{ ours: "## From main\n", theirs: "## From draft\n" },
+					{ text: "body\n" },
+					{ ours: "1\n", theirs: "2\n" },
+				],
+				1,
+			).heading,
+		).toBe("From main");
 	});
 });

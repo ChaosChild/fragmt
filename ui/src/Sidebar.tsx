@@ -1,4 +1,4 @@
-import { ChevronRight } from "lucide-react";
+import { Archive, ChevronRight } from "lucide-react";
 import {
 	type DragEvent as ReactDragEvent,
 	type ReactNode,
@@ -7,14 +7,8 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import type {
-	DeletedDoc,
-	DocMeta,
-	OkfFinding,
-	RepoMeta,
-	TreeNode,
-} from "./api";
-import { displayTitle, isStaleIso } from "./display";
+import type { DeletedDoc, DocMeta, RepoMeta, TreeNode } from "./api";
+import { displayTitle, TRUST_WORD, trustClass } from "./display";
 import {
 	basename,
 	currentDrag,
@@ -88,10 +82,13 @@ export function SidebarResizeHandle({
 	);
 }
 
-function countDocs(node: TreeNode): number {
+/** Recursive doc count. In OKF repos a folder's index.md is the folder row
+ *  itself, not a row under it, so it doesn't count. */
+function countDocs(node: TreeNode, okf = false): number {
 	let n = 0;
 	for (const c of node.children ?? []) {
-		n += c.type === "doc" ? 1 : countDocs(c);
+		if (c.type === "dir") n += countDocs(c, okf);
+		else if (!(okf && c.name === "index.md")) n += 1;
 	}
 	return n;
 }
@@ -122,8 +119,22 @@ function chipWord(meta: RepoMeta, path: string): string | null {
 	return entry.status === "new" ? "new" : "draft";
 }
 
-/** One inbox card – ghost docs (draft-only, not in this branch's tree) reuse it. */
-function DocCard({
+/** The row's hover card (ui v1): the details the calm row no longer shows –
+ *  title, then path · version · author · date, then the snippet. */
+function rowTooltip(title: string, path: string, dm?: DocMeta): string {
+	const facts = [
+		path,
+		dm?.version !== undefined && `v${dm.version}`,
+		dm?.author,
+		dm && shortDate(dm.date),
+	].filter(Boolean);
+	return [title, facts.join(" · "), dm?.snippet].filter(Boolean).join("\n");
+}
+
+/** One navigator row (ui v1): the title alone, then the draft mark and the
+ *  trust mark on the right. Ghost docs (draft-only, not in this branch's
+ *  tree) reuse it. */
+function DocRow({
 	node,
 	active,
 	meta,
@@ -135,7 +146,7 @@ function DocCard({
 	node: TreeNode;
 	active: boolean;
 	meta: RepoMeta | null;
-	/** Set for ghost cards: clicking checks out this branch and opens the doc. */
+	/** Set for ghost rows: clicking checks out this branch and opens the doc. */
 	ghostBranch?: string;
 	onSelect: (path: string) => void;
 	onOpenGhost: (path: string, branch: string) => void;
@@ -145,14 +156,16 @@ function DocCard({
 }) {
 	const dm: DocMeta | undefined = meta?.docs[node.path];
 	const chip = meta ? chipWord(meta, node.path) : null;
+	const trust = trustClass(dm?.okf);
 	const dragging = dnd.drag?.type === "doc" && dnd.drag.path === node.path;
-	// M4-3 b4: indicators sit inline right after the name – nothing is
-	// right-aligned on the row, so overflow can never hide them.
+	const title = displayTitle(dm?.title, node.name);
 	return (
 		<button
 			type="button"
-			className={`doc-card${active ? " active" : ""}${dragging ? " dragging" : ""}`}
-			title={node.path}
+			className={`row${ghostBranch ? " ghost" : ""}${dragging ? " dragging" : ""}`}
+			aria-current={active ? "page" : undefined}
+			data-path={node.path}
+			title={rowTooltip(title, node.path, dm)}
 			draggable={!ghostBranch}
 			onDragStart={(e) => {
 				if (ghostBranch) return;
@@ -167,34 +180,18 @@ function DocCard({
 				ghostBranch ? onOpenGhost(node.path, ghostBranch) : onSelect(node.path)
 			}
 		>
-			<span className="dc-top">
-				<span className="dc-title">{displayTitle(dm?.title, node.name)}</span>
-				{dm?.version !== undefined && (
-					<span className="dc-ver">v{dm.version}</span>
-				)}
-			</span>
-			{(dm || chip) && (
-				<span className="dc-meta">
-					{dm && `${dm.author} · ${shortDate(dm.date)}`}
-					{chip && <span className="dc-draft">{chip}</span>}
-					{/* #33: the OKF badge chips from meta's derived walk – quiet,
-					    wrapped (never a second line of force), tier always, stale
-					    in the warn tint, status only when it says something
-					    (absent = no chip, A3; stable is silence). */}
-					{dm?.okf && (
-						<span className="okf-chip" title="trust tier (OKF §5.3)">
-							{dm.okf.tier}
-						</span>
-					)}
-					{dm?.okf && isStaleIso(dm.okf.staleAfter) && (
-						<span className="okf-chip warn">stale</span>
-					)}
-					{dm?.okf?.status && dm.okf.status !== "stable" && (
-						<span className="okf-chip">{dm.okf.status}</span>
-					)}
-				</span>
+			<span className="t">{title}</span>
+			{chip && (
+				<span className="chg" role="img" aria-label={chip} title={chip} />
 			)}
-			{dm?.snippet && <span className="dc-snippet">{dm.snippet}</span>}
+			{trust && (
+				<span
+					className={`tr ${trust}`}
+					role="img"
+					aria-label={TRUST_WORD[trust]}
+					title={TRUST_WORD[trust]}
+				/>
+			)}
 		</button>
 	);
 }
@@ -221,7 +218,7 @@ function RecycleBin({
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: pointer-only drop target by design (M4-3 b5) – the header's file-action icons are the keyboard path.
 		<div
-			className={`recycle-bin${dnd.dropKey === "bin" ? " drop-target" : ""}`}
+			className={`recycle-bin nav-foot${dnd.dropKey === "bin" ? " drop-target" : ""}`}
 			onDragOver={(e) => {
 				if (!currentDrag.item) return;
 				e.preventDefault();
@@ -239,15 +236,12 @@ function RecycleBin({
 		>
 			<button
 				type="button"
-				className="folder-row"
+				className="bin-toggle"
 				aria-expanded={open}
 				onClick={() => setOpen((o) => !o)}
 			>
-				<span className="disclosure">
-					<ChevronRight aria-hidden="true" />
-				</span>
-				Deleted
-				<span className="count">{deleted.length}</span>
+				<Archive aria-hidden="true" />
+				Deleted · {deleted.length}
 			</button>
 			{open && deleted.length > 0 && (
 				<ul className="bin-list">
@@ -283,6 +277,9 @@ function RecycleBin({
 
 interface NodesProps {
 	nodes: TreeNode[];
+	/** 1 = direct children of the docs root (folders render as section
+	 *  headings), 2+ = nested (folders render as disclosure rows). */
+	level: number;
 	selected: string | null;
 	onSelect: (path: string) => void;
 	onOpenGhost: (path: string, branch: string) => void;
@@ -295,107 +292,141 @@ interface NodesProps {
 	dnd: SidebarDnd;
 }
 
-function renderNodes({
-	nodes,
-	selected,
-	onSelect,
-	onOpenGhost,
-	collapsed,
-	toggle,
-	meta,
-	ghosts,
-	dnd,
-}: NodesProps): ReactNode[] {
-	return nodes.map((node) => {
+/** A folder's own index.md – in OKF repos the folder row IS the index. */
+function folderIndex(node: TreeNode): string | null {
+	const index = node.children?.find(
+		(c) => c.type === "doc" && c.name === "index.md",
+	);
+	return index ? index.path : null;
+}
+
+function renderNodes(props: NodesProps): ReactNode[] {
+	const { nodes, level, selected, collapsed, toggle, meta, ghosts, dnd } =
+		props;
+	const okf = meta?.okf === true;
+	return nodes.flatMap((node) => {
 		if (node.type === "dir") {
 			const isCollapsed = collapsed.has(node.path);
+			// OKF: the folder name opens its index.md (through the same guarded
+			// onSelect as a row); otherwise the name folds like the chevron.
+			const index = okf ? folderIndex(node) : null;
+			const openOrFold = () =>
+				index ? props.onSelect(index) : toggle(node.path);
 			// Highlight key + validity share one guard: an invalid target never
 			// preventDefaults its dragover, so the browser shows the blocked
 			// cursor and no drop can land on it.
 			const key = `folder:${node.path}`;
 			const validHere = () =>
-				dnd.canDrop(currentDrag.item, {
-					kind: "folder",
-					path: node.path,
-				});
-			return (
-				<li className="folder-group" key={node.path}>
-					<div className="tree-row">
+				dnd.canDrop(currentDrag.item, { kind: "folder", path: node.path });
+			const dropProps = {
+				onDragOver: (e: ReactDragEvent<HTMLElement>) => {
+					// The row is its own target – a hover here must never fall
+					// through to the list background (root) behind it, valid or not.
+					e.stopPropagation();
+					if (!validHere()) return;
+					e.preventDefault();
+					e.dataTransfer.dropEffect = "move";
+					dnd.hover(key);
+				},
+				onDragLeave: (e: ReactDragEvent<HTMLElement>) => dnd.leave(e, key),
+				onDrop: (e: ReactDragEvent<HTMLElement>) => {
+					e.stopPropagation();
+					const item = currentDrag.item;
+					if (!item || !validHere()) return;
+					e.preventDefault();
+					dnd.hover(null);
+					dnd.dropInto(item, node.path);
+				},
+			};
+			const dragProps = {
+				draggable: true,
+				onDragStart: (e: ReactDragEvent<HTMLElement>) => {
+					e.dataTransfer.effectAllowed = "move";
+					e.dataTransfer.setData("text/plain", node.path);
+					dnd.startDrag({ type: "folder", path: node.path });
+				},
+				onDragEnd: dnd.endDrag,
+			};
+			const stateClass = `${dnd.dropKey === key ? " drop-target" : ""}${
+				dnd.drag?.type === "folder" && dnd.drag.path === node.path
+					? " dragging"
+					: ""
+			}`;
+			const children = isCollapsed
+				? null
+				: renderNodes({
+						...props,
+						nodes: node.children ?? [],
+						level: level + 1,
+					});
+			const count = countDocs(node, okf);
+			if (level === 1)
+				return (
+					<li className="fold" key={node.path}>
 						<button
 							type="button"
-							className={`folder-row${dnd.dropKey === key ? " drop-target" : ""}${
-								dnd.drag?.type === "folder" && dnd.drag.path === node.path
-									? " dragging"
-									: ""
-							}`}
-							aria-expanded={!isCollapsed}
-							draggable
-							onClick={() => toggle(node.path)}
-							onDragStart={(e) => {
-								e.dataTransfer.effectAllowed = "move";
-								e.dataTransfer.setData("text/plain", node.path);
-								dnd.startDrag({ type: "folder", path: node.path });
-							}}
-							onDragEnd={dnd.endDrag}
-							onDragOver={(e) => {
-								// The row is its own target – a hover here must never
-								// fall through to the list background (root) behind it,
-								// valid or not.
-								e.stopPropagation();
-								if (!validHere()) return;
-								e.preventDefault();
-								e.dataTransfer.dropEffect = "move";
-								dnd.hover(key);
-							}}
-							onDragLeave={(e) => dnd.leave(e, key)}
-							onDrop={(e) => {
-								e.stopPropagation();
-								const item = currentDrag.item;
-								if (!item || !validHere()) return;
-								e.preventDefault();
-								dnd.hover(null);
-								dnd.dropInto(item, node.path);
-							}}
+							className={`fold-h${stateClass}`}
+							title={index ? `Open ${index}` : node.path}
+							aria-expanded={index ? undefined : !isCollapsed}
+							onClick={openOrFold}
+							{...dragProps}
+							{...dropProps}
 						>
-							<span className="disclosure">
-								<ChevronRight aria-hidden="true" />
-							</span>
-							{node.name}
-							<span className="count">{countDocs(node)}</span>
+							<span className="fn">{node.name}</span>
+							<span className="n">{count}</span>
 						</button>
+						{children && <ul className="fold-body">{children}</ul>}
+					</li>
+				);
+			const holdsCurrent = selected?.startsWith(`${node.path}/`) ?? false;
+			return (
+				<li key={node.path}>
+					<div
+						className={`frow${stateClass}`}
+						data-open={!isCollapsed}
+						{...dropProps}
+					>
+						<button
+							type="button"
+							className="chev"
+							aria-label={`${isCollapsed ? "Unfold" : "Fold"} ${node.name}`}
+							title={`${isCollapsed ? "Unfold" : "Fold"} ${node.name}`}
+							aria-expanded={!isCollapsed}
+							onClick={() => toggle(node.path)}
+						>
+							<ChevronRight aria-hidden="true" />
+						</button>
+						<button
+							type="button"
+							className="fn"
+							title={index ? `Open ${index}` : node.path}
+							onClick={openOrFold}
+							{...dragProps}
+						>
+							{node.name}
+						</button>
+						<span className="n">{count}</span>
 					</div>
-					{!isCollapsed && (
-						<ul className="folder-children">
-							{renderNodes({
-								nodes: node.children ?? [],
-								selected,
-								onSelect,
-								onOpenGhost,
-								collapsed,
-								toggle,
-								meta,
-								ghosts,
-								dnd,
-							})}
-						</ul>
+					{children && (
+						<ul className={`sub${holdsCurrent ? " cur" : ""}`}>{children}</ul>
 					)}
 				</li>
 			);
 		}
-		const ghostBranch = ghosts.get(node.path);
+		// OKF: a folder's index.md is reached through its folder row. A
+		// root-level index has no folder row to stand in for it, so it stays.
+		if (okf && level > 1 && node.name === "index.md") return [];
 		return (
 			<li key={node.path}>
-				<div className="tree-row">
-					<DocCard
-						node={node}
-						active={node.path === selected}
-						meta={meta}
-						ghostBranch={ghostBranch}
-						onSelect={onSelect}
-						onOpenGhost={onOpenGhost}
-						dnd={dnd}
-					/>
-				</div>
+				<DocRow
+					node={node}
+					active={node.path === selected}
+					meta={meta}
+					ghostBranch={ghosts.get(node.path)}
+					onSelect={props.onSelect}
+					onOpenGhost={props.onOpenGhost}
+					dnd={dnd}
+				/>
 			</li>
 		);
 	});
@@ -444,38 +475,15 @@ function withGhosts(tree: TreeNode, ghosts: Map<string, string>): TreeNode {
 }
 
 /**
- * The OKF conformance banner (#21, D5): one compact warn line above the doc
- * list, expanding to the path + clause findings. Server-computed data only,
- * native details/summary for the expand (keyboard-free a11y); a conformant
- * repo never mounts it (App hands null/[]).
+ * The navigator's tree (ui v1): level-1 folders as section headings, deeper
+ * folders as disclosure rows with an indent rule, docs as single-line rows.
+ * The recycle bin is pinned below the list.
  */
-function OkfBanner({ findings }: { findings: OkfFinding[] }) {
-	const docs = new Set(findings.map((f) => f.path)).size;
-	return (
-		<details className="okf-banner">
-			<summary>
-				{docs} {docs === 1 ? "doc" : "docs"} non-conformant
-				<span className="count">{findings.length}</span>
-			</summary>
-			<ul className="okf-findings">
-				{findings.map((f) => (
-					// The full clause sentence rides the row as its title.
-					<li key={`${f.path}:${f.clause}`} title={f.detail}>
-						<span className="okf-path">{f.path}</span>
-						<span className="okf-clause">{f.clause}</span>
-					</li>
-				))}
-			</ul>
-		</details>
-	);
-}
-
 export function Sidebar({
 	tree,
 	selected,
 	onSelect,
 	meta,
-	okfFindings,
 	expandFolder,
 	onOpenGhost,
 	onRestore,
@@ -486,9 +494,6 @@ export function Sidebar({
 	selected: string | null;
 	onSelect: (path: string) => void;
 	meta: RepoMeta | null;
-	/** OKF findings (#21) – the banner above the doc list; null/[] hides it
-	 *  (non-OKF repos and conformant ones alike). */
-	okfFindings: OkfFinding[] | null;
 	/** A folder-link click's expand request (M4-3 b6): the path's ancestors
 	 *  and the folder itself leave the collapsed set – App bumps `n` so a
 	 *  repeat click on the same folder re-arms the effect. */
@@ -574,11 +579,6 @@ export function Sidebar({
 	if (!tree) return null;
 	return (
 		<>
-			{/* The OKF banner (#21): findings only – a conformant repo stays
-			    quiet. Sits above the list, outside its scroll. */}
-			{okfFindings !== null && okfFindings.length > 0 && (
-				<OkfBanner findings={okfFindings} />
-			)}
 			{/* The list's own background/padding is the "/" (docsRoot root)
 			    target (M4-3 b5): folder rows stop their dragovers so row drops
 			    never double-fire as root drops; doc rows bubble – a drop on a
@@ -603,6 +603,7 @@ export function Sidebar({
 			>
 				{renderNodes({
 					nodes: merged?.children ?? [],
+					level: 1,
 					selected,
 					onSelect,
 					onOpenGhost,

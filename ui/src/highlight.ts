@@ -28,3 +28,40 @@ export function highlightSegments(text: string, q: string): HighlightPart[] {
 		from = at + target.length;
 	}
 }
+
+/**
+ * The search preview's excerpt (ui v1): a doc body as plain-text paragraphs,
+ * about `limit` characters in all. Markdown is flattened, never rendered –
+ * code fences and HTML (the comment spans) drop out, links keep their text,
+ * block markers and emphasis characters go. The last paragraph may be cut.
+ */
+export function plainExcerpt(markdown: string, limit = 600): string[] {
+	// Tags strip until stable – one pass turns "<scr<b>ipt>" back into a tag.
+	// (Display text only – React escapes it anyway; this keeps it readable.)
+	let stripped = markdown.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "");
+	for (let prev = ""; prev !== stripped; ) {
+		prev = stripped;
+		stripped = stripped.replace(/<[^>]*>/g, "");
+	}
+	const text = stripped
+		.replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+		.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+		.replace(
+			/^[ \t]{0,3}(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+[.)][ \t]+)/gm,
+			"",
+		)
+		.replace(/[*_`]/g, "");
+	const out: string[] = [];
+	let left = limit;
+	for (const para of text.split(/\n\s*\n/)) {
+		const p = para.replace(/\s+/g, " ").trim();
+		if (!p) continue;
+		if (p.length >= left) {
+			out.push(`${p.slice(0, left).trimEnd()}…`);
+			break;
+		}
+		out.push(p);
+		left -= p.length;
+	}
+	return out;
+}

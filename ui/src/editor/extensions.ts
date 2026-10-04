@@ -27,6 +27,7 @@ import {
 	AtReferences,
 	type AtRenderer,
 } from "./at.js";
+import { DeadLinks } from "./dead-links.js";
 import {
 	SlashCommands,
 	type SlashKeydownHandler,
@@ -151,9 +152,12 @@ export function editorExtensions(
 	// optionality one step further: no docs, no plugin, no corpus impact).
 	at?: {
 		docs: () => AtDoc[];
+		docPath?: () => string;
 		onState?: AtRenderer;
 		onKeyDown?: AtKeydownHandler;
 	},
+	// Broken doc links (owner round) – omitted headless, like at.
+	dead?: { isDead: (href: string) => boolean },
 ): Extensions {
 	return [
 		// openOnClick off in BOTH directions: Tiptap's own click plugin
@@ -176,6 +180,7 @@ export function editorExtensions(
 		}),
 		SlashCommands.configure({ items: slashItems, ...slash }),
 		...(at ? [AtReferences.configure(at)] : []),
+		...(dead ? [DeadLinks.configure(dead)] : []),
 		Markdown.configure({ html: true }),
 	];
 }

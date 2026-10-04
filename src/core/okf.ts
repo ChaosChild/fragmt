@@ -816,7 +816,7 @@ function writeIndex(
  * ponytail: full-graph recompute per derivation, not an incremental edge
  * index – fine at fragmt scales; upgrade path is caching edges per doc.
  */
-async function recomputeGraph(
+export async function recomputeGraph(
 	repoRoot: string,
 	docsRoot: string,
 ): Promise<string[]> {

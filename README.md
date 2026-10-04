@@ -12,7 +12,9 @@ diffable, reviewable through PRs, and directly usable by AI coding agents.
 Every save is a git commit under your own identity. Delete fragmt tomorrow and
 you still have a folder of markdown and its full history.
 
-![fragmt editing a markdown document](docs/screenshot-lightmode.png)
+The editor is designed as a reading room rather than a workspace: each doc is a sheet of paper on a quiet desk, comments sit in the margin beside the text they belong to, a second sheet opens alongside when you read one doc against another, and pull requests are reviewed as rendered prose instead of raw patches – see [The interface](#the-interface).
+
+![A tour of fragmt: the reading view, comments in the margin, a side-by-side preview and a pull request reviewed as a rendered diff](docs/tour.gif)
 
 ```sh
 npx fragmt init     # inside any git clone containing markdown
@@ -219,10 +221,7 @@ With `serve --auth`, pull requests are part of the editor: draft branches
 push and open PRs as the signed-in user – the review, merge and sync ride
 that user's own GitHub token, never the operator's credentials.
 
-- The branch menu carries a PR chip per draft branch; the review lives in
-  the slideout's Pull requests mode – the open list, paged diffs (20 files
-  per page), and Merge with your own token. A conflicted PR states it and
-  links out to GitHub.
+- The rail's Pull requests button opens a drawer of open and closed PRs, and the branch menu carries a PR chip per draft branch. A PR opens on the full stage: a rendered prose diff and a Source tab with the exact patch, one file at a time (20 files per page), then Merge with your own token. A conflicted PR states it and links out to GitHub.
 - Sync mirrors every branch to origin (never force), so no work lives only
   on the local disk – plain `serve` keeps pushing with machine credentials.
 - Branch delete is gated on merged: an unmerged branch can't be deleted
@@ -270,6 +269,22 @@ bodies as LF and canonicalizes them on every read and write, so the warning
 never reflects a change to the repository. It is noise – no action is needed.
 If the noise bothers you, `git config core.autocrlf` (user level) is the knob;
 fragmt adds no `.gitattributes` of its own.
+
+## The interface
+
+The UI is a full visual redesign around one idea – papers on a machined desk. The doc is a sheet; everything that is not the doc is quiet desk. One accent colour, Newsreader for prose, Geist for the chrome, and light and dark themes that read as the same object under different light. Nothing changed about where your content lives: it is the same markdown and the same commits.
+
+- **The sheet.** Each doc opens as a typeset page – a kicker with its type and path, the title, a masthead (author, version, last save, reading time), the OKF trust seal, then the prose. Details, Connections (references in and out, one card per doc with direction arrows) and history fold beneath it. Editing happens on the same sheet, and entering edit mode never reflows the text.
+- **Rail, navigator, command bar, status bar.** A slim icon rail (docs, search, pull requests, the reference graph), a title-only navigator with a trust mark per doc and nested folders (`Ctrl/Cmd+\` hides it), a command bar per stage, and a status bar with sync state, branch and word count. A failed sync says why.
+- **Comments in the margin.** Threads sit beside the text they are anchored to and stay aligned with it; reply, resolve and reopen in place. A doc path inside a comment opens on click, or in the preview with Ctrl/Cmd+click.
+- **Side-by-side reading.** Shift+click a link (Ctrl/Cmd+click while editing) and the target opens as a second sheet beside the first, tops and bottoms aligned; the main sheet's notes become pins that follow its scroll. "Link at cursor" drops a reference to the previewed doc into your edit.
+- **Search palette.** `Ctrl/Cmd+K` – results on the left, a live preview of the highlighted doc on the right, and actions such as a new doc or the graph.
+- **Pull requests, reviewed as prose.** Changed frontmatter by key, changed paragraphs with the words that differ marked, unchanged runs folded away – and the Source tab when you want the exact patch.
+- **Branch menu.** Ahead/behind main for every branch, and a warning when a branch would conflict with main (git ≥ 2.38).
+- **Reference graph.** Folders drawn as hulls you can group by level, fold into a single node and unfold again; an inspector shows the selected doc's references in and out.
+- **Merge conflicts, one sheet per conflict.** Both versions side by side with the differing words marked and who changed each and when; keep main, keep the draft or write your own, preview the result, then conclude.
+- **Links that keep up.** Renaming or moving a doc – or a whole folder – rewrites every link to it, and its own relative links, in the same commit. Deleting a doc removes it from the reference fields of the docs around it, and a link to a doc that no longer exists shows red with a dashed underline.
+- **Calm details.** A themed confirmation for destructive actions, visible focus everywhere, every action reachable from the keyboard, and both themes checked against WCAG contrast.
 
 ## Configuration
 

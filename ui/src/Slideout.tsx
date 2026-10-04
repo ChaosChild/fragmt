@@ -1,7 +1,5 @@
-import { SquareArrowOutUpRight, X } from "lucide-react";
+import { Link2, SquareArrowOutUpRight, X } from "lucide-react";
 import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
-import { useAuth } from "./AuthGate";
-import { UserChip } from "./Menus";
 import { clampSlideoutShare } from "./slideout-geometry";
 
 /**
@@ -49,154 +47,80 @@ function SlideoutDivider({
 }
 
 /**
- * The right pane (#15, dogfooded 2026-08-26): the v0.5.0 comments rail,
- * restored as the default – a permanent 316px margin column with the open
- * doc's threads – that widens into the draggable split only while a preview
- * is open (the head row, with the previewed title, open-in-main, and close,
- * exists in that state alone). No mode tabs: the three states are
- * previewPath's presence and the References toggle (#33) – nothing to
- * switch beyond those. `open` matters only where the CSS turns the pane
- * into the bottom sheet (≤1180px); the head row in the comments state
- * is that sheet's affordance – desktop CSS hides it with the whole head.
- * The References mode (#33, D1) keeps the rail's fixed width and shows its
- * own close (a dismissible mode, unlike the permanent rail). The PR mode
- * (#27 b4) is the fourth state: the same wide split as a preview (the
- * shared .preview class + divider), its head line supplied by App (PRPane
- * reports it). Precedence: a preview wins over the PR mode, the PR mode
- * wins over References – the close of either dismissible mode returns to
- * the rail.
+ * The preview pane (#15, ui v1): the second sheet beside the doc, split by
+ * the draggable divider. The head carries the "Preview — <path>" kicker,
+ * Link at cursor, open-in-main and close. `open` matters only ≤1180px,
+ * where the CSS turns the pane into the bottom sheet. (The comment threads
+ * moved into the sheet's margin and the PRs into their drawer and review
+ * with ui v1 – this pane is the preview alone.)
  */
 export function Slideout({
 	open,
-	preview,
-	prTitle,
-	references,
-	commentCount,
-	previewTitle,
-	led,
-	ledLabel,
+	previewPath,
 	onPromote,
+	onLinkAtCursor,
 	onClose,
 	onShare,
 	children,
 }: {
 	/** The ≤1180px bottom sheet's open state (App owns it). */
 	open: boolean;
-	/** A preview is open – the wide split state, with its head row. */
-	preview: boolean;
-	/** #27 (b4): the PR mode's head line – "Pull requests · N open" or
-	 *  "PR #n · title" (App holds what PRPane reports, with a plain
-	 *  "Pull requests" fallback). Non-null = the fourth state, riding the
-	 *  same wide split as a preview. */
-	prTitle: string | null;
-	/** The References mode is showing (#33) – the third state; wins over
-	 *  the comments rail, yields to a preview (App renders the content). */
-	references: boolean;
-	/** The comments head's "Comments · N" (the sheet's title line). */
-	commentCount: number;
-	/** The previewed doc's display title – the head's "Preview · <title>"
-	 *  line (null with nothing previewed). */
-	previewTitle: string | null;
-	/** The sync LED + one-word status (App's), the rail head's right end –
-	 *  the v0.5.0 header restored (testing round 2026-08-26). */
-	led: string;
-	ledLabel: string;
-	/** The head's open-in-main act (preview state, #15): App closes the pane
-	 *  and sends the previewed doc through the navigation queue. Absent =
-	 *  no button (nothing previewed). */
-	onPromote?: () => void;
+	/** The previewed doc's path – the head's kicker. */
+	previewPath: string;
+	/** The head's open-in-main act (#15): App closes the pane and sends the
+	 *  previewed doc through the navigation queue. */
+	onPromote: () => void;
+	/** "Link at cursor" (ui v1): link the previewed doc at the main
+	 *  editor's cursor; null = the main doc isn't being edited (the button
+	 *  shows, disabled, saying so). */
+	onLinkAtCursor: (() => void) | null;
 	onClose: () => void;
 	onShare: (share: number, commit: boolean) => void;
 	children: ReactNode;
 }) {
-	// The signed-in session for the comments bar head's user chip (null =
-	// auth off – the head keeps its exact pre-auth shape).
-	const auth = useAuth();
-	// #27 (b4): the wide split serves a preview OR the PR mode – the
-	// .preview class is the shared wide machinery (divider, flexed width).
-	const wide = preview || prTitle !== null;
 	return (
 		<>
-			{wide && <SlideoutDivider onShare={onShare} />}
+			<SlideoutDivider onShare={onShare} />
 			<aside
-				className={`slideout${open ? " open" : ""}${wide ? " preview" : ""}${references && !wide ? " references" : ""}`}
-				aria-label={
-					preview
-						? "Preview"
-						: prTitle !== null
-							? "Pull requests"
-							: references
-								? "References"
-								: "Comments"
-				}
+				className={`slideout preview${open ? " open" : ""}`}
+				aria-label="Preview"
 			>
 				<div className="slideout-head">
-					{preview ? (
-						previewTitle && (
-							<span className="slideout-title" title={previewTitle}>
-								Preview · {previewTitle}
-							</span>
-						)
-					) : prTitle !== null ? (
-						<span className="slideout-title" title={prTitle}>
-							{prTitle}
-						</span>
-					) : references ? (
-						<span className="slideout-title">References</span>
-					) : (
-						<span className="slideout-title">Comments · {commentCount}</span>
-					)}
-					<span className="slideout-spacer" />
-					{/* The rail head's right end (v0.5.0): the sync LED + word.
-					    Preview state keeps it too – the split hides the sidebar,
-					    so this stays the one always-visible sync cue. Hidden
-					    ≤1180px (the topbar's LED covers it there). */}
-					<span
-						className={`sync-indicator${led === "amber" ? " warn" : led === "red" ? " err" : ""}`}
-						role="status"
-						title={ledLabel}
-					>
-						<span className={`led ${led}`} aria-hidden="true" />
-						{ledLabel}
+					<span className="kicker slideout-kicker" title={previewPath}>
+						<span className="type">Preview</span>
+						<span className="rule" />
+						<span className="kicker-path">{previewPath}</span>
 					</span>
-					{/* The signed-in user's chip (#20, owner round): the comments
-					    bar head's trailing slot, after the sync cue – the owner's
-					    "Comments · N    Synced    login details" shape. Kept in the
-					    preview state too: the split hides the sidebar, so this is
-					    the one always-visible sign-in cue. */}
-					{auth && (
-						<UserChip
-							login={auth.login}
-							canWrite={auth.canWrite}
-							onSignOut={auth.signOut}
-						/>
-					)}
+					<button
+						type="button"
+						className="btn line"
+						disabled={onLinkAtCursor === null}
+						title={
+							onLinkAtCursor === null
+								? "Start editing the main doc to insert a link"
+								: "Insert a link to this doc at the main editor's cursor"
+						}
+						onClick={onLinkAtCursor ?? undefined}
+					>
+						<Link2 aria-hidden="true" />
+						Link at cursor
+					</button>
 					{/* Open in main pane (#15): the previewed doc becomes the
-					    main one – through the navigation queue. The icon reads
-					    as move-to-main, not edit. */}
-					{preview && onPromote && (
-						<button
-							type="button"
-							className="tool-btn"
-							title="Open in main pane"
-							aria-label="Open in main pane"
-							onClick={onPromote}
-						>
-							<SquareArrowOutUpRight aria-hidden="true" />
-						</button>
-					)}
+					    main one – through the navigation queue. */}
+					<button
+						type="button"
+						className="btn"
+						title="Open in main pane"
+						aria-label="Open in main pane"
+						onClick={onPromote}
+					>
+						<SquareArrowOutUpRight aria-hidden="true" />
+						Open
+					</button>
 					<button
 						type="button"
 						className="slideout-close"
-						aria-label={
-							preview
-								? "Close preview"
-								: prTitle !== null
-									? "Close pull requests"
-									: references
-										? "Close references"
-										: "Close comments"
-						}
+						aria-label="Close preview"
 						onClick={onClose}
 					>
 						<X aria-hidden="true" />

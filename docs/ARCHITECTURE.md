@@ -82,6 +82,22 @@ The MCP server is nearly free once core exists. Because everything is markdown i
 - Evidence: round-trip spike against a full markdown corpus – see `docs/SPIKE.md`.
 - Caveats carried forward: YAML frontmatter must be stripped before parse and reattached after (neither editor round-trips it); GFM table column alignment is lost in both editors and accepted for now; headless Tiptap in Node needs a DOM shim (`happy-dom`); StarterKit needs `@tiptap/extension-list`, `-table`, and `-image` added for full GFM coverage.
 
+### 8. The web UI (ui v1, 2026-10)
+
+The UI (`ui/src`, React + Vite) is a client of the HTTP API only – it never reads the repo itself, and it never renders doc or PR content as raw HTML. The ui v1 round added these read-only API surfaces, each behind the same `/api` auth gate and validating its parameters before git or GitHub sees them:
+
+- `GET /api/meta` gained `repo: { name, slug, docsRoot }` – the navigator head's repo name and the PR surface's GitHub slug (null off github.com).
+- `GET /api/branches/status` – per branch: ahead/behind main and a "conflicts with main" flag from `git merge-tree --write-tree` (git ≥ 2.38; older git reports no flag). Branch names pass `badBranchName` first.
+- `GET /api/prs?state=open|closed` – the PR list drawer; `state` is an allow-list.
+- `GET /api/prs/:n/doc?path=` – one changed doc's base and head text (fetched from GitHub at the PR's base and head SHAs with the signed-in user's token), for the rendered diff. The path must be a `.md` file in that PR's own file list; either side over 1 MB answers `tooLarge` (the UI falls back to the Source tab), and frontmatter is split off server-side.
+- `GET /api/merge` doc entries gained `sides: { ours, theirs }` – the ref, last author and date per side (`git log -1 <rev> -- <path>`), for the resolution sheets.
+
+Layout and diff logic live in pure, DOM-free modules with their own unit tests, so components only render:
+
+- `margin-layout.ts` – `layoutNotes`: places marginalia beside their anchors, pushing notes down only to clear overlaps.
+- `prose-diff.ts` – block matching (LCS over paragraphs, headings, list items) and word diffs inside changed blocks; plain text only, so diff output can never inject markup.
+- `graph-group.ts` – folder grouping for the reference graph: `folderAt`, `groupsOf` (hulls per level) and `foldGraph` (a folded folder becomes one node; its edges merge with a weight).
+
 ## Non-goals
 
 - Notion **databases** (tables-as-DB, kanban, relations, rollups). This is where open-source Notion replicas die. We are docs + drafts + comments, git-native, agent-native.

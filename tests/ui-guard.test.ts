@@ -32,6 +32,8 @@ import type {
 	RepoMeta,
 	TreeNode,
 } from "../ui/src/api.js";
+import { ConfirmHost } from "../ui/src/ConfirmDialog.js";
+import { askConfirm, registerConfirmHost } from "../ui/src/confirm.js";
 import { DocView } from "../ui/src/DocView.js";
 import { GraphView } from "../ui/src/GraphView.js";
 import { hasHardWraps } from "../ui/src/hard-wraps.js";
@@ -40,6 +42,7 @@ import {
 	BranchMenu,
 	OpenPRButton,
 } from "../ui/src/Menus.js";
+import { SearchModal } from "../ui/src/SearchModal.js";
 
 // RTL wraps render/fireEvent/waitFor in act; React 19 requires the flag.
 (
@@ -215,10 +218,11 @@ function breadcrumbText(): string {
 	return document.querySelector(".breadcrumb")?.textContent ?? "";
 }
 
-/** The sidebar's doc card (its title attribute is the tree path). */
+/** The navigator's doc row (ui v1: data-path carries the tree path – the
+ *  title attribute is now the multi-line hover card). */
 function cardButton(path: string): HTMLElement {
 	const card = document.querySelector<HTMLElement>(
-		`button.doc-card[title="${path}"]`,
+		`button.row[data-path="${path}"]`,
 	);
 	if (!card) throw new Error(`no sidebar card for "${path}"`);
 	return card;
@@ -330,8 +334,6 @@ function docViewProps(over: Partial<DocViewProps> = {}): DocViewProps {
 		onEscapeSurfacesClear: () => false,
 		onBeforeEdit: () => Promise.resolve(true),
 		branch: "work",
-		led: "green",
-		ledLabel: "Synced",
 		draftBranch: null,
 		onOpenDraft: () => {},
 		onDraft: false,
@@ -349,8 +351,7 @@ function docViewProps(over: Partial<DocViewProps> = {}): DocViewProps {
 		onDeleteDoc: () => {},
 		onRenamed: () => {},
 		okf: true,
-		referencesOpen: false,
-		onOpenReferences: () => {},
+		docMetas: {},
 		...over,
 	};
 }
@@ -410,6 +411,501 @@ describe("DocView: the hard-wrap notice (owner round)", () => {
 });
 
 // --- the hard-wrap detector (owner round) --------------------------------------
+
+// --- ui v1 phase 4: the sheet ------------------------------------------------
+
+describe("DocView: the sheet (ui v1)", () => {
+	const meta = (
+		over: Partial<NonNullable<DocViewProps["docMeta"]>> = {},
+	): NonNullable<DocViewProps["docMeta"]> => ({
+		author: "Tester",
+		authorEmail: "",
+		date: "2026-09-01T00:00:00Z",
+		version: 3,
+		snippet: "",
+		title: null,
+		okf: {
+			type: "concept",
+			status: "draft",
+			tier: "unverified",
+			staleAfter: null,
+		},
+		...over,
+	});
+
+	test("a 5-segment path collapses the breadcrumb to a / … / d / name, the full path in its title", () => {
+		const path = "a/b/c/d/name.md";
+		render(
+			createElement(
+				DocView,
+				docViewProps({ doc: docOf(path, "Body."), selected: path }),
+			),
+		);
+		const crumb = document.querySelector(".breadcrumb");
+		expect(crumb?.textContent).toBe("a / … / d / name");
+		expect(crumb?.getAttribute("title")).toBe(path);
+	});
+
+	test("the masthead's standfirst is the description, absent without one", () => {
+		render(createElement(DocView, docViewProps()));
+		expect(document.querySelector(".standfirst")?.textContent).toBe(
+			"original description",
+		);
+		cleanup();
+		const bare: DocResponse = {
+			...docOf("a.md", "Body."),
+			frontmatter: { status: "draft" },
+		};
+		render(createElement(DocView, docViewProps({ doc: bare })));
+		expect(document.querySelector(".standfirst")).toBeNull();
+	});
+
+	test("a 1,150-word body reads as 5 min read", () => {
+		const body = Array.from({ length: 1150 }, (_, i) => `word${i}`).join(" ");
+		render(
+			createElement(
+				DocView,
+				docViewProps({ doc: docOf("a.md", body), docMeta: meta() }),
+			),
+		);
+		expect(document.querySelector(".who span")?.textContent).toBe(
+			"v3 · saved Sept 1 · 5 min read".replace(
+				"Sept 1",
+				new Date("2026-09-01T00:00:00Z").toLocaleDateString([], {
+					month: "short",
+					day: "numeric",
+				}),
+			),
+		);
+	});
+
+	test("Connections lists references and backlinks on OKF, and hides off OKF", () => {
+		const doc: DocResponse = {
+			...docOf("a.md", "Body."),
+			frontmatter: {
+				references: ["b.md", "gone.md"],
+				"referenced-by": ["sub/c.md"],
+			},
+		};
+		const docs = [
+			{ title: "Doc B", path: "b.md" },
+			{ title: "Doc C", path: "sub/c.md" },
+		];
+		const onSelectDoc = vi.fn();
+		const onOpenPreview = vi.fn();
+		render(
+			createElement(
+				DocView,
+				docViewProps({ doc, docs, onSelectDoc, onOpenPreview }),
+			),
+		);
+		const conn = screen.getByRole("region", { name: "Connections" });
+		expect(within(conn).getByText("2 references · 1 backlink")).toBeTruthy();
+		const cards = conn.querySelectorAll(".cc");
+		expect(cards.length).toBe(3);
+		expect(within(conn).getByText("Doc B")).toBeTruthy();
+		// A reference to a doc that no longer exists reads as missing.
+		expect(conn.querySelector(".cc.missing .cc-path")?.textContent).toBe(
+			"gone.md",
+		);
+		expect(
+			conn
+				.querySelector('.cc [aria-label="Links here"]')
+				?.closest(".cc")
+				?.querySelector(".t")?.textContent,
+		).toBe("Doc C");
+		fireEvent.click(within(conn).getByText("Doc B"));
+		expect(onSelectDoc).toHaveBeenCalledWith("b.md");
+		fireEvent.click(within(conn).getByText("Doc C"), { shiftKey: true });
+		expect(onOpenPreview).toHaveBeenCalledWith("sub/c.md");
+		cleanup();
+
+		render(createElement(DocView, docViewProps({ doc, docs, okf: false })));
+		expect(screen.queryByRole("region", { name: "Connections" })).toBeNull();
+	});
+
+	test("a doc that is both a reference and a backlink is one card with both marks", () => {
+		const doc: DocResponse = {
+			...docOf("a.md", "Body."),
+			frontmatter: {
+				references: ["b.md", "sub/c.md"],
+				"referenced-by": ["sub/c.md", "d.md"],
+			},
+		};
+		const docs = [
+			{ title: "Doc B", path: "b.md" },
+			{ title: "Doc C", path: "sub/c.md" },
+			{ title: "Doc D", path: "d.md" },
+		];
+		render(createElement(DocView, docViewProps({ doc, docs })));
+		const conn = screen.getByRole("region", { name: "Connections" });
+		// The counts stay per direction.
+		expect(within(conn).getByText("2 references · 2 backlinks")).toBeTruthy();
+		const cards = [...conn.querySelectorAll(".cc")];
+		expect(cards.map((c) => c.querySelector(".t")?.textContent)).toEqual([
+			"Doc B",
+			"Doc C",
+			"Doc D",
+		]);
+		const marks = (c: Element) =>
+			[...c.querySelectorAll(".cc-dir [role=img]")].map((m) =>
+				m.getAttribute("aria-label"),
+			);
+		expect(marks(cards[0])).toEqual(["Referenced from this doc"]);
+		expect(marks(cards[1])).toEqual(["Referenced from this doc", "Links here"]);
+		expect(marks(cards[2])).toEqual(["Links here"]);
+	});
+
+	test("the seal says generated by <actor>, or verified by <actor> once verified", () => {
+		const generated: DocResponse = {
+			...docOf("a.md", "Body."),
+			frontmatter: { generated: { by: "agent/1.0" } },
+		};
+		render(
+			createElement(DocView, docViewProps({ doc: generated, docMeta: meta() })),
+		);
+		expect(document.querySelector(".seal")?.textContent).toBe(
+			"?Unverifiedgenerated by agent/1.0",
+		);
+		cleanup();
+
+		const verified: DocResponse = {
+			...docOf("a.md", "Body."),
+			frontmatter: {
+				generated: { by: "agent/1.0" },
+				verified: [{ by: "human:alice", at: "2026-09-02T00:00:00Z" }],
+			},
+		};
+		render(
+			createElement(
+				DocView,
+				docViewProps({
+					doc: verified,
+					docMeta: meta({
+						okf: {
+							type: "concept",
+							status: "draft",
+							tier: "human-reviewed",
+							staleAfter: null,
+						},
+					}),
+				}),
+			),
+		);
+		const seal = document.querySelector(".seal");
+		expect(seal?.classList.contains("h")).toBe(true);
+		expect(seal?.textContent).toMatch(
+			/^✓Human-reviewedverified by human:alice · /,
+		);
+	});
+});
+
+describe("App: doc paths inside comments", () => {
+	function commentFetch() {
+		return vi.fn(async (input: RequestInfo | URL) => {
+			const url = new URL(String(input), "http://localhost");
+			if (url.pathname === "/api/docs/a.md/comments")
+				return jsonResponse({
+					comments: {
+						t1: {
+							id: "t1",
+							quote: "first",
+							author: "Tester",
+							createdAt: "2026-09-01T00:00:00Z",
+							resolved: false,
+							replies: [
+								{
+									author: "Tester",
+									body: "see b.md",
+									at: "2026-09-01T00:00:00Z",
+								},
+							],
+						},
+					},
+				});
+			if (url.pathname === "/api/docs/a.md")
+				return jsonResponse(
+					docOf("a.md", 'One <span data-c="t1">first</span> line.'),
+				);
+			return mockFetch(input);
+		});
+	}
+	const docRef = () =>
+		screen.findByRole("button", { name: "b.md" }) as Promise<HTMLElement>;
+
+	test("a click with unsaved edits parks behind the save-or-discard banner instead of navigating", async () => {
+		vi.stubGlobal("fetch", commentFetch());
+		await renderAppReady();
+		await enterEditMode();
+		fireEvent.change(metaInput("description"), {
+			target: { value: "dirty now" },
+		});
+		fireEvent.click(await docRef());
+		expect(
+			await screen.findByText("This document has unsaved changes."),
+		).toBeTruthy();
+		// Still on a.md, still editing – nothing was dropped.
+		expect(breadcrumbText()).toBe("a");
+		expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+	});
+
+	test("Ctrl/Cmd+click opens the path in the preview, the main doc stays", async () => {
+		vi.stubGlobal("fetch", commentFetch());
+		await renderAppReady();
+		fireEvent.click(await docRef(), { ctrlKey: true });
+		const pane = await screen.findByRole("complementary", { name: "Preview" });
+		expect(within(pane).getByText("b.md")).toBeTruthy();
+		expect(breadcrumbText()).toBe("a");
+		cleanup();
+
+		vi.stubGlobal("fetch", commentFetch());
+		await renderAppReady();
+		fireEvent.click(await docRef(), { metaKey: true });
+		expect(
+			await screen.findByRole("complementary", { name: "Preview" }),
+		).toBeTruthy();
+	});
+
+	test("a plain click on a clean buffer opens the doc in the main pane", async () => {
+		vi.stubGlobal("fetch", commentFetch());
+		await renderAppReady();
+		fireEvent.click(await docRef());
+		await waitFor(() => expect(breadcrumbText()).toBe("b"));
+		expect(screen.queryByRole("complementary", { name: "Preview" })).toBeNull();
+	});
+});
+
+describe("App: marginalia (ui v1 phase 5)", () => {
+	test("two anchored threads render two notes; clicking the second span focuses the second note", async () => {
+		const thread = (id: string, quote: string) => ({
+			id,
+			quote,
+			author: "Tester",
+			createdAt: "2026-09-01T00:00:00Z",
+			resolved: false,
+			replies: [
+				{
+					author: "Tester",
+					body: `note on ${quote}`,
+					at: "2026-09-01T00:00:00Z",
+				},
+			],
+		});
+		const body =
+			'One <span data-c="t1">first</span> line.\n\nTwo <span data-c="t2">second</span> line.';
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = new URL(String(input), "http://localhost");
+				if (url.pathname === "/api/docs/a.md/comments")
+					return jsonResponse({
+						comments: { t1: thread("t1", "first"), t2: thread("t2", "second") },
+					});
+				if (url.pathname === "/api/docs/a.md")
+					return jsonResponse(docOf("a.md", body));
+				return mockFetch(input);
+			}),
+		);
+		await renderAppReady();
+		const margin = screen.getByRole("complementary", { name: "Comments" });
+		await waitFor(() =>
+			expect(margin.querySelectorAll(".note").length).toBe(2),
+		);
+		const span = await waitFor(() => {
+			const el = document.querySelector<HTMLElement>('.sheet [data-c="t2"]');
+			if (!el) throw new Error("span not rendered yet");
+			return el;
+		});
+		fireEvent.click(span);
+		await waitFor(() =>
+			expect(
+				margin.querySelector('.note[data-note="t2"]')?.classList.contains("on"),
+			).toBe(true),
+		);
+		expect(
+			margin.querySelector('.note[data-note="t1"]')?.classList.contains("on"),
+		).toBe(false);
+	});
+});
+
+describe("App: the preview beside the doc (ui v1 phase 6)", () => {
+	/** a.md links sub/c.md; PUTs are recorded and answered like a save. */
+	function previewFetch(puts: string[]) {
+		return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = new URL(String(input), "http://localhost");
+			if (url.pathname === "/api/docs/a.md" && init?.method === "PUT") {
+				puts.push(String(init.body));
+				return jsonResponse({ sha: "s1", hash: "h1" });
+			}
+			if (url.pathname === "/api/docs/a.md")
+				return jsonResponse(docOf("a.md", "See [C](sub/c.md) here."));
+			return mockFetch(input);
+		});
+	}
+
+	async function openPreview() {
+		const link = await waitFor(() => {
+			const el = document.querySelector<HTMLElement>(
+				'.sheet a[href="sub/c.md"]',
+			);
+			if (!el) throw new Error("link not rendered yet");
+			return el;
+		});
+		fireEvent.click(link, { shiftKey: true });
+		return screen.findByRole("complementary", { name: "Preview" });
+	}
+
+	test("with a preview open, Edit still works, Link at cursor is gated on edit mode and inserts the previewed path, and Save saves it", async () => {
+		const puts: string[] = [];
+		vi.stubGlobal("fetch", previewFetch(puts));
+		await renderAppReady();
+		const pane = await openPreview();
+
+		// Read mode: the button is there, disabled, and says why.
+		const link = within(pane).getByRole("button", { name: /Link at cursor/ });
+		expect((link as HTMLButtonElement).disabled).toBe(true);
+		expect(link.getAttribute("title")).toBe(
+			"Start editing the main doc to insert a link",
+		);
+
+		// The main doc stays fully interactive beside the preview.
+		await enterEditMode();
+		expect(screen.getByRole("complementary", { name: "Preview" })).toBeTruthy();
+		await waitFor(() =>
+			expect((link as HTMLButtonElement).disabled).toBe(false),
+		);
+		fireEvent.click(link);
+		await waitFor(() =>
+			expect(
+				document.querySelectorAll('.sheet a[href="sub/c.md"]').length,
+			).toBe(2),
+		);
+
+		fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		await waitFor(() => expect(puts.length).toBe(1));
+		const saved = JSON.parse(puts[0]) as { markdown: string };
+		// The inserted reference is the @-menu's own shape: title + path href.
+		expect(saved.markdown.match(/\]\(sub\/c\.md\)/g)?.length).toBe(2);
+	});
+
+	test("Escape closes the preview before it touches the edit session", async () => {
+		vi.stubGlobal("fetch", previewFetch([]));
+		await renderAppReady();
+		await openPreview();
+		await enterEditMode();
+		const editor = document.querySelector(".sheet .ProseMirror") as HTMLElement;
+		fireEvent.keyDown(editor, { key: "Escape" });
+		await waitFor(() =>
+			expect(
+				screen.queryByRole("complementary", { name: "Preview" }),
+			).toBeNull(),
+		);
+		// Still editing: the first Escape was spent on the preview.
+		expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+	});
+});
+
+describe("SearchModal: the palette (ui v1 phase 8)", () => {
+	const HITS = [
+		{ path: "a.md", title: "Alpha sync", snippet: "first sync" },
+		{ path: "b.md", title: "Beta sync", snippet: "second sync" },
+		{ path: "sub/c.md", title: "Gamma sync", snippet: "third sync" },
+	];
+
+	/** /api/search answers HITS; doc fetches are recorded and can be held. */
+	function paletteFetch(docCalls: string[], hold?: Map<string, () => void>) {
+		return vi.fn(async (input: RequestInfo | URL) => {
+			const url = new URL(String(input), "http://localhost");
+			if (url.pathname === "/api/search") return jsonResponse(HITS);
+			const m = url.pathname.match(/^\/api\/docs\/(.+)$/);
+			if (m) {
+				const path = decodeURIComponent(m[1]);
+				docCalls.push(path);
+				const body = jsonResponse(docOf(path, `Body of ${path} with sync.`));
+				const release = hold?.get(path);
+				if (release) {
+					await new Promise<void>((resolve) => hold?.set(path, resolve));
+				}
+				return body;
+			}
+			return mockFetch(input);
+		});
+	}
+
+	function mount(extra: Partial<ComponentProps<typeof SearchModal>> = {}) {
+		render(
+			createElement(SearchModal, {
+				open: true,
+				onClose: () => {},
+				onOpen: () => {},
+				...extra,
+			}),
+		);
+		const input = screen.getByRole("combobox", { name: "Search documents" });
+		fireEvent.change(input, { target: { value: "sync" } });
+		return input;
+	}
+
+	test("arrow keys move the selection; the preview fetches the settled selection once", async () => {
+		const calls: string[] = [];
+		vi.stubGlobal("fetch", paletteFetch(calls));
+		const input = mount();
+		await screen.findByText("Alpha", { exact: false });
+		await waitFor(() => expect(calls).toEqual(["a.md"]));
+		// Two quick moves inside the debounce: only the last selection loads.
+		fireEvent.keyDown(input, { key: "ArrowDown" });
+		fireEvent.keyDown(input, { key: "ArrowDown" });
+		await waitFor(() =>
+			expect(
+				document.querySelector(".search-preview .kicker")?.textContent,
+			).toContain("sub/c.md"),
+		);
+		expect(calls).toEqual(["a.md", "sub/c.md"]);
+		// Back to a cached one: no new request.
+		fireEvent.keyDown(input, { key: "ArrowUp" });
+		fireEvent.keyDown(input, { key: "ArrowUp" });
+		await waitFor(() =>
+			expect(
+				document.querySelector(".search-preview .kicker")?.textContent,
+			).toContain("a.md"),
+		);
+		expect(calls).toEqual(["a.md", "sub/c.md"]);
+	});
+
+	test("a preview response that lands after the selection moved on is ignored", async () => {
+		const calls: string[] = [];
+		const hold = new Map<string, () => void>([["a.md", () => {}]]);
+		vi.stubGlobal("fetch", paletteFetch(calls, hold));
+		const input = mount();
+		await waitFor(() => expect(calls).toEqual(["a.md"]));
+		// a.md is still in flight; move to b.md and let it load.
+		fireEvent.keyDown(input, { key: "ArrowDown" });
+		await waitFor(() =>
+			expect(
+				document.querySelector(".search-preview .kicker")?.textContent,
+			).toContain("b.md"),
+		);
+		// Now release the stale a.md answer – the preview must stay on b.md.
+		hold.get("a.md")?.();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(
+			document.querySelector(".search-preview .kicker")?.textContent,
+		).toContain("b.md");
+	});
+
+	test("the Actions group shows for 'sync' and runs the sync handler", async () => {
+		vi.stubGlobal("fetch", paletteFetch([]));
+		const onSync = vi.fn();
+		const onClose = vi.fn();
+		mount({ onSync, onClose, onNewDoc: () => {} });
+		const row = await screen.findByText("Sync now");
+		// "New document" doesn't match "sync" – not offered.
+		expect(screen.queryByText("New document")).toBeNull();
+		fireEvent.click(row);
+		expect(onSync).toHaveBeenCalledTimes(1);
+		expect(onClose).toHaveBeenCalled();
+	});
+});
 
 describe("hasHardWraps", () => {
 	test("a wrapped paragraph is true", () => {
@@ -492,14 +988,15 @@ describe("GraphView: the fixture mount (component harness)", () => {
 				onClose: () => {},
 			}),
 		);
-		expect(screen.getByText("3 docs · 1 links")).toBeTruthy();
+		expect(document.querySelector(".gv-count")?.textContent).toBe("3 docs");
+		expect(screen.getByText("1 links · 1 isolated")).toBeTruthy();
 		expect(document.querySelectorAll(".gv-node")).toHaveLength(3);
 		expect(screen.getByText("A")).toBeTruthy();
 		expect(screen.getByText("B")).toBeTruthy();
 		expect(screen.getByText("C")).toBeTruthy();
 	});
 
-	test("clicking a node invokes onOpenDoc with that path", () => {
+	test("a click selects (inspector, neighbours lit); Open or a double-click navigates", () => {
 		const onOpenDoc = vi.fn();
 		render(
 			createElement(GraphView, { graph: GRAPH, onOpenDoc, onClose: () => {} }),
@@ -507,8 +1004,73 @@ describe("GraphView: the fixture mount (component harness)", () => {
 		const node = document.querySelectorAll(".gv-node")[0];
 		if (!node) throw new Error("no graph nodes rendered");
 		fireEvent.click(node);
-		expect(onOpenDoc).toHaveBeenCalledTimes(1);
+		expect(onOpenDoc).not.toHaveBeenCalled();
+		const insp = screen.getByRole("complementary", {
+			name: "Selected document",
+		});
+		expect(within(insp).getByText("a.md")).toBeTruthy();
+		// a.md → b.md: b is a neighbour, c (isolated) dims.
+		expect(within(insp).getByText("References · 1")).toBeTruthy();
+		const groups = document.querySelectorAll(".gv-n");
+		expect(groups[2].classList.contains("dim")).toBe(true);
+		expect(groups[1].classList.contains("dim")).toBe(false);
+		fireEvent.click(within(insp).getByRole("button", { name: "Open" }));
 		expect(onOpenDoc).toHaveBeenCalledWith("a.md");
+		fireEvent.doubleClick(document.querySelectorAll(".gv-node")[1]);
+		expect(onOpenDoc).toHaveBeenLastCalledWith("b.md");
+	});
+
+	test("keyboard: Enter selects a node, Shift+Enter opens it", () => {
+		const onOpenDoc = vi.fn();
+		render(
+			createElement(GraphView, { graph: GRAPH, onOpenDoc, onClose: () => {} }),
+		);
+		const b = document.querySelectorAll<HTMLElement>(".gv-n")[1];
+		expect(b.getAttribute("tabindex")).toBe("0");
+		fireEvent.keyDown(b, { key: "Enter" });
+		expect(b.getAttribute("aria-pressed")).toBe("true");
+		fireEvent.keyDown(b, { key: "Enter", shiftKey: true });
+		expect(onOpenDoc).toHaveBeenCalledWith("b.md");
+	});
+
+	test("grouping draws a hull per folder; folding one collapses it into a folder node and back", () => {
+		localStorage.removeItem("fragmt.graphGroup");
+		const node = (path: string) => ({
+			path,
+			title: path,
+			type: null,
+			status: null,
+			tier: "unverified" as const,
+			stale: false,
+		});
+		const graph: DocGraph = {
+			nodes: [node("a.md"), node("ref/x.md"), node("ref/api/y.md")],
+			edges: [
+				{ from: "a.md", to: "ref/x.md" },
+				{ from: "a.md", to: "ref/api/y.md" },
+			],
+		};
+		render(
+			createElement(GraphView, {
+				graph,
+				onOpenDoc: () => {},
+				onClose: () => {},
+			}),
+		);
+		// Default: 2 levels – ref and ref/api.
+		expect(document.querySelectorAll(".gv-hull")).toHaveLength(2);
+		fireEvent.click(screen.getByRole("button", { name: "1 level" }));
+		expect(document.querySelectorAll(".gv-hull")).toHaveLength(1);
+		expect(localStorage.getItem("fragmt.graphGroup")).toBe("1");
+		fireEvent.click(screen.getByRole("button", { name: "Fold ref" }));
+		expect(document.querySelectorAll(".gv-node")).toHaveLength(1);
+		const folder = screen.getByRole("button", { name: "Unfold ref" });
+		expect(folder.textContent).toContain("ref/ · 2 docs");
+		// The two links into ref merge into one edge of weight 2.
+		expect(document.querySelector(".gv-weight")?.textContent).toBe("2");
+		fireEvent.click(folder);
+		expect(document.querySelectorAll(".gv-node")).toHaveLength(3);
+		localStorage.removeItem("fragmt.graphGroup");
 	});
 
 	// The regression the early return fixes: the svg's pointerdown used to
@@ -524,8 +1086,93 @@ describe("GraphView: the fixture mount (component harness)", () => {
 		if (!node) throw new Error("no graph nodes rendered");
 		fireEvent.pointerDown(node);
 		fireEvent.click(node);
-		expect(onOpenDoc).toHaveBeenCalledTimes(1);
-		expect(onOpenDoc).toHaveBeenCalledWith("a.md");
+		expect(
+			screen.getByRole("complementary", { name: "Selected document" }),
+		).toBeTruthy();
+	});
+});
+
+// --- ui v1 phase 2: the rail, the navigator toggle, the status bar ----------
+
+describe("App: the v1 shell (rail, navigator, status bar)", () => {
+	function rail(): HTMLElement {
+		return screen.getByRole("navigation", { name: "App" });
+	}
+
+	afterEach(() => {
+		localStorage.removeItem("fragmt.sidebarCollapsed");
+	});
+
+	test("the rail carries Search and the gated Reference graph; Pull requests only with the PR surface", async () => {
+		await renderAppReady();
+		const r = rail();
+		expect(
+			within(r).getByRole("button", { name: "Search (Ctrl+K)" }),
+		).toBeTruthy();
+		expect(
+			within(r).getByRole("button", { name: "Reference graph" }),
+		).toBeTruthy();
+		// Local mode: no auth, so no PR surface.
+		expect(
+			within(r).queryByRole("button", { name: "Pull requests" }),
+		).toBeNull();
+		cleanup();
+
+		await renderAuthedApp(prFetch());
+		expect(
+			await within(rail()).findByRole("button", { name: "Pull requests" }),
+		).toBeTruthy();
+		cleanup();
+
+		// Non-OKF meta: the graph entry is gone from the rail.
+		vi.stubGlobal("fetch", vi.fn(fetchWith({ metaOkf: false })));
+		const view = render(createElement(App));
+		await view.findByRole("button", { name: "Edit" });
+		expect(
+			within(rail()).queryByRole("button", { name: "Reference graph" }),
+		).toBeNull();
+	});
+
+	test("Ctrl+ toggles the navigator's collapsed class, and the choice persists across a remount", async () => {
+		await renderAppReady();
+		const nav = () => document.querySelector("aside.sidebar");
+		expect(nav()?.classList.contains("collapsed")).toBe(false);
+
+		fireEvent.keyDown(window, { key: "\\", ctrlKey: true });
+		expect(nav()?.classList.contains("collapsed")).toBe(true);
+		expect(localStorage.getItem("fragmt.sidebarCollapsed")).toBe("1");
+
+		cleanup();
+		await renderAppReady();
+		expect(nav()?.classList.contains("collapsed")).toBe(true);
+
+		fireEvent.keyDown(window, { key: "\\", metaKey: true });
+		expect(nav()?.classList.contains("collapsed")).toBe(false);
+		expect(localStorage.getItem("fragmt.sidebarCollapsed")).toBe("0");
+	});
+
+	test("the status bar reads OKF · 2 findings and opens the findings list", async () => {
+		const findings = [
+			{ path: "a.md", clause: "type", detail: "type is missing" },
+			{ path: "b.md", clause: "frontmatter", detail: "no frontmatter" },
+		];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = new URL(String(input), "http://localhost");
+				if (url.pathname === "/api/validate")
+					return jsonResponse({ okf: true, conformant: false, findings });
+				return mockFetch(input);
+			}),
+		);
+		await renderAppReady();
+		const status = document.querySelector("footer.status") as HTMLElement;
+		const btn = await within(status).findByRole("button", {
+			name: /OKF · 2 findings/,
+		});
+		fireEvent.click(btn);
+		expect(within(status).getByText("2 docs non-conformant")).toBeTruthy();
+		expect(within(status).getByText("b.md")).toBeTruthy();
 	});
 });
 
@@ -548,7 +1195,7 @@ describe("App: the graph entry + lens (rung 5)", () => {
 		expect(screen.queryByText(/non-conformant/)).toBeNull();
 		fireEvent.click(screen.getByRole("button", { name: "Reference graph" }));
 
-		expect(await screen.findByText("3 docs · 1 links")).toBeTruthy();
+		expect(await screen.findByText("1 links · 1 isolated")).toBeTruthy();
 		expect(document.querySelector(".gv-pane")).toBeTruthy();
 
 		// Exiting is always safe – no guard on close.
@@ -637,6 +1284,8 @@ function prFetch(
 		};
 		mergeAnswer?: Response;
 		pushAnswer?: Response;
+		/** ui v1: the rendered diff's two sides for any doc path. */
+		prDoc?: unknown;
 	} = {},
 ) {
 	return async (
@@ -670,6 +1319,13 @@ function prFetch(
 				},
 			});
 		}
+		if (/^\/api\/prs\/\d+\/doc$/.test(url.pathname))
+			return jsonResponse(
+				opts.prDoc ?? {
+					base: { frontmatter: { title: "A" }, body: "Old line here.\n" },
+					head: { frontmatter: { title: "A2" }, body: "New line here.\n" },
+				},
+			);
 		const detail = url.pathname.match(/^\/api\/prs\/(\d+)$/);
 		if (detail) {
 			const page = Number(url.searchParams.get("files_page") ?? 1);
@@ -779,6 +1435,68 @@ describe("BranchMenu: PR chips + the merged gate (#27 b3, owner reshape)", () =>
 		// The chip routes through App: view-pr with the PR number.
 		fireEvent.click(screen.getByText("PR #12"));
 		expect(onAction).toHaveBeenCalledWith({ kind: "view-pr", number: 12 });
+	});
+});
+
+describe("BranchMenu: branch state lines (ui v1 phase 7)", () => {
+	test("rows carry the PR chip or 'no PR', ahead/behind, and the conflict warning from /api/branches/status", async () => {
+		const base = prFetch();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = new URL(String(input), "http://localhost");
+				if (url.pathname === "/api/branches/status")
+					return jsonResponse({
+						branches: [
+							{
+								name: "feat",
+								ahead: 3,
+								behind: 1,
+								conflicts: true,
+								lastCommitAt: "2026-09-01T00:00:00Z",
+							},
+							{
+								name: "work",
+								ahead: 1,
+								behind: 0,
+								conflicts: false,
+								lastCommitAt: "2026-09-01T00:00:00Z",
+							},
+						],
+					});
+				return base(input, init);
+			}),
+		);
+		render(
+			createElement(BranchMenu, {
+				current: "work",
+				prsEnabled: true,
+				mainName: "main",
+				onAction: () => {},
+			}),
+		);
+		fireEvent.click(
+			screen.getByRole("button", { name: "Branch: work. Switch branch" }),
+		);
+		expect(await screen.findByText("PR #12")).toBeTruthy();
+		expect(await screen.findByText("conflicts with main")).toBeTruthy();
+		const row = (name: string) =>
+			Array.from(document.querySelectorAll<HTMLElement>(".br")).find(
+				(r) => r.querySelector(".bn")?.textContent === name,
+			) as HTMLElement;
+		const feat = row("feat");
+		expect(within(feat).getByText(/3 ahead · 1 behind/)).toBeTruthy();
+		const work = row("work");
+		expect(within(work).getByText("1 ahead")).toBeTruthy();
+		expect(within(work).getByText("no PR")).toBeTruthy();
+		expect(within(work).queryByText("conflicts with main")).toBeNull();
+		// main leads the list and never gets a "no PR" chip.
+		const rows = Array.from(document.querySelectorAll(".br .bn")).map(
+			(el) => el.textContent,
+		);
+		expect(rows[0]).toBe("main");
+		const main = row("main");
+		expect(within(main).queryByText("no PR")).toBeNull();
 	});
 });
 
@@ -913,16 +1631,16 @@ describe("App: the head-row Open PR button (owner reshape)", () => {
 
 // --- #27 (b4): the PR review pane ----------------------------------------------
 
-/** The mounted slideout – queries scope to it so pane buttons never collide
- *  with the header's (Merge exists in both). */
-function slideoutEl(): HTMLElement {
-	const el = document.querySelector<HTMLElement>(".slideout");
-	if (!el) throw new Error("no slideout");
+/** The mounted PR list drawer (ui v1). */
+function drawerEl(): HTMLElement {
+	const el = document.querySelector<HTMLElement>(".pr-drawer");
+	if (!el) throw new Error("no PR drawer");
 	return el;
 }
 
-/** Authed App → PR list → PR #12's detail, waited to its ready state (the
- *  pane's title line renders only with a fetched pr). */
+/** Authed App → PR list → PR #12's full-stage review, waited to its ready
+ *  state (the title renders only with a fetched pr). Queries scope to the
+ *  review so its buttons never collide with the navigator's (Merge). */
 async function openPrDetail(
 	fetchImpl: (
 		url: RequestInfo | URL,
@@ -933,12 +1651,107 @@ async function openPrDetail(
 	fireEvent.click(await screen.findByRole("button", { name: "Pull requests" }));
 	fireEvent.click(await screen.findByText("Docs: the feat branch"));
 	return waitFor(() => {
-		const slideout = slideoutEl();
-		if (!slideout.querySelector(".pr-title"))
-			throw new Error("detail not loaded yet");
-		return slideout;
+		const review = document.querySelector<HTMLElement>(".pr-review");
+		if (!review?.querySelector(".pr-title"))
+			throw new Error("review not loaded yet");
+		return review;
 	});
 }
+
+/** The review's Source tab – the patch rows and the pager. */
+function showSource(review: HTMLElement) {
+	fireEvent.click(within(review).getByRole("button", { name: "Source" }));
+}
+
+describe("App: the rendered PR diff (ui v1 phase 9)", () => {
+	test("Rendered is the default tab: changed frontmatter keys and an inline word change", async () => {
+		const s = await openPrDetail();
+		const rendered = within(s).getByRole("button", { name: "Rendered" });
+		expect(rendered.getAttribute("aria-pressed")).toBe("true");
+		await waitFor(() =>
+			expect(s.querySelector(".fm-row .k")?.textContent).toBe("title"),
+		);
+		expect(s.querySelector(".fm-row s")?.textContent).toBe("A");
+		expect(s.querySelector(".fm-row u")?.textContent).toBe("A2");
+		expect(s.querySelector(".rd .chg del")?.textContent).toBe("Old");
+		expect(s.querySelector(".rd .chg ins")?.textContent).toBe("New");
+		// No patch rows until Source.
+		expect(document.querySelectorAll(".pr-patch-row")).toHaveLength(0);
+		showSource(s);
+		expect(document.querySelectorAll(".pr-patch-row").length).toBeGreaterThan(
+			0,
+		);
+	});
+
+	test("Source shows only the file picked on the left – a sidecar too", async () => {
+		const sidecar: PrFile = {
+			filename: ".docs/comments/docs/a.md.json",
+			status: "modified",
+			additions: 1,
+			deletions: 0,
+			patch: '@@ -1 +1,2 @@\n {\n+  "x": 1',
+		};
+		const s = await openPrDetail(
+			prFetch({ detail: { files: [PR_FILE, sidecar] } }),
+		);
+		showSource(s);
+		const shown = () =>
+			[...s.querySelectorAll(".pr-file .pr-file-head")].map(
+				(h) => h.textContent ?? "",
+			);
+		expect(shown()).toHaveLength(1);
+		expect(shown()[0]).toContain("docs/a.md");
+		expect(shown()[0]).not.toContain(".docs/comments");
+		// Picking the JSON sidecar shows it alone (Source is its only view).
+		fireEvent.click(
+			within(s).getByRole("button", {
+				name: /\.docs\/comments\/docs\/a\.md\.json/,
+			}),
+		);
+		expect(shown()).toHaveLength(1);
+		expect(shown()[0]).toContain(".docs/comments/docs/a.md.json");
+	});
+
+	test("consecutive reflowed paragraphs collapse into one row with a Show toggle", async () => {
+		const wrapped = [
+			"One line\nwrapped.",
+			"Two line\nwrapped.",
+			"Three line\nwrapped.",
+		];
+		const s = await openPrDetail(
+			prFetch({
+				prDoc: {
+					base: { frontmatter: {}, body: wrapped.join("\n\n") },
+					head: {
+						frontmatter: {},
+						body: wrapped.map((p) => p.replaceAll("\n", " ")).join("\n\n"),
+					},
+				},
+			}),
+		);
+		const row = await within(s).findByText(/3 paragraphs reflowed/);
+		expect(row.closest(".reflow")?.textContent).toContain(
+			"line breaks only, no words changed",
+		);
+		expect(within(s).queryByText("One line wrapped.")).toBeNull();
+		fireEvent.click(within(s).getByRole("button", { name: "Show" }));
+		expect(within(s).getByText("One line wrapped.")).toBeTruthy();
+	});
+
+	test("opening a review with unsaved edits parks behind the save-or-discard banner", async () => {
+		await renderAuthedApp(prFetch());
+		await enterEditMode();
+		fireEvent.change(metaInput("description"), { target: { value: "dirty" } });
+		fireEvent.click(
+			await screen.findByRole("button", { name: "Pull requests" }),
+		);
+		fireEvent.click(await screen.findByText("Docs: the feat branch"));
+		expect(
+			await screen.findByText("This document has unsaved changes."),
+		).toBeTruthy();
+		expect(document.querySelector(".pr-review")).toBeNull();
+	});
+});
 
 describe("App: the PR review pane (#27 b4)", () => {
 	test("the list renders rows and the head count; a row click opens the detail with status, meta, and patch rows", async () => {
@@ -946,23 +1759,30 @@ describe("App: the PR review pane (#27 b4)", () => {
 		fireEvent.click(
 			await screen.findByRole("button", { name: "Pull requests" }),
 		);
-		expect(await screen.findByText("Pull requests · 1 open")).toBeTruthy();
+		// ui v1: the list is a drawer over the doc, its Open tab counting.
+		const open = await within(drawerEl()).findByRole("button", {
+			name: /^Open\s*1$/,
+		});
+		expect(open.getAttribute("aria-pressed")).toBe("true");
 		fireEvent.click(screen.getByText("Docs: the feat branch"));
 
 		const s = await waitFor(() => {
-			const slideout = slideoutEl();
-			if (!slideout.querySelector(".pr-title"))
-				throw new Error("detail not loaded yet");
-			return slideout;
+			const review = document.querySelector<HTMLElement>(".pr-review");
+			if (!review?.querySelector(".pr-title"))
+				throw new Error("review not loaded yet");
+			return review;
 		});
-		// The head carries the detail line; the pane the honest chips, the
-		// branch pair, and the parsed patch rows.
-		expect(within(s).getByText("PR #12 · Docs: the feat branch")).toBeTruthy();
-		expect(within(s).getByText("open")).toBeTruthy();
-		expect(within(s).getByText("mergeable")).toBeTruthy();
-		expect(within(s).getByText("feat")).toBeTruthy();
-		expect(within(s).getByText("main")).toBeTruthy();
+		// The review takes the stage: the title, the honest state, the
+		// mergeability check, the branch pair, and – on Source – the rows.
+		expect(s.querySelector(".pr-title")?.textContent).toBe(
+			"Docs: the feat branch",
+		);
+		expect(within(s).getByText("Open")).toBeTruthy();
+		expect(within(s).getByText("No conflicts with main")).toBeTruthy();
+		expect(s.querySelector(".rv-head .flow")?.textContent).toBe("feat → main");
 		expect(s.textContent).toContain("2 files");
+		expect(document.querySelector(".pr-drawer")).toBeNull();
+		showSource(s);
 		expect(document.querySelectorAll(".pr-patch-row.add")).toHaveLength(2);
 		expect(document.querySelectorAll(".pr-patch-row.del")).toHaveLength(1);
 		expect(document.querySelectorAll(".pr-patch-row.hunk")).toHaveLength(1);
@@ -974,8 +1794,10 @@ describe("App: the PR review pane (#27 b4)", () => {
 		const gh = within(s).getByRole("link", { name: "Open on GitHub" });
 		expect(gh.getAttribute("href")).toBe(PR12.html_url);
 		expect(gh.getAttribute("target")).toBe("_blank");
-		// Opening a review never navigates the editor.
-		expect(breadcrumbText()).toBe("a");
+		// The review takes over the stage but never moves the selection:
+		// leaving it lands back on the same doc.
+		fireEvent.keyDown(window, { key: "Escape" });
+		await waitFor(() => expect(breadcrumbText()).toBe("a"));
 	});
 
 	test("an empty list answers with the calm empty state and a zero count", async () => {
@@ -984,7 +1806,9 @@ describe("App: the PR review pane (#27 b4)", () => {
 			await screen.findByRole("button", { name: "Pull requests" }),
 		);
 		expect(await screen.findByText("No open pull requests.")).toBeTruthy();
-		expect(await screen.findByText("Pull requests · 0 open")).toBeTruthy();
+		expect(
+			within(drawerEl()).getByRole("button", { name: /^Open\s*0$/ }),
+		).toBeTruthy();
 	});
 
 	test("the pager steps 20-file pages: prev disabled on page 1, next only while the page was full", async () => {
@@ -998,6 +1822,7 @@ describe("App: the PR review pane (#27 b4)", () => {
 		const s = await openPrDetail(
 			prFetch({ detail: { files: files20, files2: files20.slice(0, 3) } }),
 		);
+		showSource(s);
 		const prev = within(s).getByRole("button", {
 			name: "Previous page",
 		}) as HTMLButtonElement;
@@ -1034,7 +1859,9 @@ describe("App: the PR review pane (#27 b4)", () => {
 		]) {
 			cleanup();
 			const s = await openPrDetail(prFetch({ detail: { pr: over } }));
-			expect(within(s).queryByRole("button", { name: "Merge" })).toBeNull();
+			expect(
+				within(s).queryByRole("button", { name: "Merge into main" }),
+			).toBeNull();
 			if (over.state === "closed") {
 				expect(
 					within(s).queryByRole("button", { name: "Push commits" }),
@@ -1056,11 +1883,13 @@ describe("App: the PR review pane (#27 b4)", () => {
 				}),
 			}),
 		);
-		fireEvent.click(within(s).getByRole("button", { name: "Merge" }));
+		fireEvent.click(within(s).getByRole("button", { name: "Merge into main" }));
 		expect(
 			await within(s).findByText(/conflicts that must be resolved on GitHub/),
 		).toBeTruthy();
-		expect(within(s).queryByRole("button", { name: "Merge" })).toBeNull();
+		expect(
+			within(s).queryByRole("button", { name: "Merge into main" }),
+		).toBeNull();
 		const resolve = within(s).getByRole("link", { name: /Resolve on GitHub/ });
 		expect(resolve.getAttribute("href")).toBe("https://github.com/o/r/pull/12");
 		expect(resolve.getAttribute("target")).toBe("_blank");
@@ -1089,9 +1918,11 @@ describe("App: the PR review pane (#27 b4)", () => {
 			}
 			return base(input, init);
 		});
-		fireEvent.click(within(s).getByRole("button", { name: "Merge" }));
-		expect(await within(s).findByText("closed")).toBeTruthy();
-		expect(within(s).queryByRole("button", { name: "Merge" })).toBeNull();
+		fireEvent.click(within(s).getByRole("button", { name: "Merge into main" }));
+		expect(await within(s).findByText("Closed")).toBeTruthy();
+		expect(
+			within(s).queryByRole("button", { name: "Merge into main" }),
+		).toBeNull();
 		const detailGets = vi
 			.mocked(fetch)
 			.mock.calls.filter(([u]) => String(u).startsWith("/api/prs/12?")).length;
@@ -1115,6 +1946,125 @@ describe("App: the PR review pane (#27 b4)", () => {
 		expect(prviewTarget()).toBe("list");
 		fireEvent.keyDown(window, { key: "Escape" });
 		expect(prviewTarget()).toBeNull();
-		expect(await screen.findByText("Comments · 0")).toBeTruthy();
+		// ui v1: the threads live in the sheet's margin, not the slideout – the
+		// pane unmounts and the margin's Notes header is what remains.
+		await waitFor(() => expect(document.querySelector(".slideout")).toBeNull());
+		expect(
+			within(screen.getByRole("complementary", { name: "Comments" })).getByText(
+				"Notes",
+			),
+		).toBeTruthy();
+	});
+});
+
+describe("AuthGate: the sign-in page (ui v1 phase 12)", () => {
+	const signedOut = async (input: RequestInfo | URL): Promise<Response> => {
+		const url = new URL(String(input), "http://localhost");
+		if (url.pathname === "/api/auth/session")
+			return jsonResponse({ enabled: true, user: null, canWrite: false });
+		return mockFetch(input);
+	};
+
+	test("signed out: the wordmark, the GitHub link, nothing about the repo", async () => {
+		vi.stubGlobal("fetch", vi.fn(signedOut));
+		render(createElement(AuthGate, null, createElement(App)));
+		expect(await screen.findByRole("heading", { name: "fragmt" })).toBeTruthy();
+		const link = screen.getByRole("link", { name: "Continue with GitHub" });
+		expect(link.getAttribute("href")).toBe("/api/auth/login");
+		expect(screen.queryByRole("status")).toBeNull();
+		// The app never mounted – no repo payloads were asked for.
+		const asked = vi
+			.mocked(fetch)
+			.mock.calls.map(([u]) => new URL(String(u), "http://localhost").pathname);
+		expect(asked).toEqual(["/api/auth/session"]);
+	});
+
+	test("a 401 mid-session lands back here with the session-ended notice", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = new URL(String(input), "http://localhost");
+				if (url.pathname === "/api/auth/session")
+					return jsonResponse({
+						enabled: true,
+						user: { login: "tester" },
+						canWrite: true,
+					});
+				return new Response(JSON.stringify({ error: "sign in" }), {
+					status: 401,
+					headers: { "content-type": "application/json" },
+				});
+			}),
+		);
+		render(createElement(AuthGate, null, createElement(App)));
+		expect(await screen.findByText(/Your session ended/)).toBeTruthy();
+		expect(
+			screen.getByRole("link", { name: "Continue with GitHub" }),
+		).toBeTruthy();
+	});
+});
+
+describe("ConfirmDialog: the house confirm (no window.confirm)", () => {
+	test("no host mounted: resolves false – nothing destructive runs unasked", async () => {
+		expect(await askConfirm({ title: "Delete?", confirmLabel: "Delete" })).toBe(
+			false,
+		);
+	});
+
+	test("a remount's late cleanup never unregisters the newer host", async () => {
+		const seen: string[] = [];
+		const offOld = registerConfirmHost((r) => {
+			seen.push(`old:${r.title}`);
+			r.resolve(false);
+		});
+		const offNew = registerConfirmHost((r) => {
+			seen.push(`new:${r.title}`);
+			r.resolve(true);
+		});
+		offOld(); // the old host's cleanup runs after the new one registered
+		expect(await askConfirm({ title: "x", confirmLabel: "Go" })).toBe(true);
+		expect(seen).toEqual(["new:x"]);
+		offNew();
+	});
+
+	test("confirm resolves true; Cancel and Escape resolve false; focus starts on Cancel", async () => {
+		render(createElement(ConfirmHost));
+
+		let p = askConfirm({
+			title: "Delete branch drafts/x?",
+			body: "The local branch is removed.",
+			confirmLabel: "Delete branch",
+			danger: true,
+		});
+		const dlg = await screen.findByRole("dialog", {
+			name: "Delete branch drafts/x?",
+		});
+		expect(within(dlg).getByText("The local branch is removed.")).toBeTruthy();
+		const cancel = within(dlg).getByRole("button", { name: "Cancel" });
+		expect(document.activeElement).toBe(cancel);
+		const go = within(dlg).getByRole("button", { name: "Delete branch" });
+		expect(go.classList.contains("danger")).toBe(true);
+		fireEvent.click(go);
+		expect(await p).toBe(true);
+		expect(screen.queryByRole("dialog")).toBeNull();
+
+		p = askConfirm({ title: "Again?", confirmLabel: "Go" });
+		fireEvent.click(
+			within(await screen.findByRole("dialog")).getByRole("button", {
+				name: "Cancel",
+			}),
+		);
+		expect(await p).toBe(false);
+
+		p = askConfirm({ title: "Escape me", confirmLabel: "Go" });
+		const esc = new KeyboardEvent("keydown", {
+			key: "Escape",
+			bubbles: true,
+			cancelable: true,
+		});
+		(await screen.findByRole("dialog")).dispatchEvent(esc);
+		expect(await p).toBe(false);
+		// Prevented, so the window-level Escape chain leaves the stage alone.
+		expect(esc.defaultPrevented).toBe(true);
 	});
 });

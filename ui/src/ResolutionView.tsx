@@ -1,34 +1,66 @@
-import { useEffect, useState } from "react";
+import {
+	Check,
+	Eye,
+	MessagesSquare,
+	PencilLine,
+	TriangleAlert,
+} from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
 	abortMerge,
 	type ConflictPart,
 	concludeMerge,
 	getMergeState,
+	type MergeSide,
 	type MergeState,
 	resolveMergeFile,
-	type SidecarMergeSummary,
 } from "./api";
-import { assembleContent, sidecarSummaryLine } from "./resolve";
+import { CommandBar } from "./CommandBar";
+import { askConfirm } from "./confirm";
+import { diffWords } from "./prose-diff";
+import { assembleContent, hunkPlace, sidecarSummaryLine } from "./resolve";
+import { shortDate } from "./Sidebar";
+
+/** How one conflict was settled: a side verbatim, or the user's own text. */
+type Pick =
+	| { kind: "ours" }
+	| { kind: "theirs" }
+	| { kind: "own"; text: string };
+
+type Hunk = { ours: string; theirs: string };
+const hunksOf = (parts: ConflictPart[]) =>
+	parts.filter((p): p is Hunk => "ours" in p);
+
+const PICK_LINE = {
+	ours: "Kept main's version",
+	theirs: "Kept the draft's version",
+	own: "Wrote my own",
+} as const;
 
 /**
- * Resolution mode (M4-4 b3): the main-pane takeover while a stood merge is
- * resolved. Owns the merge-state fetch and re-fetches after every stage –
- * staged files drop out of the live unmerged set, so `remaining` stays the
- * server's word. Doc files resolve hunk-by-hunk (ours/theirs pick + an edit
- * textarea prefilled with the chosen side, assembled preview, Stage);
- * sidecars take one structural choice off the b2 summary. Finish concludes
- * (the merge commit), Abort confirms then undoes – both hand back to App
- * for the full refresh. Writes elsewhere are the server guard's problem.
+ * Resolution mode (M4-4 b3, ui v1 phase 11): the stage while a stood merge
+ * is resolved. Every conflict is a sheet with both versions side by side
+ * (the words that differ marked – plain text only), Keep main / Keep draft
+ * / Write my own; a settled conflict folds to one line with Change.
+ * Conclude stages each doc's assembled text and lets the comment sidecars
+ * merge on their own (the union), then concludes – the server's merge
+ * routes are unchanged. Abort confirms, then undoes. Both hand back to App
+ * for the full refresh.
  */
 export function ResolutionView({ onDone }: { onDone: () => void }) {
 	const [state, setState] = useState<MergeState | null>(null);
-	// Paths staged in this session – they leave the unmerged set, but the
-	// card list keeps them as done rows so the merge visibly shrinks.
-	const [staged, setStaged] = useState<string[]>([]);
+	// path → one pick per hunk (null = still open)
+	const [picks, setPicks] = useState<Record<string, (Pick | null)[]>>({});
+	// "path#i" of the conflict whose own-text editor is open
+	const [editing, setEditing] = useState<string | null>(null);
+	const [draft, setDraft] = useState("");
+	const [preview, setPreview] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
+	const concluding = useRef(false);
 
-	const refresh = () => {
+	// biome-ignore lint/correctness/useExhaustiveDependencies: mount-only – the resolution is local until Conclude.
+	useEffect(() => {
 		getMergeState()
 			.then((s) => {
 				// A merge concluded elsewhere (terminal) reads as done – exit.
@@ -37,21 +69,21 @@ export function ResolutionView({ onDone }: { onDone: () => void }) {
 					return;
 				}
 				setState(s);
+				const init: Record<string, (Pick | null)[]> = {};
+				for (const f of s.files)
+					if (f.kind === "doc") init[f.path] = hunksOf(f.parts).map(() => null);
+				setPicks(init);
 			})
 			.catch((e: unknown) =>
 				setError(e instanceof Error ? e.message : String(e)),
 			);
-	};
-	// biome-ignore lint/correctness/useExhaustiveDependencies: mount-only – every later refresh is explicit (after a stage/conclude/abort)
-	useEffect(() => {
-		refresh();
 	}, []);
 
-	async function run(busyFn: () => Promise<void>) {
+	async function run(fn: () => Promise<void>) {
 		setBusy(true);
 		setError(null);
 		try {
-			await busyFn();
+			await fn();
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e));
 		} finally {
@@ -59,31 +91,77 @@ export function ResolutionView({ onDone }: { onDone: () => void }) {
 		}
 	}
 
-	const stageDoc = (path: string, content: string) =>
-		run(async () => {
-			await resolveMergeFile(path, { content });
-			setStaged((s) => [...s, path]);
-			refresh();
-		});
+	if (!state?.inMerge) {
+		return (
+			<div className="docview">
+				<CommandBar start={<b>Resolving merge</b>} />
+				<p className="rz-note">
+					{error ??
+						(state ? "The merge is no longer standing." : "Loading merge…")}
+				</p>
+			</div>
+		);
+	}
 
-	const stageSidecar = (path: string, choice: "merged" | "ours" | "theirs") =>
-		run(async () => {
-			await resolveMergeFile(path, { choice });
-			setStaged((s) => [...s, path]);
-			refresh();
-		});
+	const docs = state.files.filter(
+		(f): f is Extract<typeof f, { kind: "doc" }> => f.kind === "doc",
+	);
+	const sidecars = state.files.filter(
+		(f): f is Extract<typeof f, { kind: "sidecar" }> => f.kind === "sidecar",
+	);
+	const others = state.files.filter((f) => f.kind === "other");
+	const total = docs.reduce((n, f) => n + hunksOf(f.parts).length, 0);
+	const resolved = Object.values(picks).reduce(
+		(n, ps) => n + ps.filter(Boolean).length,
+		0,
+	);
+	const theirsRef = state.branch ?? "the draft";
+	const oursRef = docs[0]?.sides?.ours.ref ?? "main";
+	const ready = resolved === total && others.length === 0;
 
-	const finish = () =>
-		run(async () => {
+	const textOf = (h: Hunk, p: Pick | null) =>
+		p === null ? h.ours : p.kind === "own" ? p.text : h[p.kind];
+	const assembled = (f: (typeof docs)[number]) =>
+		assembleContent(
+			f.parts,
+			hunksOf(f.parts).map((h, i) => textOf(h, picks[f.path]?.[i] ?? null)),
+		);
+	const setPick = (path: string, i: number, p: Pick | null) =>
+		setPicks((all) => ({
+			...all,
+			[path]: (all[path] ?? []).map((x, j) => (j === i ? p : x)),
+		}));
+
+	// Idempotent: the live unmerged set decides what still needs staging, so
+	// a retry after a partial failure (or a second click before `busy`
+	// re-renders) never re-stages a staged file; the ref blocks re-entry.
+	const conclude = () => {
+		if (concluding.current) return;
+		concluding.current = true;
+		void run(async () => {
+			const live = await getMergeState();
+			const open = new Set(live.inMerge ? live.files.map((f) => f.path) : []);
+			for (const f of docs)
+				if (open.has(f.path))
+					await resolveMergeFile(f.path, { content: assembled(f) });
+			for (const f of sidecars)
+				if (open.has(f.path))
+					await resolveMergeFile(f.path, { choice: "merged" });
 			await concludeMerge();
 			onDone();
+		}).finally(() => {
+			concluding.current = false;
 		});
+	};
 
-	const abort = () => {
+	const abort = async () => {
 		if (
-			!window.confirm(
-				"Abort this merge? Nothing merges – you stay on the draft branch.",
-			)
+			!(await askConfirm({
+				title: "Abort this merge?",
+				body: "Nothing merges – you stay on the draft branch, and your picks here are dropped.",
+				confirmLabel: "Abort merge",
+				danger: true,
+			}))
 		)
 			return;
 		void run(async () => {
@@ -92,280 +170,299 @@ export function ResolutionView({ onDone }: { onDone: () => void }) {
 		});
 	};
 
-	if (!state?.inMerge) {
-		return (
-			<div className="resolve-pane">
-				<p className="label-meta">
-					{state ? "The merge is no longer standing." : "Loading merge…"}
-				</p>
-			</div>
-		);
-	}
-	const files = state.files;
-	const total = files.length + staged.length;
-
 	return (
-		<div className="resolve-pane">
-			<header className="resolve-head">
-				<div>
-					<h1 className="resolve-title">
-						Resolving merge of <span>{state.branch ?? "unknown branch"}</span>
-					</h1>
-					<p className="label-meta">
-						{files.length} of {total} {total === 1 ? "file" : "files"} left
-					</p>
-				</div>
-				<div className="doc-actions">
-					<button
-						type="button"
-						className="iconbtn subtle"
-						disabled={busy}
-						onClick={abort}
-					>
-						Abort
-					</button>
-					<button
-						type="button"
-						className="iconbtn primary"
-						disabled={busy || files.length > 0}
-						title={
-							files.length > 0
-								? "stage every conflicting file first"
-								: undefined
-						}
-						onClick={() => void finish()}
-					>
-						Finish
-					</button>
-				</div>
-			</header>
-			{error && (
-				<div className="conflict-banner" role="alert">
-					<div>
-						<strong>Resolution failed</strong>
-						{error}
+		<div className="docview resolution">
+			<CommandBar
+				start={
+					<div className="crumb-line">
+						<b>Resolving merge</b>
+						<span className="sep"> · </span>
+						<span className="mono">
+							{theirsRef} → {oursRef}
+						</span>
 					</div>
-					<button
-						type="button"
-						className="iconbtn subtle dismiss"
-						onClick={() => setError(null)}
-					>
-						Dismiss
-					</button>
-				</div>
-			)}
-			{staged.map((path) => (
-				<section key={path} className="resolve-file done">
-					<header className="resolve-file-head">
-						<span className="resolve-path">{path}</span>
-						<span className="resolve-staged">staged</span>
+				}
+			>
+				<button
+					type="button"
+					className="btn line"
+					disabled={busy}
+					onClick={abort}
+				>
+					Abort merge
+				</button>
+			</CommandBar>
+			<div className="desk">
+				<div className="rz">
+					<header className="rz-head">
+						<div>
+							<h1>
+								{total === 0
+									? "Every conflict is resolved"
+									: `${total} ${total === 1 ? "place" : "places"} where both branches changed the same words`}
+							</h1>
+							<p>
+								For each one, keep main's version, keep the draft's, or write
+								your own. Nothing is committed until you conclude.
+							</p>
+						</div>
+						<span className="sp" />
+						<span className={`chip${ready ? " green" : " amber"}`}>
+							{resolved} of {total} resolved
+						</span>
 					</header>
-				</section>
-			))}
-			{files.map((f) =>
-				f.kind === "doc" ? (
-					<DocCard key={f.path} file={f} disabled={busy} onStage={stageDoc} />
-				) : f.kind === "sidecar" ? (
-					<SidecarCard
-						key={f.path}
-						file={f}
-						disabled={busy}
-						onChoice={stageSidecar}
-					/>
-				) : (
-					<OtherCard key={f.path} file={f} />
-				),
-			)}
+					<div className="rz-prog" aria-hidden="true">
+						<i
+							style={{ width: `${total ? (resolved / total) * 100 : 100}%` }}
+						/>
+					</div>
+					{error && (
+						<div className="conflict-banner" role="alert">
+							<div>
+								<strong>Resolution failed</strong>
+								{error}
+							</div>
+							<button
+								type="button"
+								className="iconbtn subtle dismiss"
+								onClick={() => setError(null)}
+							>
+								Dismiss
+							</button>
+						</div>
+					)}
+					{docs.map((f) => (
+						<section key={f.path} className="rz-file" aria-label={f.path}>
+							<div className="kicker">
+								<span className="type">Doc</span>
+								<span className="rule" />
+								<span>{f.path}</span>
+							</div>
+							{hunksOf(f.parts).map((h, i) => {
+								const p = picks[f.path]?.[i] ?? null;
+								const place = hunkPlace(f.parts, i);
+								const key = `${f.path}#${i}`;
+								const words = diffWords(h.ours, h.theirs);
+								return (
+									<article
+										// biome-ignore lint/suspicious/noArrayIndexKey: hunks have no id – their order is fixed for the merge's life
+										key={i}
+										className={`rz-hunk${p ? " done" : ""}`}
+									>
+										<header className="rz-hunk-h">
+											<b>{place.heading ?? "Top of the document"}</b>
+											<span className="mono">line {place.line}</span>
+											<span className="sp" />
+											{p ? (
+												<>
+													<span className="rz-picked">
+														<Check aria-hidden="true" />
+														{PICK_LINE[p.kind]}
+													</span>
+													<button
+														type="button"
+														className="btn"
+														onClick={() => setPick(f.path, i, null)}
+													>
+														Change
+													</button>
+												</>
+											) : (
+												editing !== key && (
+													<button
+														type="button"
+														className="btn"
+														onClick={() => {
+															setEditing(key);
+															setDraft(h.theirs);
+														}}
+													>
+														<PencilLine aria-hidden="true" />
+														Write my own
+													</button>
+												)
+											)}
+										</header>
+										{!p && editing === key && (
+											<div className="rz-own">
+												<textarea
+													value={draft}
+													onChange={(e) => setDraft(e.target.value)}
+													rows={Math.min(
+														12,
+														Math.max(3, draft.split("\n").length),
+													)}
+													aria-label={`Your text for the conflict at line ${place.line}`}
+												/>
+												<div className="rz-own-act">
+													<button
+														type="button"
+														className="btn"
+														onClick={() => setEditing(null)}
+													>
+														Cancel
+													</button>
+													<button
+														type="button"
+														className="btn primary"
+														onClick={() => {
+															setPick(f.path, i, { kind: "own", text: draft });
+															setEditing(null);
+														}}
+													>
+														Use this text
+													</button>
+												</div>
+											</div>
+										)}
+										{!p && editing !== key && (
+											<div className="rz-sides">
+												<Side
+													side={f.sides?.ours}
+													label={f.sides?.ours.ref ?? "main"}
+													words={words.filter((w) => w.type !== "ins")}
+													mark="del"
+													action={
+														<button
+															type="button"
+															className="btn line"
+															onClick={() =>
+																setPick(f.path, i, { kind: "ours" })
+															}
+														>
+															Keep main
+														</button>
+													}
+												/>
+												<Side
+													side={f.sides?.theirs}
+													label={f.sides?.theirs.ref ?? "draft"}
+													words={words.filter((w) => w.type !== "del")}
+													mark="ins"
+													action={
+														<button
+															type="button"
+															className="btn primary"
+															onClick={() =>
+																setPick(f.path, i, { kind: "theirs" })
+															}
+														>
+															Keep draft
+														</button>
+													}
+												/>
+											</div>
+										)}
+									</article>
+								);
+							})}
+						</section>
+					))}
+					{others.map((f) => (
+						<p key={f.path} className="notice">
+							<TriangleAlert aria-hidden="true" />
+							<span>
+								<b>{f.path}</b> can't be resolved here – finish this merge in
+								your terminal.
+							</span>
+						</p>
+					))}
+					{preview &&
+						docs.map((f) => (
+							<section key={`pv:${f.path}`} className="rz-preview">
+								<p className="kicker">
+									<span className="type">Result</span>
+									<span className="rule" />
+									<span>{f.path}</span>
+								</p>
+								<pre>{assembled(f)}</pre>
+							</section>
+						))}
+					<footer className="rz-foot">
+						{sidecars.length > 0 && (
+							<span
+								className="rz-sidecar"
+								title={sidecars
+									.map((s) => sidecarSummaryLine(s.summary))
+									.join("\n")}
+							>
+								<MessagesSquare aria-hidden="true" />
+								Comment threads merge on their own – no action needed.
+							</span>
+						)}
+						<span className="sp" />
+						<button
+							type="button"
+							className="btn"
+							aria-pressed={preview}
+							onClick={() => setPreview((v) => !v)}
+						>
+							<Eye aria-hidden="true" />
+							{preview ? "Hide result" : "Preview result"}
+						</button>
+						<button
+							type="button"
+							className="btn line"
+							disabled={busy}
+							onClick={abort}
+						>
+							Abort merge
+						</button>
+						<button
+							type="button"
+							className="btn primary"
+							disabled={busy || !ready}
+							title={ready ? undefined : "Resolve every conflict first"}
+							onClick={conclude}
+						>
+							Conclude merge
+						</button>
+					</footer>
+				</div>
+			</div>
 		</div>
 	);
 }
 
-/** One hunk's working state: the picked side, an edited text (null = the
- *  side verbatim; "" = deliberately emptied), and the edit box's openness. */
-interface HunkState {
-	side: "ours" | "theirs";
-	edit: string | null;
-	open: boolean;
-}
-
-/** A conflicted doc: a hunk card per ours/theirs part (pick a side, or edit
- *  the chosen side's text in a textarea), the live assembled preview, and
- *  Stage – which PUTs exactly the previewed text. Ours is main (HEAD),
- *  theirs is the draft being merged in. */
-function DocCard({
-	file,
-	disabled,
-	onStage,
+/** One side of a conflict: its branch, who last touched the file there,
+ *  and its text with the words that differ from the other side marked. */
+function Side({
+	side,
+	label,
+	words,
+	mark,
+	action,
 }: {
-	file: { path: string; kind: "doc"; parts: ConflictPart[] };
-	disabled: boolean;
-	onStage: (path: string, content: string) => void;
+	side?: MergeSide;
+	label: string;
+	words: { type: "same" | "ins" | "del"; text: string }[];
+	mark: "ins" | "del";
+	action: ReactNode;
 }) {
-	const hunks = file.parts.filter(
-		(p): p is { ours: string; theirs: string } => "ours" in p,
-	);
-	const [slots, setSlots] = useState<HunkState[]>(() =>
-		hunks.map(() => ({ side: "ours", edit: null, open: false })),
-	);
-	const sideText = (i: number, side: "ours" | "theirs") =>
-		side === "ours" ? hunks[i].ours : hunks[i].theirs;
-	const shown = (i: number) => slots[i].edit ?? sideText(i, slots[i].side);
-	const assembled = assembleContent(
-		file.parts,
-		slots.map((_, i) => shown(i)),
-	);
-
-	const pick = (i: number, side: "ours" | "theirs") =>
-		setSlots((ss) =>
-			ss.map((s, j) => (j === i ? { side, edit: null, open: false } : s)),
-		);
-	const toggleEdit = (i: number) =>
-		setSlots((ss) =>
-			ss.map((s, j) =>
-				j === i
-					? s.open
-						? { ...s, open: false }
-						: { ...s, open: true, edit: shown(i) }
-					: s,
-			),
-		);
-	const setEdit = (i: number, text: string) =>
-		setSlots((ss) => ss.map((s, j) => (j === i ? { ...s, edit: text } : s)));
-
 	return (
-		<section className="resolve-file">
-			<header className="resolve-file-head">
-				<span className="resolve-path">{file.path}</span>
-				<button
-					type="button"
-					className="iconbtn primary"
-					disabled={disabled}
-					onClick={() => onStage(file.path, assembled)}
-				>
-					Stage
-				</button>
-			</header>
-			{hunks.length === 0 && (
-				<p className="label-meta">
-					no conflicting hunks – stage writes the file as-is
-				</p>
-			)}
-			{hunks.map((_, i) => (
-				// biome-ignore lint/suspicious/noArrayIndexKey: a hunk has no id – the index IS its identity, and the slots below stay index-aligned for the card's lifetime (hunks never reorder)
-				<div key={i} className="hunk">
-					<div className="hunk-actions">
-						<button
-							type="button"
-							className={`hunk-side${slots[i].side === "ours" ? " picked" : ""}`}
-							disabled={disabled}
-							onClick={() => pick(i, "ours")}
-						>
-							ours (main)
-						</button>
-						<button
-							type="button"
-							className={`hunk-side${slots[i].side === "theirs" ? " picked" : ""}`}
-							disabled={disabled}
-							onClick={() => pick(i, "theirs")}
-						>
-							theirs (draft)
-						</button>
-						<button
-							type="button"
-							className="iconbtn subtle"
-							disabled={disabled}
-							onClick={() => toggleEdit(i)}
-						>
-							{slots[i].open ? "Done editing" : "Edit"}
-						</button>
-					</div>
-					{slots[i].open ? (
-						<textarea
-							className="hunk-textarea"
-							value={shown(i)}
-							onChange={(e) => setEdit(i, e.target.value)}
-							rows={Math.min(12, Math.max(3, shown(i).split("\n").length))}
-							aria-label={`Edited text for conflict ${i + 1}`}
-						/>
+		<div className="rz-side">
+			<div className="lab">
+				<span className="mono">{label}</span>
+				<span className="sp" />
+				{side?.author && (
+					<span>
+						{side.author}
+						{side.date ? ` · ${shortDate(side.date)}` : ""}
+					</span>
+				)}
+			</div>
+			<p>
+				{words.map((w, i) =>
+					w.type === mark ? (
+						// biome-ignore lint/suspicious/noArrayIndexKey: a fixed word diff
+						<mark key={i}>{w.text}</mark>
 					) : (
-						<pre className="hunk-text">
-							<code>{shown(i)}</code>
-						</pre>
-					)}
-				</div>
-			))}
-			<div className="resolve-preview">
-				<p className="label-meta">assembled preview</p>
-				<pre>
-					<code>{assembled}</code>
-				</pre>
-			</div>
-		</section>
-	);
-}
-
-/** A conflicted sidecar: the b2 summary line + three one-click structural
- *  choices – no per-reply editor (the merged union is the whole point). */
-function SidecarCard({
-	file,
-	disabled,
-	onChoice,
-}: {
-	file: { path: string; kind: "sidecar"; summary: SidecarMergeSummary };
-	disabled: boolean;
-	onChoice: (path: string, choice: "merged" | "ours" | "theirs") => void;
-}) {
-	const s = file.summary;
-	return (
-		<section className="resolve-file">
-			<header className="resolve-file-head">
-				<span className="resolve-path">{file.path}</span>
-				<span className="label-meta">comments</span>
-			</header>
-			<p className="resolve-summary">{sidecarSummaryLine(s)}</p>
-			<div className="hunk-actions">
-				<button
-					type="button"
-					className="hunk-side picked"
-					disabled={disabled}
-					onClick={() => onChoice(file.path, "merged")}
-				>
-					take merged
-				</button>
-				<button
-					type="button"
-					className="hunk-side"
-					disabled={disabled}
-					onClick={() => onChoice(file.path, "ours")}
-				>
-					take ours
-				</button>
-				<button
-					type="button"
-					className="hunk-side"
-					disabled={disabled}
-					onClick={() => onChoice(file.path, "theirs")}
-				>
-					take theirs
-				</button>
-			</div>
-		</section>
-	);
-}
-
-/** The kind a stood merge can't carry (unreachable through mergeToMain – the
- *  classification refuses to stand on "other" files); said plainly if it
- *  ever shows up anyway. */
-function OtherCard({ file }: { file: { path: string; kind: "other" } }) {
-	return (
-		<section className="resolve-file">
-			<header className="resolve-file-head">
-				<span className="resolve-path">{file.path}</span>
-			</header>
-			<p className="label-meta">
-				this file can't be resolved in the UI – finish the merge in your
-				terminal
+						// biome-ignore lint/suspicious/noArrayIndexKey: a fixed word diff
+						<span key={i}>{w.text}</span>
+					),
+				)}
 			</p>
-		</section>
+			<div className="rz-act">{action}</div>
+		</div>
 	);
 }
