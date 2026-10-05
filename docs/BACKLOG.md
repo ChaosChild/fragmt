@@ -6,6 +6,8 @@ This file is a historical record, not an actively maintained queue – the live 
 
 ### v1.x – polish & workflow (roadmap round, 2026-08-21)
 
+- Multi-writer sync: a stale non-current branch makes the `--all` mirror push reject non-fast-forward, surfaced by the UI as a bogus conflict – blocks the served checkout until a manual fast-forward (2026-10-05, served-UI incident) – #54
+
 ### Post-v1 – collaboration first, then the OKF era (order locked 2026-08-21)
 
 - Agent-in-UI: harness bridge + client-side agent tools – after multi-user – #22
