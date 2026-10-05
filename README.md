@@ -222,8 +222,11 @@ push and open PRs as the signed-in user – the review, merge and sync ride
 that user's own GitHub token, never the operator's credentials.
 
 - The rail's Pull requests button opens a drawer of open and closed PRs, and the branch menu carries a PR chip per draft branch. A PR opens on the full stage: a rendered prose diff and a Source tab with the exact patch, one file at a time (20 files per page), then Merge with your own token. A conflicted PR states it and links out to GitHub.
-- Sync mirrors every branch to origin (never force), so no work lives only
-  on the local disk – plain `serve` keeps pushing with machine credentials.
+- Sync integrates origin before it pushes: a behind `main` fast-forwards
+  (even while a draft branch is checked out), then every branch with work
+  mirrors to origin (never force) – an empty draft pointer stays local. A
+  push that still can't fast-forward surfaces as an honest divergence,
+  never a conflict; merged and deleted branches are cleaned up on origin.
 - Branch delete is gated on merged: an unmerged branch can't be deleted
   from the menu.
 - None of this exists in local mode – a solo operator wanting PRs runs

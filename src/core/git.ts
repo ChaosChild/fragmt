@@ -89,6 +89,23 @@ export async function mergedBranches(
 	return out ? out.split("\n") : [];
 }
 
+/** The remote a branch pushes to per its tracking config, else null. */
+export async function branchRemote(
+	repoRoot: string,
+	name: string,
+): Promise<string | null> {
+	try {
+		const remote = await git(repoRoot, [
+			"config",
+			"--get",
+			`branch.${name}.remote`,
+		]);
+		return remote === "" ? null : remote;
+	} catch {
+		return null; // no tracking config (the mirror never sets one)
+	}
+}
+
 /** Create a branch at HEAD without switching to it. */
 export async function createBranch(
 	repoRoot: string,

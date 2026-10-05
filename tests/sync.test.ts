@@ -11,9 +11,11 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import {
+	deleteRemoteBranch,
 	GitError,
 	githubPushUrl,
 	pushRefs,
+	SyncDivergedError,
 	scrubSecret,
 	sync,
 } from "../src/core/index.js";
@@ -201,15 +203,16 @@ test("a repo with no remote syncs as a no-op success", {
 	expect(status(root)).toBe("");
 });
 
-test("a remote without upstream tracking: pull no-ops, sync still succeeds", {
+test("a remote without upstream tracking: sync still succeeds (explicit pull)", {
 	timeout: 20_000,
 }, async () => {
 	const { b } = originAndClones();
 	run(b, ["branch", "--unset-upstream"]);
 	const preHead = head(b);
 
-	// No tracking → the rebase pull is skipped; the mirror push finds b's
-	// branches already at origin's tips, so nothing moves.
+	// No tracking → the explicit pull integrates (up to date here); the
+	// mirror push finds b's branches already at origin's tips, so nothing
+	// moves.
 	expect(await sync(b)).toEqual({ conflict: false });
 	expect(head(b)).toBe(preHead);
 	expect(status(b)).toBe("");
@@ -297,4 +300,116 @@ test("an unpushed, conflict-resolved local merge syncs as-is (no flattening repl
 		{ cwd: origin, encoding: "utf8" },
 	).trim();
 	expect(originMain).toBe(merged);
+});
+
+// --- #54: sync integrates origin at the same scope it pushes ---------------
+
+test("#54: a behind main fast-forwards while a draft branch is checked out", {
+	timeout: 20_000,
+}, async () => {
+	const { origin, a, b } = originAndClones();
+	// Another writer moves origin/main on.
+	commitFile(a, "g.md", "# from A\n", "A adds g");
+	expect(await sync(a)).toEqual({ conflict: false });
+
+	// B edits through the UI: the edit-entry dance creates an empty drafts
+	// branch at main's tip and checks it out, leaving main stale behind.
+	run(b, ["checkout", "-q", "-b", "drafts/docs-glossary"]);
+	expect(await sync(b)).toEqual({
+		conflict: false,
+		ff: { branch: "main", commits: 1 },
+	});
+
+	// main reached origin's tip...
+	const originMain = execFileSync(
+		"git",
+		["show-ref", "--hash", "refs/heads/main"],
+		{ cwd: origin, encoding: "utf8" },
+	).trim();
+	expect(
+		execFileSync("git", ["rev-parse", "main"], {
+			cwd: b,
+			encoding: "utf8",
+		}).trim(),
+	).toBe(originMain);
+	// ...the empty draft pointer never reached origin, and still exists locally.
+	expect(branches(origin)).toEqual(["main"]);
+	expect(branches(b)).toEqual(["drafts/docs-glossary", "main"]);
+});
+
+test("#54: main without upstream tracking still integrates origin", {
+	timeout: 20_000,
+}, async () => {
+	const { a, b } = originAndClones();
+	commitFile(a, "g.md", "# from A\n", "A adds g");
+	expect(await sync(a)).toEqual({ conflict: false });
+	run(b, ["branch", "--unset-upstream"]);
+
+	// The explicit pull integrates what the tracking-less no-op used to skip.
+	expect(await sync(b)).toEqual({ conflict: false });
+	expect(readFileSync(join(b, "g.md"), "utf8")).toBe("# from A\n");
+});
+
+test("#54: a diverged non-current main surfaces as SyncDivergedError, never force-pushed", {
+	timeout: 20_000,
+}, async () => {
+	const { origin, a, b } = originAndClones();
+	commitFile(a, "g.md", "# from A\n", "A adds g");
+	await sync(a);
+	// B: a local main commit, then a draft checked out – main not current.
+	commitFile(b, "h.md", "# from B\n", "B adds h");
+	run(b, ["checkout", "-q", "-b", "drafts/docs-h"]);
+
+	let err: unknown;
+	await sync(b).catch((e) => (err = e));
+	expect(err).toBeInstanceOf(SyncDivergedError);
+	expect((err as SyncDivergedError).branches).toEqual(["main"]);
+	expect((err as Error).message).toContain("Switch to main and sync");
+
+	// origin still holds A's side, B's local main keeps its commit, and the
+	// empty draft pointer never landed remotely.
+	expect(
+		execFileSync("git", ["rev-parse", "refs/heads/main"], {
+			cwd: origin,
+			encoding: "utf8",
+		}).trim(),
+	).toBe(head(a));
+	expect(readFileSync(join(b, "h.md"), "utf8")).toBe("# from B\n");
+	expect(branches(origin)).toEqual(["main"]);
+});
+
+test("#54: an empty drafts pointer never mirrors; a draft with work does", {
+	timeout: 20_000,
+}, async () => {
+	const { origin, work } = bareAndWork();
+	run(work, ["branch", "drafts/empty"]);
+	run(work, ["checkout", "-q", "-b", "drafts/real"]);
+	commitFile(work, "r.md", "real\n", "real work");
+	run(work, ["checkout", "-q", "main"]);
+
+	expect(await sync(work)).toEqual({ conflict: false });
+	expect(branches(origin)).toEqual(["drafts/real", "main", "topic"]);
+	expect(branches(work)).toEqual([
+		"drafts/empty",
+		"drafts/real",
+		"main",
+		"topic",
+	]);
+});
+
+test("#54: deleteRemoteBranch removes the origin copy, tracked or not", {
+	timeout: 20_000,
+}, async () => {
+	const { origin, work } = bareAndWork();
+	await sync(work); // mirror topic to origin
+	expect(branches(origin)).toEqual(["main", "topic"]);
+
+	// No tracking config – the default remote is used.
+	await deleteRemoteBranch(work, "topic");
+	expect(branches(origin)).toEqual(["main"]);
+
+	// Tracking config resolves the branch's own remote.
+	run(work, ["push", "-q", "-u", "origin", "topic"]);
+	await deleteRemoteBranch(work, "topic");
+	expect(branches(origin)).toEqual(["main"]);
 });
