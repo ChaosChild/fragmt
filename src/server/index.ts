@@ -44,6 +44,7 @@ import {
 	deleteBranch,
 	deleteDoc,
 	deleteFolder,
+	deleteRemoteBranch,
 	deleteThread,
 	deleteThreadWithDoc,
 	docHash,
@@ -86,6 +87,7 @@ import {
 	resolveMergeSidecar,
 	restoreDoc,
 	StaleDocError,
+	SyncDivergedError,
 	searchDocs,
 	setDocMeta,
 	setResolved,
@@ -183,6 +185,16 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 			);
 		return next();
 	});
+
+	/** The signed-in user's push identity for the token pushes (sync mirror,
+	 *  merge cleanup, branch delete), or undefined in local mode / on a
+	 *  non-GitHub origin – machine credentials push in those cases. */
+	const asOf = async (c: Context<AppEnv>) => {
+		const user = c.get("authUser");
+		if (user === undefined) return undefined;
+		const slug = await githubSlug(ctx.repoRoot);
+		return slug === undefined ? undefined : { slug, token: user.token };
+	};
 
 	// M4-3 b7: the .gitignore filter – one ls-files spawn per refresh builds
 	// the allow-list of everything git considers part of the repo. Every
@@ -795,6 +807,14 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 				name,
 				c.req.query("force") !== undefined,
 			);
+			// #54: best-effort origin cleanup – the mirror never deletes, so
+			// the remote copy would outlive the local branch forever.
+			try {
+				await deleteRemoteBranch(ctx.repoRoot, name, await asOf(c));
+			} catch {
+				// the local intent already succeeded; a failed remote delete
+				// leaves the origin copy for a retry on a working connection
+			}
 			return c.json({ ok: true });
 		} catch (e) {
 			// Unmerged without force is a client-decidable state, not an error:
@@ -833,7 +853,7 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 				docsRoot: relative(
 					resolve(ctx.repoRoot),
 					resolve(ctx.repoRoot, ctx.docsRoot),
-				).replaceAll("\\", "/"),
+				).replace(/\\/g, "/"),
 			},
 		});
 	});
@@ -937,7 +957,13 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 
 	app.post("/api/merge", async (c) => {
 		try {
-			const result = await mergeToMain(ctx.repoRoot, ctx.docsRoot);
+			// #54: the session identity rides along so the post-merge cleanup
+			// can remove the origin copy of the merged drafts branch.
+			const result = await mergeToMain(
+				ctx.repoRoot,
+				ctx.docsRoot,
+				await asOf(c),
+			);
 			// The conflict is a returned value, not a throw – map it to 409 with
 			// the b2 shape verbatim: stood:true {branch, files} (the UI enters
 			// resolution mode) or stood:false {files, message} (the honest
@@ -1005,7 +1031,7 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		if (!inMerge(ctx.repoRoot))
 			return c.json({ error: "no merge is in progress" }, 409);
 		try {
-			const result = await concludeMerge(ctx.repoRoot);
+			const result = await concludeMerge(ctx.repoRoot, await asOf(c));
 			// OKF (#21): the merge settled membership across the branch boundary
 			// – recompute the references graph and regenerate the indexes once
 			// (mechanical index.md conflicts heal by regeneration), in the
@@ -1055,27 +1081,17 @@ export function createApp(ctx: ServerContext): Hono<AppEnv> {
 		try {
 			// #27: under auth the mirror rides the signed-in user's token over
 			// the slug's HTTPS URL; local mode (or a non-GitHub origin) pushes
-			// with the machine's credentials exactly as before.
-			const user = c.get("authUser");
-			const slug =
-				user === undefined ? undefined : await githubSlug(ctx.repoRoot);
-			return c.json(
-				await sync(
-					ctx.repoRoot,
-					user !== undefined && slug !== undefined
-						? { slug, token: user.token }
-						: undefined,
-				),
-			);
+			// with the machine's credentials exactly as before. #54: sync now
+			// integrates origin first (a behind main fast-forwards), so a push
+			// that stays rejected is a real divergence – an honest 409, shown
+			// in the LED detail; never the "resolve the file" conflict path.
+			return c.json(await sync(ctx.repoRoot, await asOf(c)));
 		} catch (e) {
-			// A rejected push (non-fast-forward) is a conflict signal, not a server
-			// error: the next sync's pull --rebase surfaces the real conflict.
-			if (
-				e instanceof GitError &&
-				/non-fast-forward|failed to push some refs/.test(e.stderr)
-			) {
-				return c.json({ conflict: true, message: e.stderr.trim() });
-			}
+			if (e instanceof SyncDivergedError)
+				return c.json(
+					{ error: e.message, diverged: true, branches: e.branches },
+					409,
+				);
 			return respondGitError(c, e);
 		}
 	});

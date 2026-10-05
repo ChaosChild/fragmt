@@ -68,7 +68,9 @@ How it works, and its edges:
   signed-in user's token rides env-based git config, never argv or disk.
 - With auth on, sync mirror-pushes every branch to origin under the
   signed-in user's token; plain `serve` pushes with machine credentials as
-  before.
+  before. Before pushing, sync fast-forwards a behind `main` to origin's
+  tip and skips empty draft pointers; merged and deleted branches are
+  cleaned up on origin too, best-effort under the same token.
 
 ## Avatars and the authors map
 

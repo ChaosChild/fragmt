@@ -25,6 +25,7 @@ import {
 import { localUser } from "./identity.js";
 import { mainBranch } from "./meta.js";
 import { generateIndexes, okfEnabled, recomputeGraph } from "./okf.js";
+import { deleteRemoteBranch, type PushAs } from "./sync.js";
 
 /**
  * Draft naming (M4-2 spec, #45 path-aware): `drafts/<slug>` where slug =
@@ -187,6 +188,7 @@ export async function startDraft(
 export async function mergeToMain(
 	repoRoot: string,
 	docsRoot = ".",
+	as?: PushAs,
 ): Promise<
 	| { merged: true; sha: string }
 	| {
@@ -245,7 +247,7 @@ export async function mergeToMain(
 		};
 	}
 	const sha = await git(repoRoot, ["rev-parse", "HEAD"]);
-	await cleanupDraftBranch(repoRoot, current);
+	await cleanupDraftBranch(repoRoot, current, as);
 	return { merged: true, sha };
 }
 
@@ -253,20 +255,15 @@ export async function mergeToMain(
 async function cleanupDraftBranch(
 	repoRoot: string,
 	branch: string,
+	as?: PushAs,
 ): Promise<void> {
 	await deleteBranch(repoRoot, branch);
-	// ponytail: best-effort remote delete – any failure ignored (the local merge
-	// already succeeded; push failures surface on the next sync anyway).
 	try {
-		const remote = await git(repoRoot, [
-			"config",
-			"--get",
-			`branch.${branch}.remote`,
-		]);
-		if (remote !== "")
-			await git(repoRoot, ["push", remote, "--delete", branch]);
+		await deleteRemoteBranch(repoRoot, branch, as);
 	} catch {
-		// not tracking a remote, or the delete failed – fine either way
+		// ponytail: best-effort – the local merge already succeeded, and the
+		// mirror's empty-pointer skip keeps new residue from forming; a failed
+		// delete can be retried with an explicit branch delete.
 	}
 }
 
@@ -470,6 +467,7 @@ export async function resolveMergeSidecar(
  */
 export async function concludeMerge(
 	repoRoot: string,
+	as?: PushAs,
 ): Promise<{ sha: string }> {
 	const left = await unmergedPaths(repoRoot);
 	if (left.length > 0)
@@ -479,7 +477,7 @@ export async function concludeMerge(
 	const branch = mergeBranchFromMsg(repoRoot); // MERGE_MSG vanishes on commit
 	await git(repoRoot, ["commit", "--no-edit"]);
 	const sha = await git(repoRoot, ["rev-parse", "HEAD"]);
-	if (branch) await cleanupDraftBranch(repoRoot, branch);
+	if (branch) await cleanupDraftBranch(repoRoot, branch, as);
 	return { sha };
 }
 

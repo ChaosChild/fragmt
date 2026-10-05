@@ -49,6 +49,104 @@ async function tree(): Promise<TreeNode> {
 	return (await (await api("GET", "/api/tree")).json()) as TreeNode;
 }
 
+// --- #54: /api/sync against a real origin ----------------------------------
+
+/** A bare origin with root's main pushed, plus a twin clone that can move
+ *  origin/main forward the way another writer would. */
+function withOrigin(): { origin: string; twin: string } {
+	const origin = mkdtempSync(join(tmpdir(), "fragmt-m3-origin-"));
+	execFileSync("git", ["init", "-q", "--bare", "-b", "main"], { cwd: origin });
+	execFileSync("git", ["remote", "add", "origin", origin], { cwd: root });
+	execFileSync("git", ["push", "-q", "-u", "origin", "main"], { cwd: root });
+	const twin = mkdtempSync(join(tmpdir(), "fragmt-m3-twin-"));
+	execFileSync(
+		"git",
+		["-c", "core.autocrlf=false", "clone", "-q", origin, "."],
+		{
+			cwd: twin,
+		},
+	);
+	for (const args of [
+		["config", "user.name", "Twin"],
+		["config", "user.email", "twin@example.com"],
+		["config", "core.autocrlf", "false"],
+	])
+		execFileSync("git", args, { cwd: twin });
+	return { origin, twin };
+}
+
+/** Twin commits and pushes one file – origin/main is one ahead of root. */
+function twinPushes(twin: string): void {
+	writeFileSync(join(twin, "twin.md"), "# twin\n");
+	execFileSync("git", ["add", "-A"], { cwd: twin });
+	execFileSync("git", ["commit", "-q", "-m", "twin commit"], { cwd: twin });
+	execFileSync("git", ["push", "-q", "origin", "main"], { cwd: twin });
+}
+
+test("#54: /api/sync fast-forwards a behind main while a draft is checked out", {
+	timeout: 20_000,
+}, async () => {
+	execFileSync("git", ["config", "core.autocrlf", "false"], { cwd: root });
+	const { origin, twin } = withOrigin();
+	twinPushes(twin);
+	// The edit-entry dance: an empty drafts branch checked out, main stale.
+	execFileSync("git", ["checkout", "-q", "-b", "drafts/doc"], { cwd: root });
+
+	const res = await api("POST", "/api/sync");
+	expect(res.status).toBe(200);
+	expect(await res.json()).toEqual({
+		conflict: false,
+		ff: { branch: "main", commits: 1 },
+	});
+
+	const originMain = execFileSync("git", ["rev-parse", "refs/heads/main"], {
+		cwd: origin,
+		encoding: "utf8",
+	}).trim();
+	expect(
+		execFileSync("git", ["rev-parse", "main"], {
+			cwd: root,
+			encoding: "utf8",
+		}).trim(),
+	).toBe(originMain);
+});
+
+test("#54: /api/sync answers 409 {diverged:true} when main diverged behind a draft", {
+	timeout: 20_000,
+}, async () => {
+	execFileSync("git", ["config", "core.autocrlf", "false"], { cwd: root });
+	const { origin, twin } = withOrigin();
+	twinPushes(twin);
+	// root: a local-only main commit, then a draft checked out.
+	writeFileSync(join(root, "mine.md"), "# mine\n");
+	execFileSync("git", ["add", "-A"], { cwd: root });
+	execFileSync("git", ["commit", "-q", "-m", "mine"], { cwd: root });
+	execFileSync("git", ["checkout", "-q", "-b", "drafts/doc"], { cwd: root });
+
+	const res = await api("POST", "/api/sync");
+	expect(res.status).toBe(409);
+	const body = (await res.json()) as {
+		error?: string;
+		diverged?: boolean;
+		branches?: string[];
+	};
+	expect(body.diverged).toBe(true);
+	expect(body.branches).toEqual(["main"]);
+	expect(body.error).toContain("Switch to main and sync");
+
+	// origin still holds the twin's side – nothing was force-pushed.
+	const originMain = execFileSync("git", ["rev-parse", "refs/heads/main"], {
+		cwd: origin,
+		encoding: "utf8",
+	}).trim();
+	expect(originMain).toBe(
+		execFileSync("git", ["rev-parse", "HEAD"], {
+			cwd: twin,
+			encoding: "utf8",
+		}).trim(),
+	);
+});
+
 /** Raw HTTP status – `fetch` collapses `..` before it reaches the server guard. */
 function rawStatus(method: string, path: string): Promise<number> {
 	return new Promise((resolve, reject) => {

@@ -125,6 +125,9 @@ export interface BranchesResponse {
 export interface SyncResult {
 	conflict: boolean;
 	message?: string;
+	/** #54: a non-current main was strictly behind origin and got
+	 *  fast-forwarded before the push – "synced behind remote" as data. */
+	ff?: { branch: string; commits: number };
 }
 
 /** Fetch for the M3 routes; `{ error }` bodies become the message. */
