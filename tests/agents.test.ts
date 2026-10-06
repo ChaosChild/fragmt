@@ -104,7 +104,11 @@ test("isAgent: exact-name membership against the config list", () => {
 
 test("the taught first rule names agent save – the drafting write path", () => {
 	expect(AGENTS_BODY).toContain(
-		"Run `fragmt agent save <doc> --file <body>` (it drafts automatically)",
+		'Run `fragmt agent save <doc> --file <body> --as-actor "<producer>/<version>"` (it drafts automatically)',
+	);
+	// #57: the body-frontmatter contract is taught beside the save rule.
+	expect(AGENTS_BODY).toContain(
+		"its keys merge into the doc's when creating a new doc; an update needs body-only content",
 	);
 });
 

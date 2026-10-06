@@ -502,7 +502,7 @@ test("draft: a nonexistent doc is refused with the save pointer, no branch", asy
 	const r = await agent(root, ["draft", "guides/missing.md"]);
 	expect(r.code).toBe(1);
 	expect(r.out[0]).toBe(
-		"error: no doc guides/missing.md – create it with: fragmt agent save guides/missing.md --file <body>",
+		'error: no doc guides/missing.md – create it with: fragmt agent save guides/missing.md --file <body> --as-actor "<producer>/<version>"',
 	);
 	// The useless draft branch is never created.
 	expect(run(root, ["branch", "--list", "drafts/missing"])).toBe("");
@@ -753,7 +753,14 @@ function okfSeeded(): string {
 
 test("save on main auto-drafts: lands on drafts/<slug>, main untouched", async () => {
 	const root = seeded();
-	const r = await agent(root, ["save", "a.md", "--file", bodyFile("# a v2\n")]);
+	const r = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("# a v2\n"),
+		"--as-actor",
+		"test-agent/1.0",
+	]);
 	expect(r.code).toBe(0);
 	expect(r.out[0]).toMatch(
 		/^ok: saved a\.md on drafts\/a \([0-9a-f]{7}\) · auto-drafted from main$/,
@@ -773,6 +780,8 @@ test("save while already on the doc's draft branch: lands directly, no new branc
 		"a.md",
 		"--file",
 		bodyFile("# direct\n"),
+		"--as-actor",
+		"test-agent/1.0",
 	]);
 	expect(r.code).toBe(0);
 	expect(r.out[0]).toMatch(/^ok: saved a\.md on drafts\/a \([0-9a-f]{7}\)$/);
@@ -794,6 +803,8 @@ test("save of a new doc in an OKF repo: born with type concept and status draft"
 		"new-doc.md",
 		"--file",
 		bodyFile("# New\n"),
+		"--as-actor",
+		"test-agent/1.0",
 	]);
 	expect(r.code).toBe(0);
 	expect(r.out[0]).toMatch(
@@ -807,13 +818,36 @@ test("save of a new doc in an OKF repo: born with type concept and status draft"
 	);
 });
 
-test("OKF save semantics ride the commit: refs settled, generated stamped, author carried", async () => {
+test("save hard-requires --as-actor: exit 1 with the teaching error, nothing written (#60)", async () => {
+	const root = okfSeeded();
+	const before = readFileSync(join(root, "docs/a.md"), "utf8");
+	const r = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("# A\n\nSee [B](/b.md).\n"),
+		"--author",
+		"Zed Agent",
+	]);
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe(
+		'error: agent save needs --as-actor "producer/version" so the doc\'s trust stamp names a real actor',
+	);
+	// Refused before any side effect: doc untouched, no draft branch, main.
+	expect(readFileSync(join(root, "docs/a.md"), "utf8")).toBe(before);
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main");
+	expect(run(root, ["branch", "--list", "drafts/a"])).toBe("");
+});
+
+test("OKF save semantics ride the commit: refs settled, generated stamped as --as-actor, author carried", async () => {
 	const root = okfSeeded();
 	const r = await agent(root, [
 		"save",
 		"a.md",
 		"--file",
 		bodyFile("# A\n\nSee [B](/b.md).\n"),
+		"--as-actor",
+		"zed-agent/1.0",
 		"--author",
 		"Zed Agent",
 		"--message",
@@ -822,9 +856,7 @@ test("OKF save semantics ride the commit: refs settled, generated stamped, autho
 	expect(r.code).toBe(0);
 	const a = readDoc(root, "docs", "a.md");
 	expect(a.frontmatter.references).toEqual(["b.md"]);
-	expect((a.frontmatter.generated as { by: string }).by).toBe(
-		"human:zed-agent",
-	);
+	expect((a.frontmatter.generated as { by: string }).by).toBe("zed-agent/1.0");
 	expect(readDoc(root, "docs", "b.md").frontmatter["referenced-by"]).toEqual([
 		"a.md",
 	]);
@@ -838,6 +870,85 @@ test("OKF save semantics ride the commit: refs settled, generated stamped, autho
 	expect(run(root, ["log", "-1", "--format=%cn"])).toBe("Zed Agent");
 	expect(run(root, ["log", "-1", "--format=%ce"])).toBe(
 		"zed-agent@users.noreply.fragmt",
+	);
+});
+
+test("save --file with frontmatter on CREATE: body keys merge over the defaults (#57)", async () => {
+	const root = okfSeeded();
+	const r = await agent(root, [
+		"save",
+		"new.md",
+		"--file",
+		bodyFile(
+			'---\ntype: spec\nstatus: "stable"\ntags: [x]\ngenerated: nope\nnot a key!: y\n---\n# New\n',
+		),
+		"--as-actor",
+		"zed-agent/1.0",
+	]);
+	expect(r.code).toBe(0);
+	const doc = readDoc(root, "docs", "new.md");
+	expect(doc.frontmatter.type).toBe("spec");
+	expect(doc.frontmatter.status).toBe("stable");
+	expect(doc.frontmatter.tags).toEqual(["x"]);
+	// Managed keys are a body-impossible claim; keys outside the §4.1
+	// grammar would corrupt the fence – both dropped, never stored.
+	expect(doc.frontmatter.generated).toBeUndefined();
+	expect(doc.frontmatter["not a key!"]).toBeUndefined();
+	// The stored body is the content without its fence.
+	expect(doc.markdown).toBe("# New\n");
+});
+
+test("save --file with an invalid body status is refused before any branch is created (#57)", async () => {
+	const root = okfSeeded();
+	const r = await agent(root, [
+		"save",
+		"new.md",
+		"--file",
+		bodyFile("---\ntype: spec\nstatus: bogus\n---\n# New\n"),
+		"--as-actor",
+		"zed-agent/1.0",
+	]);
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe(
+		'error: status must be one of draft, stable, deprecated: "bogus"',
+	);
+	// The enum gate fires before the draft dance – no branch litter.
+	expect(run(root, ["branch", "--list", "drafts/new"])).toBe("");
+});
+
+test("save --file with frontmatter on UPDATE: refused, existing bytes untouched (#57)", async () => {
+	const root = okfSeeded();
+	const before = readFileSync(join(root, "docs/a.md"), "utf8");
+	const r = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("---\ntype: spec\n---\n# A v2\n"),
+		"--as-actor",
+		"zed-agent/1.0",
+	]);
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe(
+		"error: --file body carries a frontmatter block; a.md already has frontmatter and it is preserved – pass body-only content (frontmatter is only merged when creating a new doc)",
+	);
+	expect(readFileSync(join(root, "docs/a.md"), "utf8")).toBe(before);
+	// Refused before the draft dance – still on main, nothing standing.
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main");
+});
+
+test("save on a non-.md path: the error hints at the .md requirement", async () => {
+	const root = seeded();
+	const r = await agent(root, [
+		"save",
+		"notes/x.txt",
+		"--file",
+		bodyFile("# x\n"),
+		"--as-actor",
+		"test-agent/1.0",
+	]);
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe(
+		"error: invalid doc path: notes/x.txt – doc paths must end in .md",
 	);
 });
 

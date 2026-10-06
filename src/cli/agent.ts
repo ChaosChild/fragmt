@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { relative, sep } from "node:path";
 import { type ParseArgsOptionsConfig, parseArgs } from "node:util";
+import matter from "gray-matter";
 import {
 	AGENT_DEFAULT,
 	addReply,
@@ -10,9 +11,12 @@ import {
 	currentBranch,
 	docHash,
 	GitIdentityError,
+	hasFence,
 	inMerge,
+	isFrontmatterKey,
 	loadConfig,
 	localUser,
+	MANAGED_FRONTMATTER_KEYS,
 	mergeToMain,
 	okfEnabled,
 	populateOkf,
@@ -21,6 +25,7 @@ import {
 	readDoc,
 	repoMeta,
 	resolveDocPath,
+	STATUS_VALUES,
 	setResolved,
 	stampGenerated,
 	startDraft,
@@ -239,6 +244,7 @@ function parseVerb(
 								stdin: { type: "boolean", default: false },
 								author: { type: "string" },
 								message: { type: "string" },
+								...asActor,
 							}
 						: {};
 	const { values, positionals } = parseArgs({
@@ -252,6 +258,32 @@ function parseVerb(
 
 /** The mutation guard, same text as the b3 server write-guard. */
 const IN_MERGE = "error: a merge is in progress – finish or abort it first";
+
+/**
+ * The every-verb actor seam (#60): an agent's OKF actor is the verbatim
+ * `--as-actor` self-declaration, or AGENT_DEFAULT where a default is allowed
+ * – `save` hard-requires the flag (there is no honest default for a trust
+ * stamp). Anything that would resolve to a `human:`-prefixed actor refuses
+ * here: a machine must not claim human review (§5.3), and the guard makes
+ * that structural – a future derivation regression cannot ride any verb.
+ */
+function agentActor(
+	values: AgentValues,
+	verb: "save" | "comment" | "draft" | "verify",
+): string {
+	const declared = values["as-actor"];
+	if (declared === undefined) {
+		if (verb !== "save") return AGENT_DEFAULT;
+		throw new Error(
+			'agent save needs --as-actor "producer/version" so the doc\'s trust stamp names a real actor',
+		);
+	}
+	if (declared.startsWith("human:"))
+		throw new Error(
+			'--as-actor must not start with "human:" – a machine never claims human review; declare your own producer/version',
+		);
+	return declared;
+}
 
 async function runStatus(
 	repoRoot: string,
@@ -348,7 +380,7 @@ async function runComment(
 					id,
 					true,
 					user,
-					values["as-actor"] ?? AGENT_DEFAULT,
+					agentActor(values, "comment"),
 				);
 				out(`ok: thread ${id} resolved · author: ${user.name} · 1 commit`);
 			}
@@ -383,7 +415,7 @@ async function runDraft(
 	const abs = resolveDocPath(repoRoot, docsRoot, doc);
 	if (!existsSync(abs) || !statSync(abs).isFile()) {
 		out(
-			`error: no doc ${doc} – create it with: fragmt agent save ${doc} --file <body>`,
+			`error: no doc ${doc} – create it with: fragmt agent save ${doc} --file <body> --as-actor "<producer>/<version>"`,
 		);
 		return 1;
 	}
@@ -412,7 +444,7 @@ async function runDraft(
 	// tiny commit that rides into main with the merge. The doc's presence is
 	// the guard at the top (#42), so the stamp can no longer skip silently.
 	if (okfEnabled(repoRoot)) {
-		const actor = values["as-actor"] ?? AGENT_DEFAULT;
+		const actor = agentActor(values, "draft");
 		const next = stampGenerated(readFileSync(abs, "utf8"), actor);
 		if (next !== null) {
 			writeFileSync(abs, next);
@@ -448,12 +480,14 @@ async function runDraft(
 }
 
 /**
- * `fragmt agent save <doc> (--file <path> | --stdin) [--author <who>]
- * [--message <text>]` – the content verb (#41): the same writeDoc/createDoc
- * paths the server's PUT/POST ride, so a CLI save gets every save-time
- * semantic in its ONE commit – the OKF `generated` stamp, `references`
- * settlement, `referenced-by` propagation – instead of leaving them for
- * merge-time healing, and a new doc is born conformant. Branch discipline
+ * `fragmt agent save <doc> (--file <path> | --stdin) --as-actor <who>
+ * [--author <who>] [--message <text>]` – the content verb (#41): the same
+ * writeDoc/createDoc paths the server's PUT/POST ride, so a CLI save gets
+ * every save-time semantic in its ONE commit – the OKF `generated` stamp,
+ * `references` settlement, `referenced-by` propagation – instead of leaving
+ * them for merge-time healing, and a new doc is born conformant. The OKF
+ * actor is the hard-required `--as-actor` self-declaration, verbatim (#60)
+ * – update saves stamp it via writeDoc's `opts.actor`. Branch discipline
  * is the server's model: on main the startDraft dance (POST /api/draft)
  * runs first; any other branch writes directly. The stale check hashes the
  * body the agent just superseded – PUT's discipline, honestly.
@@ -486,6 +520,9 @@ async function runSave(
 		out(IN_MERGE);
 		return 1;
 	}
+	// #60: save's actor is hard-required – the OKF trust stamp must name a
+	// real actor, never a human:-prefixed derivation off the git identity.
+	const actor = agentActor(values, "save");
 	const user =
 		values.author !== undefined
 			? parseAuthor(values.author)
@@ -496,22 +533,61 @@ async function runSave(
 	}
 	// The server's write model: on main, draft first (the POST /api/draft
 	// dance); a branch switch is the auto-draft note's trigger.
+	// #57: a frontmatter-bearing body merges into a NEW doc's frontmatter
+	// (body keys win over the conformant defaults) but is refused on update
+	// – writeDoc preserves the existing frontmatter byte-for-byte, so the
+	// body's own block would silently become body text.
+	const abs = resolveDocPath(repoRoot, docsRoot, doc);
+	const exists = existsSync(abs) && statSync(abs).isFile();
+	const fenced = hasFence(body);
+	if (exists && fenced) {
+		throw new Error(
+			`--file body carries a frontmatter block; ${doc} already has frontmatter and it is preserved – pass body-only content (frontmatter is only merged when creating a new doc)`,
+		);
+	}
+	const okf = okfEnabled(repoRoot);
+	let seed: Record<string, unknown> | undefined;
+	let content = body;
+	if (okf && fenced) {
+		const parsed = matter(body, {});
+		seed = {};
+		for (const [k, v] of Object.entries(
+			parsed.data as Record<string, unknown>,
+		)) {
+			// Managed keys are a body-impossible claim (no save may set them);
+			// a key outside the §4.1 grammar would corrupt the fence – both
+			// dropped, the body's prose is the only mandatory half.
+			if (MANAGED_FRONTMATTER_KEYS.has(k) || !isFrontmatterKey(k)) continue;
+			seed[k] = v;
+		}
+		if (
+			seed.status !== undefined &&
+			!(STATUS_VALUES as readonly string[]).includes(seed.status as string)
+		) {
+			throw new Error(
+				`status must be one of ${STATUS_VALUES.join(", ")}: ${JSON.stringify(seed.status)}`,
+			);
+		}
+		// The stored body is the content without its fence.
+		content = parsed.content;
+	}
 	const before = await currentBranch(repoRoot);
 	const { current } = await startDraft(repoRoot, doc, docsRoot);
 	const message = values.message ?? `agent save ${doc}`;
-	const abs = resolveDocPath(repoRoot, docsRoot, doc);
-	const { sha } =
-		existsSync(abs) && statSync(abs).isFile()
-			? await writeDoc(
-					repoRoot,
-					docsRoot,
-					doc,
-					body,
-					docHash(readDoc(repoRoot, docsRoot, doc).markdown),
-					user,
-					{ message },
-				)
-			: await createDoc(repoRoot, docsRoot, doc, body, user, { message });
+	const { sha } = exists
+		? await writeDoc(
+				repoRoot,
+				docsRoot,
+				doc,
+				content,
+				docHash(readDoc(repoRoot, docsRoot, doc).markdown),
+				user,
+				{ message, actor },
+			)
+		: await createDoc(repoRoot, docsRoot, doc, content, user, {
+				message,
+				frontmatter: seed,
+			});
 	const note = current !== before ? " · auto-drafted from main" : "";
 	out(`ok: saved ${doc} on ${current} (${sha.slice(0, 7)})${note}`);
 	helpBlock(out, [`fragmt agent draft ${doc} --merge – merge back to main`]);
@@ -559,7 +635,7 @@ async function runVerify(
 		out("error: --author needs a display name and an address");
 		return 1;
 	}
-	const actor = values["as-actor"] ?? AGENT_DEFAULT;
+	const actor = agentActor(values, "verify");
 	await verifyDoc(repoRoot, docsRoot, doc, user, actor);
 	out(`ok: verified ${doc} as ${actor} · 1 commit`);
 	helpBlock(out, ["fragmt agent status"]);
@@ -576,7 +652,7 @@ fragmt agent – the agent surface: status, save, comment, draft, verify
 
 Usage:
   fragmt agent [status]
-  fragmt agent save <doc> (--file <path> | --stdin) [--author <who>] [--message <text>]
+  fragmt agent save <doc> (--file <path> | --stdin) --as-actor <who> [--author <who>] [--message <text>]
   fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor <who>] [--full]
   fragmt agent draft <doc> [--merge] [--author <who>] [--as-actor <who>]
   fragmt agent verify <doc> [--as-actor <who>] [--author <who>]

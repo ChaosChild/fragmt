@@ -4,6 +4,7 @@ import matter from "gray-matter";
 import { commitAs } from "./commit.js";
 import { loadConfig } from "./config.js";
 import { canonicalBody, readDoc, StaleDocError } from "./docs.js";
+import { git } from "./git.js";
 import { localUser } from "./identity.js";
 import { displayTitle, treeDocPaths } from "./search.js";
 import { gitAllowList, listTree, type TreeNode } from "./tree.js";
@@ -90,8 +91,9 @@ function repoRel(repoRoot: string, abs: string): string {
 
 /** Does the file open with a `---` … `---` fence? gray-matter cannot tell a
  *  missing fence from an empty one (`matter` is "" for both) and swallows the
- *  whole body on an unclosed one, so the raw text decides (clause a). */
-function hasFence(text: string): boolean {
+ *  whole body on an unclosed one, so the raw text decides (clause a). Also
+ *  the agent CLI's #57 gate: a `--file` body carrying its own fence. */
+export function hasFence(text: string): boolean {
 	const lines = text.split(/\r?\n/);
 	if (lines[0] !== "---") return false;
 	return lines.slice(1).some((l) => l.trim() === "---");
@@ -147,6 +149,18 @@ export async function validateOkf(
 							: "missing frontmatter block",
 				});
 				continue;
+			}
+			// #57, detect-only: a SECOND fence at the top of the parsed body is
+			// invisible to every reader of record (gray-matter parses the first
+			// block, the index types off it) – which block should win is
+			// ambiguous, so validate reports and never auto-repairs.
+			if (doc.markdown.startsWith("---")) {
+				findings.push({
+					path,
+					clause: "frontmatter",
+					detail:
+						"second frontmatter block treated as body – the file's real type/status are ignored",
+				});
 			}
 			const type = doc.frontmatter.type;
 			if (typeof type !== "string" || type.trim() === "") {
@@ -367,13 +381,25 @@ interface FieldUpdate {
 }
 
 /**
+ * #58: do two file texts differ only by \r and trailing newlines? On a CRLF
+ * working tree (core.autocrlf=true) a canonicalized rewrite round-trips to a
+ * byte-identical blob through git's clean filter, so "changed" bytes there
+ * are a lie – the fixed/not-fixed comparisons treat the modulo-EOL forms as
+ * equal and the file is neither written nor counted as fixed.
+ */
+function sameBodyModuloEol(a: string, b: string): boolean {
+	const norm = (s: string) => s.replace(/\r/g, "").replace(/\n+$/, "");
+	return norm(a) === norm(b);
+}
+
+/**
  * Apply field updates to one doc FILE, the prepareDocWrite/setTitle
  * discipline: line-spliced into the raw frontmatter (never re-serialized),
  * fence-to-body gap and body byte-for-byte. A doc without a fence gets one
- * only when a field must be written – carrying `type: concept` (a fence
+ * only when a field must be written – carrying `type` (a fence
  * without a type would itself be non-conformant); its original bytes follow
  * the fence verbatim. Returns the new file text, or null when nothing
- * changed.
+ * changed beyond line endings (#58 – a CRLF tree must not churn).
  */
 export function spliceDocFields(
 	text: string,
@@ -395,7 +421,7 @@ export function spliceDocFields(
 	let raw = parsed.matter;
 	for (const f of fields) raw = replaceLine(raw, f.key, f.line);
 	const next = `---${raw}\n---\n${gap}${canonicalBody(parsed.content)}`;
-	return next === text ? null : next;
+	return sameBodyModuloEol(next, text) ? null : next;
 }
 
 /** One metadata-editor edit: `value` writes a scalar key, `list` a
@@ -804,7 +830,10 @@ function writeIndex(
 	const front = node.path === "" ? '---\nokf_version: "0.2"\n---\n\n' : "";
 	const next = `${front}${sections.map((s) => s.join("\n")).join("\n\n")}\n`;
 	const abs = join(docsAbs, node.path, "index.md");
-	if (existsSync(abs) && readFileSync(abs, "utf8") === next) return [];
+	// #58: line-ending-only differences are not a change – a CRLF working
+	// tree must not have its index rewritten into an empty staged diff.
+	if (existsSync(abs) && sameBodyModuloEol(readFileSync(abs, "utf8"), next))
+		return [];
 	writeFileSync(abs, next);
 	return [repoRel(repoRoot, abs)];
 }
@@ -872,13 +901,19 @@ export async function recomputeGraph(
  * key is absent (A3), recompute references/referenced-by repo-wide,
  * regenerate the indexes. Existing YAML is never re-serialized; an
  * unparseable block is left for the operator (validate reports it – no
- * repair exists that does not rewrite their YAML).
+ * repair exists that does not rewrite their YAML). `committed` (#58) says
+ * whether a commit actually landed: commitAs returns HEAD unchanged when
+ * the staged diff is empty (an identical-content save is not an error), so
+ * HEAD is read before and compared after – the CLI's honest message needs
+ * that, and the churn guard above makes the no-op path the common one on
+ * CRLF working trees. An unborn HEAD reads as "" (a landed commit then
+ * differs).
  */
 export async function fixOkf(
 	repoRoot: string,
 	docsRoot: string,
 	user?: { name: string; email: string },
-): Promise<{ sha: string; files: string[] }> {
+): Promise<{ sha: string; files: string[]; committed: boolean }> {
 	const who = user ?? (await localUser(repoRoot));
 	const docsAbs = resolve(repoRoot, docsRoot);
 	const files = new Set<string>();
@@ -924,6 +959,10 @@ export async function fixOkf(
 	}
 	for (const f of await recomputeGraph(repoRoot, docsRoot)) files.add(f);
 	for (const f of await generateIndexes(repoRoot, docsRoot)) files.add(f);
+	const before =
+		files.size === 0
+			? ""
+			: await git(repoRoot, ["rev-parse", "HEAD"]).catch(() => "");
 	const sha =
 		files.size === 0
 			? ""
@@ -932,7 +971,7 @@ export async function fixOkf(
 					{ files: [...files], message: "OKF: apply conformance fixes" },
 					repoRoot,
 				);
-	return { sha, files: [...files] };
+	return { sha, files: [...files], committed: sha !== "" && sha !== before };
 }
 
 /**
