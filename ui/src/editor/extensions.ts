@@ -3,6 +3,7 @@ import {
 	type Extensions,
 	Mark,
 	mergeAttributes,
+	Node,
 } from "@tiptap/core";
 import { Image } from "@tiptap/extension-image";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
@@ -14,9 +15,11 @@ import {
 } from "@tiptap/extension-table";
 import { Placeholder } from "@tiptap/extensions/placeholder";
 import StarterKit from "@tiptap/starter-kit";
+import type { MarkdownSerializerState } from "prosemirror-markdown";
 import {
 	Markdown,
 	type MarkdownMarkSpec,
+	type MarkdownNodeSpec,
 	type MarkdownStorage,
 } from "tiptap-markdown";
 // "./slash.js" (not "./slash"): this file is typechecked by BOTH configs –
@@ -105,6 +108,66 @@ export const CommentMark = Mark.create({
 });
 
 /**
+ * Pipe escaping inside GFM table cells (#56). tiptap-markdown's table
+ * serializer writes cell text through prosemirror-markdown's esc(), which
+ * never escapes `|` – and markdown-it splits cells on unescaped pipes before
+ * inline parsing, so a pipe in a cell shifts the columns on reload (cells
+ * beyond the header column count are dropped). GFM's escape inside a cell is
+ * `\|` – markdown-it's table rule unescapes it BEFORE inline parsing, so the
+ * model text is a bare `|` again and blanket-escaping on the way out is
+ * correct. Everywhere else the output must stay byte-identical: the
+ * serialization mirrors tiptap-markdown's own text extension
+ * (node_modules/tiptap-markdown/src/extensions/nodes/text.js), whose body is
+ * `state.text(escapeHTML(node.text))` with escapeHTML = `<`→`&lt;`, `>`→`&gt;`
+ * – then the in-table output slice gets `\|` post-applied (esc() never
+ * touches `|`, so every `|` in the slice is unescaped content).
+ *
+ * Replaces StarterKit's text node (configured off below) – the schema spec
+ * (group, markdown parse/render) is copied from @tiptap/extension-text v3.
+ * KNOWN CEILING: a pipe inside an inline code span in a cell still goes out
+ * raw – the code mark serializes with escape:false, so renderInline writes
+ * its content through a no-escape branch that skips the text node serializer
+ * entirely, and hooks at the mark level cannot intercept that one write (the
+ * method value is resolved before its arguments build). The load-time
+ * fidelity check (roundtrip.ts) flags any doc that hits this as lossy, so it
+ * saves only behind the explicit acknowledge.
+ */
+export const TablePipeText = Node.create({
+	name: "text",
+	group: "inline",
+	parseMarkdown: (token) => ({
+		type: "text",
+		text: token.text || "",
+	}),
+	renderMarkdown: (node) => node.text || "",
+	addStorage(): { markdown: MarkdownNodeSpec } {
+		return {
+			markdown: {
+				serialize(state, node) {
+					// The runtime state is tiptap-markdown's subclass of
+					// prosemirror-markdown's MarkdownSerializerState (its table
+					// serializer toggles inTable; `out` is the output buffer).
+					const s = state as MarkdownSerializerState & {
+						out: string;
+						inTable?: boolean;
+					};
+					const start = s.out.length;
+					// tiptap-markdown's escapeHTML, inlined (not exported): text
+					// nodes always carry text in practice, `?? ""` for the type.
+					const text = node.text ?? "";
+					state.text(text.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+					if (s.inTable) {
+						s.out = `${s.out.slice(0, start)}${s.out
+							.slice(start)
+							.replace(/\|/g, "\\|")}`;
+					}
+				},
+			},
+		};
+	},
+});
+
+/**
  * tiptap-markdown's tight-lists extension only covers bulletList/orderedList –
  * taskList serializes loose (blank lines between items), so a single checkbox
  * edit would rewrite the whole list. Mirror its `tight` attribute for taskList
@@ -164,8 +227,12 @@ export function editorExtensions(
 		// window.opens on plain clicks in edit mode, and read mode would
 		// fall through to browser navigation – EditorPane's onClick is the
 		// single click authority (doc → in-app, external → new tab).
-		StarterKit.configure({ link: { openOnClick: false } }),
+		// text off: TablePipeText below replaces it (the pipe-escaping
+		// markdown serializer, #56) – a second `text` extension would be a
+		// duplicate-name collision where only one storage wins.
+		StarterKit.configure({ link: { openOnClick: false }, text: false }),
 		CommentMark,
+		TablePipeText,
 		TaskList,
 		TaskItem,
 		Table,

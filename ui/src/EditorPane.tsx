@@ -17,6 +17,7 @@ import { ImagePopover } from "./editor/ImageForm";
 import { resolveLinkTarget, slugifyHeading } from "./editor/links";
 import { SlashMenuView } from "./editor/SlashMenu";
 import type { SlashMenuState } from "./editor/slash";
+import { rewrittenLines } from "./roundtrip";
 
 export interface EditorPaneHandle {
 	getMarkdown(): string;
@@ -61,6 +62,7 @@ export function EditorPane({
 	saving,
 	onDirtyChange,
 	docPath,
+	onRoundTrip,
 	docs,
 	folders,
 	onSelectDoc,
@@ -93,6 +95,11 @@ export function EditorPane({
 	onDirtyChange?: (dirty: boolean) => void;
 	/** The open doc's docsRoot-relative path – the base link resolution joins. */
 	docPath: string;
+	/** Load-time round-trip verdict (#56): the line count a save would
+	 *  rewrite between the loaded body and the editor's re-serialization –
+	 *  0 means byte-stable. Fires once per doc load from the setContent
+	 *  effect; absent (the slideout preview) skips the report. */
+	onRoundTrip?: (rewrittenLines: number) => void;
 	/** The tree's docs – @ menu items and the known-path set for link clicks. */
 	docs: AtDoc[];
 	/** The tree's folder paths – the link dispatch's folder set (M4-3 b6). */
@@ -190,9 +197,22 @@ export function EditorPane({
 	// text position) and the caret matches the visible top. A selection-only
 	// command never sets docChanged (dirty stays false), and it is safe in
 	// read mode – the non-editable view stays focusable.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: onRoundTrip is a registration-style callback (a stable setState in DocView) – re-running this effect on its identity would re-parse the doc per render, so markdown alone is the content-load signal, like spanTitleFor below.
 	useEffect(() => {
 		editor?.commands.setContent(markdown);
 		editor?.commands.setTextSelection(0);
+		// Load-time round-trip fidelity check (#56): serialize the freshly
+		// parsed doc back out and diff it against the loaded source (both
+		// through the server's canonical body shape – roundtrip.ts). A
+		// non-zero count means saving will reshape the doc; DocView banners
+		// it and gates Save behind an acknowledge. Computed at LOAD only –
+		// the verdict is stale while editing by design, and a post-save
+		// reload (onSaved → new markdown) recomputes it on the saved body.
+		if (editor) {
+			onRoundTrip?.(
+				rewrittenLines(markdown, editor.storage.markdown.getMarkdown()),
+			);
+		}
 		// Heading ids (M4-3 b6), both modes – one code path: #fragment and
 		// doc#frag links scroll to these. A cheap idempotent walk per doc
 		// load; the ids live only in the rendered DOM, never the markdown.
