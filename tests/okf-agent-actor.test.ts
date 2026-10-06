@@ -384,6 +384,124 @@ test("draft --merge without --as-actor stamps the D4 default, never a human pref
 	expect(by.startsWith("human:")).toBe(false);
 });
 
+// --- draft --merge stamps every doc the branch lands (#59) ---------------------
+
+test("draft --merge stamps both sibling docs riding one branch (#59)", async () => {
+	const root = repo();
+	seed(root, "a.md", CONFORMANT);
+	seed(root, "b.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	run(root, ["checkout", "-q", "-b", "drafts/a"]);
+	seed(root, "a.md", "---\ntype: Concept\n---\n\n# A v2\n");
+	seed(root, "b.md", "---\ntype: Concept\n---\n\n# B v2\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "edit a and b"]);
+
+	const r = await agent(root, [
+		"draft",
+		"a.md",
+		"--merge",
+		"--as-actor",
+		"actor/1",
+	]);
+
+	expect(r.code).toBe(0);
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main");
+	// Both siblings land stamped, not just the positional doc.
+	expect(byOf(readDoc(root, ".", "a.md").frontmatter)).toBe("actor/1");
+	expect(byOf(readDoc(root, ".", "b.md").frontmatter)).toBe("actor/1");
+	// One plural stamp commit carries both files.
+	const stampCommit = run(root, [
+		"log",
+		"--name-only",
+		"--format=",
+		"--grep=OKF: stamp",
+	])
+		.split("\n")
+		.filter(Boolean);
+	expect(stampCommit.sort()).toEqual(["a.md", "b.md"]);
+	expect(run(root, ["log", "--format=%s", "--grep=OKF: stamp"])).toBe(
+		"OKF: stamp 2 doc(s) as actor/1",
+	);
+	expect(r.out).toContain("ok: stamped a.md, b.md as actor/1 · 1 commit");
+});
+
+test("draft --merge does not re-stamp a doc already carrying generated.by (#59)", async () => {
+	const root = repo();
+	seed(root, "a.md", CONFORMANT);
+	seed(root, "b.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	// b.md carries its producer's stamp on main.
+	await save(root, "b.md", "# B v2\n", { actor: "producer/9" });
+	const before = readDoc(root, ".", "b.md").frontmatter.generated as {
+		by: string;
+		at: string;
+	};
+	run(root, ["checkout", "-q", "-b", "drafts/a"]);
+	// The branch edit keeps b.md's stamped frontmatter, body-only change.
+	seed(
+		root,
+		"b.md",
+		readFileSync(join(root, "b.md"), "utf8").replace("# B v2", "# B v3"),
+	);
+	seed(root, "a.md", "---\ntype: Concept\n---\n\n# A v2\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "edit a and b"]);
+
+	const r = await agent(root, [
+		"draft",
+		"a.md",
+		"--merge",
+		"--as-actor",
+		"actor/1",
+	]);
+
+	expect(r.code).toBe(0);
+	expect(byOf(readDoc(root, ".", "a.md").frontmatter)).toBe("actor/1");
+	// The producer's stamp survives verbatim – by AND at.
+	const gen = readDoc(root, ".", "b.md").frontmatter.generated as {
+		by: string;
+		at: string;
+	};
+	expect(gen.by).toBe("producer/9");
+	expect(gen.at).toBe(before.at);
+});
+
+test("draft --merge never stamps a reserved file (§3.1)", async () => {
+	const root = repo();
+	seed(root, "index.md", "# Index\n\n* [a](/a.md)\n");
+	seed(root, "a.md", CONFORMANT);
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "seed"]);
+	run(root, ["checkout", "-q", "-b", "drafts/a"]);
+	seed(root, "index.md", "# Index v2\n\n* [a](/a.md)\n");
+	seed(root, "a.md", "---\ntype: Concept\n---\n\n# A v2\n");
+	run(root, ["add", "-A"]);
+	run(root, ["commit", "-q", "-m", "edit index and a"]);
+
+	const r = await agent(root, [
+		"draft",
+		"a.md",
+		"--merge",
+		"--as-actor",
+		"actor/1",
+	]);
+
+	expect(r.code).toBe(0);
+	expect(byOf(readDoc(root, ".", "a.md").frontmatter)).toBe("actor/1");
+	// The only stamp commit names the concept doc – index.md is excluded.
+	expect(run(root, ["log", "--format=%s", "--grep=OKF: stamp"])).toBe(
+		"OKF: stamp a.md as actor/1",
+	);
+	// The landed index carries no generated stamp (the post-merge regen's
+	// okf_version fence is the reserved file's own shape, §8).
+	expect(readFileSync(join(root, "index.md"), "utf8")).not.toContain(
+		"generated:",
+	);
+});
+
 test("comment --resolve --as-actor rides the declared actor on the sidecar's commit", async () => {
 	const root = repo();
 	seed(root, "a.md", CONFORMANT);
