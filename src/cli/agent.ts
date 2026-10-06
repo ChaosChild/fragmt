@@ -25,9 +25,9 @@ import {
 	readDoc,
 	repoMeta,
 	resolveDocPath,
+	STATUS_VALUES,
 	setResolved,
 	stampGenerated,
-	STATUS_VALUES,
 	startDraft,
 	verifyDoc,
 	writeDoc,
@@ -369,19 +369,19 @@ async function runComment(
 			await addReply(repoRoot, doc, id, values.body, user);
 			out(`ok: reply added to thread ${id} · author: ${user.name} · 1 commit`);
 		}
-			if (values.resolve === true) {
-				if (thread.resolved) out(`ok: thread ${id} already resolved`);
-				else {
-					// D4: the event's actor is the agent's self-declaration, default
-					// AGENT_DEFAULT – never a false human: off the git identity.
-					await setResolved(
-						repoRoot,
-						doc,
-						id,
-						true,
-						user,
-						agentActor(values, "comment"),
-					);
+		if (values.resolve === true) {
+			if (thread.resolved) out(`ok: thread ${id} already resolved`);
+			else {
+				// D4: the event's actor is the agent's self-declaration, default
+				// AGENT_DEFAULT – never a false human: off the git identity.
+				await setResolved(
+					repoRoot,
+					doc,
+					id,
+					true,
+					user,
+					agentActor(values, "comment"),
+				);
 				out(`ok: thread ${id} resolved · author: ${user.name} · 1 commit`);
 			}
 		}

@@ -502,7 +502,7 @@ test("draft: a nonexistent doc is refused with the save pointer, no branch", asy
 	const r = await agent(root, ["draft", "guides/missing.md"]);
 	expect(r.code).toBe(1);
 	expect(r.out[0]).toBe(
-		"error: no doc guides/missing.md – create it with: fragmt agent save guides/missing.md --file <body> --as-actor \"<producer>/<version>\"",
+		'error: no doc guides/missing.md – create it with: fragmt agent save guides/missing.md --file <body> --as-actor "<producer>/<version>"',
 	);
 	// The useless draft branch is never created.
 	expect(run(root, ["branch", "--list", "drafts/missing"])).toBe("");
@@ -856,9 +856,7 @@ test("OKF save semantics ride the commit: refs settled, generated stamped as --a
 	expect(r.code).toBe(0);
 	const a = readDoc(root, "docs", "a.md");
 	expect(a.frontmatter.references).toEqual(["b.md"]);
-	expect((a.frontmatter.generated as { by: string }).by).toBe(
-		"zed-agent/1.0",
-	);
+	expect((a.frontmatter.generated as { by: string }).by).toBe("zed-agent/1.0");
 	expect(readDoc(root, "docs", "b.md").frontmatter["referenced-by"]).toEqual([
 		"a.md",
 	]);
