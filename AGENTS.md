@@ -2,7 +2,8 @@
 ## fragmt – docs environment for this repo
 These docs are maintained through fragmt (git-native drafting).
 Rules for agents:
-- NEVER edit docs on main directly – main is protected. Run `fragmt agent save <doc> --file <body>` (it drafts automatically) or `agent draft <doc>` first; merge when done.
+- NEVER edit docs on main directly – main is protected. Run `fragmt agent save <doc> --file <body> --as-actor "<producer>/<version>"` (it drafts automatically) or `agent draft <doc>` first; merge when done.
+- A `--file` body may carry frontmatter: its keys merge into the doc's when creating a new doc; an update needs body-only content – the doc's existing frontmatter is preserved.
 - NEVER hand-edit `.docs/comments/*.json` sidecars – use `fragmt agent comment`.
 - ALWAYS pass `--author "Your Name <you@example.invalid>"` so your work is attributable.
 - State check: `fragmt agent status`. Doc bodies are plain markdown – read them directly.

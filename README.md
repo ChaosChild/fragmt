@@ -203,6 +203,7 @@ fragmt serve [--port <n>] [--auth]
 fragmt validate [--fix]
 fragmt export [--format mermaid|dot|json] [--out <file>] [--bundle]
 fragmt agent [status]
+fragmt agent save <doc> (--file <path> | --stdin) --as-actor "<producer>/<version>" [--author <who>] [--message <text>]
 fragmt agent comment <doc> [--thread <id>] [--body <text>] [--resolve] [--author <who>] [--as-actor "<producer>/<version>"] [--full]
 fragmt agent draft <doc> [--merge] [--as-actor "<producer>/<version>"]
 fragmt agent verify <doc> [--as-actor "<producer>/<version>"] [--author <who>]
@@ -241,6 +242,7 @@ no interactive prompts.
 | Verb | What it does |
 | --- | --- |
 | `fragmt agent status` | Branch, protected-main mark, draft map, merge state |
+| `fragmt agent save docs/x.md --file body.md` | Create or overwrite the doc in one conformant commit (`--as-actor` required) |
 | `fragmt agent comment docs/x.md` | List threads; `--thread <id>` for detail, `--full` for untruncated bodies |
 | `fragmt agent comment docs/x.md --thread <id> --body "…"` | Reply on a thread (one commit) |
 | `fragmt agent comment docs/x.md --thread <id> --resolve` | Resolve a thread |
@@ -252,9 +254,13 @@ Doc bodies are plain markdown, so agents read and diff them directly; the CLI
 matters for drafts, comments and merge state. Mutations accept `--author`
 (`Name <address>`) so an agent's commits carry its own identity – list the name
 under `agents` in `.fragmt.json` and the UI marks its comments with a chip.
-In OKF mode, agents also self-declare the `generated` stamp's actor with
-`--as-actor "<producer>/<version>"` (default `fragmt-agent/unspecified`) –
-verbatim, never a false `human:` claim. `draft --merge` stamps the doc on
+In OKF mode, agents self-declare the `generated` stamp's actor with
+`--as-actor "<producer>/<version>"` – verbatim, never a false `human:` claim;
+`agent save` requires the flag, everywhere else the default is
+`fragmt-agent/unspecified`. A `--file` body may carry frontmatter: its keys
+merge into the doc's when creating a new doc; an update needs body-only
+content, since the doc's existing frontmatter is preserved.
+`draft --merge` stamps the doc on
 the draft branch before merging; `comment --resolve` appends the actor's
 `verified` event beside the sidecar write; `verify` appends it standalone –
 the UI's Verify button without the HTTP detour.
