@@ -33,6 +33,7 @@ import {
 	verifyDoc,
 } from "./api";
 import { CommandBar } from "./CommandBar";
+import { askConfirm } from "./confirm";
 import {
 	avatarUser,
 	collapseCrumb,
@@ -51,6 +52,7 @@ import { EditorPane, type EditorPaneHandle } from "./EditorPane";
 import type { AtDoc } from "./editor/at";
 import { hasHardWraps } from "./hard-wraps";
 import { MenuPopover, useMenu } from "./Menus";
+import { roundTripWarning } from "./roundtrip";
 import { shortDate } from "./Sidebar";
 
 /**
@@ -321,6 +323,10 @@ export function DocView({
 		setDirty(false);
 	};
 	const [confirmingCancel, setConfirmingCancel] = useState(false);
+	// The load-time round-trip verdict (#56), reported by the editor's
+	// setContent effect: > 0 lines rewritten means the body is lossy through
+	// the editor – the banner below warns and handleSave asks first.
+	const [roundTripLines, setRoundTripLines] = useState(0);
 	// Discard must drop the edited buffer: the editor stays mounted across
 	// the mode flip, so bumping the key remounts it fresh from doc.markdown.
 	const [resetCount, setResetCount] = useState(0);
@@ -824,6 +830,18 @@ export function DocView({
 	}
 
 	async function handleSave(verified = false): Promise<boolean> {
+		// The fidelity gate (#56): a lossy round-trip save reshapes the whole
+		// file, so saving proceeds only on an explicit acknowledge – the house
+		// confirm (ConfirmDialog), with the same message the banner shows.
+		// Cancel keeps the buffer and the session; the ask repeats next save.
+		if (roundTripLines > 0) {
+			const go = await askConfirm({
+				title: "Save will rewrite this document",
+				body: roundTripWarning(roundTripLines),
+				confirmLabel: "Save",
+			});
+			if (!go) return false;
+		}
 		const ok = await persist(editorRef.current?.getMarkdown() ?? "", verified);
 		if (ok) {
 			setEditing(false);
@@ -1539,21 +1557,35 @@ export function DocView({
 								)}
 							</details>
 						)}
-						{/* The hard-wrap warning (owner round): stateless – visible
-						    while editing AND the loaded body still hard-wraps; a save
-						    that reflows (onSaved updates doc.markdown) or leaving
-						    edit mode removes it. No dismiss button by design. */}
-						{editing && doc && hasHardWraps(doc.markdown) && (
+						{/* The round-trip fidelity warning (#56) and the hard-wrap
+						    warning (owner round): stateless – visible while editing.
+						    The fidelity verdict is computed at doc load, so its banner
+						    stays until the doc reloads (a reflowing save refreshes
+						    doc.markdown through onSaved, which re-runs the check on a
+						    now-stable body and clears it); the hard-wrap one reads the
+						    loaded body. When both conditions name the same doc (the
+						    fidelity check subsumes hard-wrapped paragraphs), one
+						    banner carries it. No dismiss button by design. */}
+						{editing && doc && roundTripLines > 0 && (
 							<p className="notice hard-wrap-note">
 								<TriangleAlert aria-hidden="true" />
-								<span>
-									This document has hard-wrapped paragraphs. The editor saves
-									each paragraph as a single line, so saving will reflow the
-									document and the diff will show it fully changed – the content
-									itself is unaffected.
-								</span>
+								<span>{roundTripWarning(roundTripLines)}</span>
 							</p>
 						)}
+						{editing &&
+							doc &&
+							roundTripLines === 0 &&
+							hasHardWraps(doc.markdown) && (
+								<p className="notice hard-wrap-note">
+									<TriangleAlert aria-hidden="true" />
+									<span>
+										This document has hard-wrapped paragraphs. The editor saves
+										each paragraph as a single line, so saving will reflow the
+										document and the diff will show it fully changed – the
+										content itself is unaffected.
+									</span>
+								</p>
+							)}
 						{doc ? (
 							<div className="prose">
 								<EditorPane
@@ -1563,6 +1595,7 @@ export function DocView({
 									editable={editing}
 									saving={saving}
 									onDirtyChange={editorDirty}
+									onRoundTrip={setRoundTripLines}
 									onSave={() => void handleSave()}
 									onCancel={requestCancel}
 									onEscapeSurfacesClear={onEscapeSurfacesClear}

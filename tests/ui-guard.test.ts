@@ -413,6 +413,68 @@ describe("DocView: the hard-wrap notice (owner round)", () => {
 	});
 });
 
+// --- #56: the round-trip fidelity banner + the save-confirm gate ------------
+
+describe("DocView: the round-trip fidelity gate (#56)", () => {
+	/** App over a body the editor cannot reproduce byte-stably; PUTs recorded. */
+	function lossyFetch(puts: string[]) {
+		return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = new URL(String(input), "http://localhost");
+			if (url.pathname === "/api/docs/a.md" && init?.method === "PUT") {
+				puts.push(String(init.body));
+				return jsonResponse({ sha: "s1", hash: "h1" });
+			}
+			if (url.pathname === "/api/docs/a.md")
+				return jsonResponse(
+					docOf("a.md", "first prose line\nsecond prose line"),
+				);
+			return mockFetch(input);
+		});
+	}
+
+	test("a lossy doc banners the rewrite and parks Save behind the house confirm", async () => {
+		const puts: string[] = [];
+		vi.stubGlobal("fetch", lossyFetch(puts));
+		await renderAppReady();
+		await enterEditMode();
+
+		// The fidelity banner (not the hard-wrap one – the check subsumes it).
+		expect(
+			screen.getByText(/does not round-trip through the editor/),
+		).toBeTruthy();
+		expect(
+			screen.queryByText(/This document has hard-wrapped paragraphs/),
+		).toBeNull();
+
+		// Save asks first: the confirm carries the same message, Cancel
+		// keeps the buffer and the session – nothing was written.
+		fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		const dlg = await screen.findByRole("dialog", {
+			name: "Save will rewrite this document",
+		});
+		expect(
+			within(dlg).getByText(/does not round-trip through the editor/),
+		).toBeTruthy();
+		fireEvent.click(within(dlg).getByRole("button", { name: "Cancel" }));
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		expect(puts).toHaveLength(0);
+		expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+
+		// Acknowledge: the save proceeds, and the refetched body (now joined
+		// into one line) round-trips stably – the banner is gone.
+		fireEvent.click(screen.getByRole("button", { name: "Save" }));
+		const go = within(
+			await screen.findByRole("dialog", {
+				name: "Save will rewrite this document",
+			}),
+		).getByRole("button", { name: "Save" });
+		fireEvent.click(go);
+		await waitFor(() => expect(puts).toHaveLength(1));
+		await expectReadMode("a.md", "first prose line second prose line");
+		expect(screen.queryByText(/does not round-trip/)).toBeNull();
+	});
+});
+
 // --- the hard-wrap detector (owner round) --------------------------------------
 
 // --- ui v1 phase 4: the sheet ------------------------------------------------

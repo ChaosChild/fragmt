@@ -25,6 +25,7 @@ import {
 	writeDoc,
 } from "../src/core/index.js";
 import { editorExtensions } from "../ui/src/editor/extensions.js";
+import { roundTripIsStable } from "../ui/src/roundtrip.js";
 
 const corpusRaw = readFileSync(
 	join(__dirname, "fixtures", "corpus.md"),
@@ -123,6 +124,50 @@ test("every data-c comment span survives with attributes intact", () => {
 	expect(out).toContain(">inside bold</span>");
 	expect(out).toContain(">span in a list item</span>");
 	expect(out).toContain(">flagged</span>");
+});
+
+// ── byte-stability fixtures (#56: table pipes + the fidelity detector) ────
+
+/** Load a fixture through the app's editor config and serialize it back. */
+function fixtureRoundTrip(name: string): { src: string; out: string } {
+	const src = readFileSync(join(__dirname, "fixtures", name), "utf8");
+	const ed = new Editor({ extensions: editorExtensions(), content: "" });
+	ed.commands.setContent(src);
+	const out = ed.storage.markdown.getMarkdown() as string;
+	ed.destroy();
+	return { src, out };
+}
+
+test("a GFM table with escaped pipes round-trips byte-identically (#56)", () => {
+	const { src, out } = fixtureRoundTrip("pipe-table.md");
+	// The serializer re-escapes every cell pipe on the way out...
+	expect(out).toContain("\\|");
+	// ...and nothing else moved – the proof of the escaping fix. Unescaped,
+	// markdown-it would split the cell and drop what lands past the header
+	// column count.
+	expect(roundTripIsStable(src, out)).toBe(true);
+});
+
+test("a hard-wrapped paragraph is flagged lossy by the fidelity detector (#56)", () => {
+	const { src, out } = fixtureRoundTrip("hard-wrap.md");
+	// The editor joins the wrapped lines into one paragraph on save...
+	expect(out).not.toBe(src);
+	// ...and the detector names the doc lossy – the banner + save-confirm's
+	// trigger.
+	expect(roundTripIsStable(src, out)).toBe(false);
+});
+
+test("a plain pipe-free doc stays byte-identical (#56)", () => {
+	const { src, out } = fixtureRoundTrip("plain.md");
+	// Guards the table-pipe override: docs without tables serialize exactly
+	// as before it.
+	expect(roundTripIsStable(src, out)).toBe(true);
+});
+
+test("canonicalBody absorbs CRLF and fence newlines (server parity, #56)", () => {
+	// The client-side copy of src/core/docs.ts' canonical shape: CRLF
+	// sources and trailing-newline drift never count as editor loss.
+	expect(roundTripIsStable("# t\r\n\r\nbody\r\n", "# t\n\nbody")).toBe(true);
 });
 
 // ── writeDoc: frontmatter and save semantics ──────────────────────────────
