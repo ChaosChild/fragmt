@@ -406,7 +406,14 @@ test("#50: with docsRoot '.', the root index never catalogs AGENTS.md – init, 
 	writeFileSync(join(bodyDir, "fresh.md"), "# F\n");
 	expect(
 		await runAgent(
-			["save", "fresh.md", "--file", join(bodyDir, "fresh.md")],
+			[
+				"save",
+				"fresh.md",
+				"--file",
+				join(bodyDir, "fresh.md"),
+				"--as-actor",
+				"test-agent/1.0",
+			],
 			root,
 			() => {},
 		),
