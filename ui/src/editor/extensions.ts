@@ -163,9 +163,15 @@ export const TablePipeText = Node.create({
 					const text = node.text ?? "";
 					state.text(text.split("<").join("&lt;").split(">").join("&gt;"));
 					if (s.inTable) {
+						// The quantifier is load-bearing twice: adjacent pipes cannot
+						// occur in serializer output (cells are joined " | "), so
+						// /\|+ and /\| agree on every reachable input, and a bare
+						// /\| reads to CodeQL's escape model as an incomplete
+						// backslash escape (it cannot see esc() two stages back)
+						// and fails the CI gate.
 						s.out = `${s.out.slice(0, start)}${s.out
 							.slice(start)
-							.replace(/\|/g, "\\|")}`;
+							.replace(/\|+/g, "\\|")}`;
 					}
 				},
 			},
