@@ -90,8 +90,9 @@ function repoRel(repoRoot: string, abs: string): string {
 
 /** Does the file open with a `---` … `---` fence? gray-matter cannot tell a
  *  missing fence from an empty one (`matter` is "" for both) and swallows the
- *  whole body on an unclosed one, so the raw text decides (clause a). */
-function hasFence(text: string): boolean {
+ *  whole body on an unclosed one, so the raw text decides (clause a). Also
+ *  the agent CLI's #57 gate: a `--file` body carrying its own fence. */
+export function hasFence(text: string): boolean {
 	const lines = text.split(/\r?\n/);
 	if (lines[0] !== "---") return false;
 	return lines.slice(1).some((l) => l.trim() === "---");
@@ -147,6 +148,18 @@ export async function validateOkf(
 							: "missing frontmatter block",
 				});
 				continue;
+			}
+			// #57, detect-only: a SECOND fence at the top of the parsed body is
+			// invisible to every reader of record (gray-matter parses the first
+			// block, the index types off it) – which block should win is
+			// ambiguous, so validate reports and never auto-repairs.
+			if (doc.markdown.startsWith("---")) {
+				findings.push({
+					path,
+					clause: "frontmatter",
+					detail:
+						"second frontmatter block treated as body – the file's real type/status are ignored",
+				});
 			}
 			const type = doc.frontmatter.type;
 			if (typeof type !== "string" || type.trim() === "") {

@@ -77,7 +77,9 @@ export function resolveDocPath(
 		throw new DocPathError(`invalid doc path: ${docPath}`);
 	}
 	if (kind === "doc" && !target.toLowerCase().endsWith(".md")) {
-		throw new DocPathError(`invalid doc path: ${docPath}`);
+		throw new DocPathError(
+			`invalid doc path: ${docPath} – doc paths must end in .md`,
+		);
 	}
 	return target;
 }

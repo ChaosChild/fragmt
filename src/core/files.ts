@@ -25,10 +25,13 @@ import {
 	extractRefs,
 	generateIndexes,
 	isReservedBase,
+	MANAGED_FRONTMATTER_KEYS,
 	okfEnabled,
+	OkfFieldError,
 	propagateRefs,
 	recomputeGraph,
 	saveWithRefs,
+	STATUS_VALUES,
 } from "./okf.js";
 
 /** Target path already exists – the server maps this to 409. */
@@ -145,6 +148,36 @@ function keepEmptiedFolder(
 }
 
 /**
+ * The create-time frontmatter merge (#57): the agent CLI's `--file` body may
+ * carry its own frontmatter, and its keys win over the conformant defaults
+ * (A3's `type`/`status`). Managed keys are deleted (a body never sets
+ * `generated`/`verified`/`references`/`referenced-by`/`title`/`okf_version`),
+ * and a `status` outside the enum throws the same OkfFieldError the
+ * metadata seam throws – both gates fire before any byte is written.
+ * Undefined/empty keeps the byte-exact default block.
+ */
+function seedFrontmatter(extra: Record<string, unknown> | undefined): string {
+	if (extra === undefined || Object.keys(extra).length === 0)
+		return `type: ${DEFAULT_TYPE}\nstatus: ${JSON.stringify("draft")}`;
+	const merged: Record<string, unknown> = {
+		type: DEFAULT_TYPE,
+		status: "draft",
+		...extra,
+	};
+	for (const k of MANAGED_FRONTMATTER_KEYS) delete merged[k];
+	if (
+		typeof merged.status !== "string" ||
+		!(STATUS_VALUES as readonly string[]).includes(merged.status)
+	)
+		throw new OkfFieldError(
+			`status must be one of ${STATUS_VALUES.join(", ")}: ${JSON.stringify(merged.status)}`,
+		);
+	return Object.entries(merged)
+		.map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+		.join("\n");
+}
+
+/**
  * Create a doc (LF, exactly one trailing newline) in one commit. In OKF mode
  * the file is born conformant: `type: concept` and an explicit
  * `status: "draft"` (A3) plus the derived `references` when the seed body
@@ -152,7 +185,10 @@ function keepEmptiedFolder(
  * same commit, the affected indexes regenerate on it, and a reserved
  * basename is refused (§3.1 – DocPathError, the server's 400). `opts.message`
  * (the agent CLI's --message) overrides the commit subject; omitted →
- * `Create <docPath>`.
+ * `Create <docPath>`. `opts.frontmatter` (#57) merges the body's own
+ * frontmatter keys over the defaults, body keys winning – see
+ * seedFrontmatter; it is ignored outside OKF mode, where the body is stored
+ * verbatim.
  */
 export async function createDoc(
 	repoRoot: string,
@@ -160,7 +196,7 @@ export async function createDoc(
 	docPath: string,
 	body = "",
 	user?: { name: string; email: string },
-	opts: { message?: string } = {},
+	opts: { message?: string; frontmatter?: Record<string, unknown> } = {},
 ): Promise<{ sha: string }> {
 	const abs = resolveDocPath(repoRoot, docsRoot, docPath);
 	if (existsSync(abs)) {
@@ -180,10 +216,11 @@ export async function createDoc(
 			docPath,
 			await docPaths(repoRoot, docsRoot),
 		);
-		// A3: born with an explicit status (draft) beside the type, then
-		// saveWithRefs rides the refs on top of the fenced seed – its
-		// fence-less null can no longer drop the block it owes (3646d18).
-		const born = `---\ntype: ${DEFAULT_TYPE}\nstatus: ${JSON.stringify("draft")}\n---\n${normalized}`;
+		// A3: born with an explicit status (draft) beside the type – or the
+		// body's own frontmatter merged over it (#57) – then saveWithRefs
+		// rides the refs on top of the fenced seed – its fence-less null can
+		// no longer drop the block it owes (3646d18).
+		const born = `---\n${seedFrontmatter(opts.frontmatter)}\n---\n${normalized}`;
 		writeFileSync(abs, saveWithRefs(born, targets, normalized) ?? born);
 		for (const p of await propagateRefs(
 			repoRoot,

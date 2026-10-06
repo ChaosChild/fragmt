@@ -875,6 +875,85 @@ test("OKF save semantics ride the commit: refs settled, generated stamped as --a
 	);
 });
 
+test("save --file with frontmatter on CREATE: body keys merge over the defaults (#57)", async () => {
+	const root = okfSeeded();
+	const r = await agent(root, [
+		"save",
+		"new.md",
+		"--file",
+		bodyFile(
+			'---\ntype: spec\nstatus: "stable"\ntags: [x]\ngenerated: nope\nnot a key!: y\n---\n# New\n',
+		),
+		"--as-actor",
+		"zed-agent/1.0",
+	]);
+	expect(r.code).toBe(0);
+	const doc = readDoc(root, "docs", "new.md");
+	expect(doc.frontmatter.type).toBe("spec");
+	expect(doc.frontmatter.status).toBe("stable");
+	expect(doc.frontmatter.tags).toEqual(["x"]);
+	// Managed keys are a body-impossible claim; keys outside the §4.1
+	// grammar would corrupt the fence – both dropped, never stored.
+	expect(doc.frontmatter.generated).toBeUndefined();
+	expect(doc.frontmatter["not a key!"]).toBeUndefined();
+	// The stored body is the content without its fence.
+	expect(doc.markdown).toBe("# New\n");
+});
+
+test("save --file with an invalid body status is refused before any branch is created (#57)", async () => {
+	const root = okfSeeded();
+	const r = await agent(root, [
+		"save",
+		"new.md",
+		"--file",
+		bodyFile("---\ntype: spec\nstatus: bogus\n---\n# New\n"),
+		"--as-actor",
+		"zed-agent/1.0",
+	]);
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe(
+		'error: status must be one of draft, stable, deprecated: "bogus"',
+	);
+	// The enum gate fires before the draft dance – no branch litter.
+	expect(run(root, ["branch", "--list", "drafts/new"])).toBe("");
+});
+
+test("save --file with frontmatter on UPDATE: refused, existing bytes untouched (#57)", async () => {
+	const root = okfSeeded();
+	const before = readFileSync(join(root, "docs/a.md"), "utf8");
+	const r = await agent(root, [
+		"save",
+		"a.md",
+		"--file",
+		bodyFile("---\ntype: spec\n---\n# A v2\n"),
+		"--as-actor",
+		"zed-agent/1.0",
+	]);
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe(
+		"error: --file body carries a frontmatter block; a.md already has frontmatter and it is preserved – pass body-only content (frontmatter is only merged when creating a new doc)",
+	);
+	expect(readFileSync(join(root, "docs/a.md"), "utf8")).toBe(before);
+	// Refused before the draft dance – still on main, nothing standing.
+	expect(run(root, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("main");
+});
+
+test("save on a non-.md path: the error hints at the .md requirement", async () => {
+	const root = seeded();
+	const r = await agent(root, [
+		"save",
+		"notes/x.txt",
+		"--file",
+		bodyFile("# x\n"),
+		"--as-actor",
+		"test-agent/1.0",
+	]);
+	expect(r.code).toBe(1);
+	expect(r.out[0]).toBe(
+		"error: invalid doc path: notes/x.txt – doc paths must end in .md",
+	);
+});
+
 test("save: missing doc/body source and a nonexistent --file are one-line errors", async () => {
 	const root = seeded();
 	const noDoc = await agent(root, ["save"]);

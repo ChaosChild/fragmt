@@ -74,6 +74,17 @@ test("clause a: missing, unclosed, and unparseable frontmatter each flag", async
 	expect(broken?.detail).toContain("unparseable frontmatter");
 });
 
+test("#57: a second frontmatter block in the body is a detect-only finding", async () => {
+	write("a.md", "---\ntype: concept\n---\n---\ntype: spec\n---\nbody\n");
+	const { conformant, findings } = await validateOkf(root, ".");
+	expect(conformant).toBe(false);
+	expect(findings).toHaveLength(1);
+	expect(findings[0].clause).toBe("frontmatter");
+	expect(findings[0].detail).toBe(
+		"second frontmatter block treated as body – the file's real type/status are ignored",
+	);
+});
+
 test("clause b: missing, empty, and non-string type flag; unknown types pass", async () => {
 	write("none.md", "---\nauthor: a\n---\n# x\n");
 	write("empty.md", '---\ntype: ""\n---\n# x\n');
