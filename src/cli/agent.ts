@@ -5,6 +5,7 @@ import matter from "gray-matter";
 import {
 	AGENT_DEFAULT,
 	addReply,
+	addThread,
 	type CommentThread,
 	commitAs,
 	createDoc,
@@ -130,7 +131,10 @@ export function threadsLines(threads: CommentThread[]): string[] {
 	return [
 		`threads[${threads.length}]{id,author,resolved,replies}: ${aggregate}`,
 		...threads.map(
-			(t) => `${t.id},${t.author},${t.resolved},${t.replies.length}`,
+			(t) =>
+				// #61: a doc-level thread (empty quote, no span) carries the
+				// marker so an agent can find it again to reply or resolve.
+				`${t.id},${t.author},${t.resolved},${t.replies.length}${t.quote === "" ? " [doc-level]" : ""}`,
 		),
 	];
 }
@@ -316,20 +320,50 @@ async function runComment(
 		out(`error: no doc ${doc}`);
 		return 1;
 	}
-	if (
-		values.thread === undefined &&
-		(values.body !== undefined || values.resolve === true)
-	) {
-		out("error: --body and --resolve need --thread <id>");
+	// #61: `--resolve` stays thread-scoped – a resolution names its thread.
+	// `--body` alone no longer errors: it starts a doc-level thread.
+	if (values.resolve === true && values.thread === undefined) {
+		out("error: --resolve needs --thread <id>");
+		return 1;
+	}
+	// The guard reads the repo, not the sidecar – mid-merge the on-disk
+	// sidecar carries conflict markers and must not be parsed first. Hoisted
+	// above both thread paths (#61): creation mutates exactly like a reply.
+	const mutating = values.body !== undefined || values.resolve === true;
+	if (mutating && inMerge(repoRoot)) {
+		out(IN_MERGE);
 		return 1;
 	}
 
 	if (values.thread === undefined) {
+		if (values.body !== undefined) {
+			// #61: the CLI's own thread start – doc-level (quote ""), the id
+			// minted here like the UI's bubble comment does, satisfying the
+			// server's id shape rule (non-empty, no slashes) by construction.
+			const user =
+				values.author !== undefined
+					? parseAuthor(values.author)
+					: await localUser(repoRoot);
+			if (!user.name || !user.email) {
+				out("error: --author needs a display name and an address");
+				return 1;
+			}
+			const id = crypto.randomUUID();
+			await addThread(repoRoot, doc, id, "", values.body, user);
+			out(
+				`ok: thread ${id} created on ${doc} · author: ${user.name} · 1 commit`,
+			);
+			helpBlock(out, [
+				`fragmt agent comment ${doc} --thread ${id} --full`,
+				`fragmt agent comment ${doc} --thread ${id} --body "…"`,
+			]);
+			return 0;
+		}
 		const threads = Object.values((await readComments(repoRoot, doc)).comments);
 		for (const line of threadsLines(threads)) out(line);
 		if (threads.length === 0) {
 			helpBlock(out, [
-				"fragmt serve – new threads start from a text selection in the UI",
+				`fragmt agent comment ${doc} --body "…" – start a doc-level thread from the CLI`,
 				`fragmt agent comment ${doc} --thread <id> --body "…" – reply once one exists`,
 			]);
 		} else {
@@ -343,13 +377,6 @@ async function runComment(
 	}
 
 	const id = values.thread;
-	// The guard reads the repo, not the sidecar – mid-merge the on-disk
-	// sidecar carries conflict markers and must not be parsed first.
-	const mutating = values.body !== undefined || values.resolve === true;
-	if (mutating && inMerge(repoRoot)) {
-		out(IN_MERGE);
-		return 1;
-	}
 	const thread = (await readComments(repoRoot, doc)).comments[id];
 	if (!thread) {
 		out(`error: no thread ${id} on ${doc}`);
@@ -660,7 +687,7 @@ Usage:
 Commands:
   status  Branch, draft rows, merge state (bare fragmt agent is status)
   save    Create or overwrite a doc in one conformant commit – new docs on main auto-draft
-  comment List threads, or reply/resolve one – new threads start from a text selection in the UI
+  comment List threads, start a doc-level thread (--body), or reply/resolve one – anchored threads still need a text selection in the UI
   draft   Start or join the doc's draft branch; --merge merges it back to main
   verify  Record the doc's verified event as the self-declared --as-actor
 `;

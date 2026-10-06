@@ -244,6 +244,7 @@ no interactive prompts.
 | `fragmt agent status` | Branch, protected-main mark, draft map, merge state |
 | `fragmt agent save docs/x.md --file body.md` | Create or overwrite the doc in one conformant commit (`--as-actor` required) |
 | `fragmt agent comment docs/x.md` | List threads; `--thread <id>` for detail, `--full` for untruncated bodies |
+| `fragmt agent comment docs/x.md --body "…"` | Start a doc-level (unanchored) thread |
 | `fragmt agent comment docs/x.md --thread <id> --body "…"` | Reply on a thread (one commit) |
 | `fragmt agent comment docs/x.md --thread <id> --resolve` | Resolve a thread |
 | `fragmt agent draft docs/x.md` | Start or reuse the doc's draft branch |

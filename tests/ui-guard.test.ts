@@ -791,6 +791,53 @@ describe("App: marginalia (ui v1 phase 5)", () => {
 			margin.querySelector('.note[data-note="t1"]')?.classList.contains("on"),
 		).toBe(false);
 	});
+
+	test("a quote-less doc-level thread renders honestly, not as an orphan (#61)", async () => {
+		const thread = (id: string, quote: string) => ({
+			id,
+			quote,
+			author: "Zed Agent",
+			createdAt: "2026-09-01T00:00:00Z",
+			resolved: false,
+			replies: [
+				{
+					author: "Zed Agent",
+					body: `note on ${quote || "the whole doc"}`,
+					at: "2026-09-01T00:00:00Z",
+				},
+			],
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL) => {
+				const url = new URL(String(input), "http://localhost");
+				if (url.pathname === "/api/docs/a.md/comments")
+					return jsonResponse({
+						comments: { t1: thread("t1", "first"), t2: thread("t2", "") },
+					});
+				if (url.pathname === "/api/docs/a.md")
+					return jsonResponse(
+						docOf("a.md", 'One <span data-c="t1">first</span> line.'),
+					);
+				return mockFetch(input);
+			}),
+		);
+		await renderAppReady();
+		const margin = screen.getByRole("complementary", { name: "Comments" });
+		// The anchored thread is placed; the doc-level one sits under
+		// "Not anchored" with its honest header (no empty quotes).
+		await waitFor(() =>
+			expect(margin.querySelectorAll(".note").length).toBe(1),
+		);
+		expect(within(margin).getByText("Doc-level note")).toBeTruthy();
+		// Not the orphan treatment: no warn label, no orphan class, and
+		// Reply/Resolve stay available.
+		expect(within(margin).queryByText(/Orphaned/)).toBeNull();
+		const card = margin.querySelector(".margin-rest .comment-thread");
+		expect(card?.classList.contains("orphan")).toBe(false);
+		expect(card?.textContent).toContain("Reply");
+		expect(card?.textContent).toContain("Resolve");
+	});
 });
 
 describe("App: the preview beside the doc (ui v1 phase 6)", () => {

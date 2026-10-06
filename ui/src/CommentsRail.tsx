@@ -116,7 +116,8 @@ function ThreadCard({
 	onDelete,
 }: {
 	thread: CommentThread;
-	/** No live data-c span in the rendered doc (M4 orphan rule). */
+	/** No live data-c span in the rendered doc AND a quote to lose (the M4
+	 *  orphan rule) – a quote-less thread is doc-level (#61), not an orphan. */
 	orphan: boolean;
 	/** Config agent display names (meta) – the agent chip (M4-4 b5). */
 	agents: string[];
@@ -208,7 +209,11 @@ function ThreadCard({
 	// no span to jump to, so they render without it.
 	return (
 		<div className={classes} data-c={orphan ? undefined : thread.id}>
-			{orphan ? (
+			{thread.quote === "" ? (
+				/* #61: a CLI-started doc-level thread has no span and no quote –
+				   an honest header instead of empty quotes; Reply/Resolve stay. */
+				<div className="comment-quote">Doc-level note</div>
+			) : orphan ? (
 				<div className="comment-quote">&ldquo;{thread.quote}&rdquo;</div>
 			) : (
 				<button
@@ -603,7 +608,9 @@ export function CommentsRail({
 		<ThreadCard
 			key={t.id}
 			thread={t}
-			orphan={!liveIds.has(t.id)}
+			// #61: a quote-less thread is doc-level – no span by design, so the
+			// orphan treatment (warn border, no Reply/Resolve) never applies.
+			orphan={!liveIds.has(t.id) && t.quote !== ""}
 			agents={agents}
 			docs={docs}
 			onOpenDoc={onOpenDoc}
