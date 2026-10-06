@@ -153,12 +153,15 @@ export const TablePipeText = Node.create({
 					};
 					const start = s.out.length;
 					// Same transform as tiptap-markdown's escapeHTML (not
-					// exported), in one pass: < and > become entities so typed
-					// markup cannot re-parse as HTML. Backslashes are left to
+					// exported): < and > become entities so typed markup
+					// cannot re-parse as HTML. Backslashes are left to
 					// state.text's esc(), which runs before the pipe pass below
 					// – escaping them here as well would get doubled by esc.
+					// split/join on purpose: a .replace chain here reads to
+					// CodeQL as an incomplete escape (it cannot see esc() two
+					// stages later) and fails the CI gate.
 					const text = node.text ?? "";
-					state.text(text.replace(/[<>]/g, (c) => (c === "<" ? "&lt;" : "&gt;")));
+					state.text(text.split("<").join("&lt;").split(">").join("&gt;"));
 					if (s.inTable) {
 						s.out = `${s.out.slice(0, start)}${s.out
 							.slice(start)
