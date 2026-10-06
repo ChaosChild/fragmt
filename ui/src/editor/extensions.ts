@@ -152,10 +152,13 @@ export const TablePipeText = Node.create({
 						inTable?: boolean;
 					};
 					const start = s.out.length;
-					// tiptap-markdown's escapeHTML, inlined (not exported): text
-					// nodes always carry text in practice, `?? ""` for the type.
+					// Same transform as tiptap-markdown's escapeHTML (not
+					// exported), in one pass: < and > become entities so typed
+					// markup cannot re-parse as HTML. Backslashes are left to
+					// state.text's esc(), which runs before the pipe pass below
+					// – escaping them here as well would get doubled by esc.
 					const text = node.text ?? "";
-					state.text(text.replace(/</g, "&lt;").replace(/>/g, "&gt;"));
+					state.text(text.replace(/[<>]/g, (c) => (c === "<" ? "&lt;" : "&gt;")));
 					if (s.inTable) {
 						s.out = `${s.out.slice(0, start)}${s.out
 							.slice(start)
