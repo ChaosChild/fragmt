@@ -126,6 +126,11 @@ test("threadsLines: header aggregate inline, comma rows, definitive empty state"
 		"t2,ZCode,true,0",
 	]);
 	expect(threadsLines([])).toEqual(["threads[0]: none – 0 of 0 total, 0 open"]);
+	// #61: a quote-less thread carries the [doc-level] marker.
+	expect(threadsLines([thread({ id: "t3", quote: "" })])).toEqual([
+		"threads[1]{id,author,resolved,replies}: – 1 of 1 total, 1 open",
+		"t3,Andrei,false,1 [doc-level]",
+	]);
 });
 
 test("detailLines: quote + replies truncated; --full untruncates", () => {
@@ -423,15 +428,77 @@ test("comment --thread --resolve: ok line, sidecar flag, repeat is a no-op", asy
 	);
 });
 
-test("comment: unknown thread, mutation without --thread, bad --author", async () => {
+test("comment --body without --thread starts a doc-level thread (#61)", async () => {
+	const root = seeded();
+
+	const r = await agent(root, [
+		"comment",
+		"a.md",
+		"--body",
+		"reviewed this doc",
+		"--author",
+		"Zed Agent",
+	]);
+	expect(r.code).toBe(0);
+	// The ok line carries the id so a script can address it, shaped like the
+	// UI's minted UUIDs (the server's id rule: non-empty, no slashes).
+	const id = r.out[0].match(
+		/^ok: thread (\S+) created on a\.md · author: Zed Agent · 1 commit$/,
+	)?.[1];
+	expect(id).toMatch(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+
+	// The sidecar thread is doc-level: quote "", author from --author.
+	const file = await readComments(root, "a.md");
+	expect(file.comments[id as string]).toMatchObject({
+		id,
+		quote: "",
+		author: "Zed Agent",
+		resolved: false,
+	});
+	expect(file.comments[id as string]?.replies[0]).toMatchObject({
+		author: "Zed Agent",
+		body: "reviewed this doc",
+	});
+
+	// The listing marks it so an agent can find it again.
+	const list = await agent(root, ["comment", "a.md"]);
+	expect(list.out).toContain(`${id},Zed Agent,false,1 [doc-level]`);
+
+	// Reply and resolve address it like any other thread.
+	const reply = await agent(root, [
+		"comment",
+		"a.md",
+		"--thread",
+		id as string,
+		"--body",
+		"agreed",
+	]);
+	expect(reply.code).toBe(0);
+	expect(reply.out[0]).toBe(
+		`ok: reply added to thread ${id} · author: Agent Test · 1 commit`,
+	);
+	const resolve = await agent(root, [
+		"comment",
+		"a.md",
+		"--thread",
+		id as string,
+		"--resolve",
+	]);
+	expect(resolve.code).toBe(0);
+	expect(
+		(await readComments(root, "a.md")).comments[id as string]?.resolved,
+	).toBe(true);
+});
+
+test("comment: unknown thread, --resolve without --thread, bad --author", async () => {
 	const root = seeded();
 	await addThread(root, "a.md", "t1", "the marked text", "looks wrong");
 
-	const noThread = await agent(root, ["comment", "a.md", "--body", "x"]);
+	// #61 flipped: --body without --thread now CREATES; --resolve keeps
+	// needing its thread – a resolution must name what it resolves.
+	const noThread = await agent(root, ["comment", "a.md", "--resolve"]);
 	expect(noThread.code).toBe(1);
-	expect(noThread.out[0]).toBe(
-		"error: --body and --resolve need --thread <id>",
-	);
+	expect(noThread.out[0]).toBe("error: --resolve needs --thread <id>");
 
 	const missing = await agent(root, [
 		"comment",
@@ -686,6 +753,13 @@ test("mid-merge: comment and draft mutations are refused with the guard text", a
 	]);
 	expect(resolve.code).toBe(1);
 	expect(resolve.out[0]).toBe(
+		"error: a merge is in progress – finish or abort it first",
+	);
+
+	// #61: creation is a mutation too – the same mid-merge guard.
+	const create = await agent(root, ["comment", "a.md", "--body", "mid-merge"]);
+	expect(create.code).toBe(1);
+	expect(create.out[0]).toBe(
 		"error: a merge is in progress – finish or abort it first",
 	);
 

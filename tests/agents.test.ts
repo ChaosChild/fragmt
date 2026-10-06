@@ -108,6 +108,13 @@ test("the taught first rule names agent save – the drafting write path", () =>
 	);
 });
 
+test("the taught comment rule names the CLI's doc-level thread start (#61)", () => {
+	expect(AGENTS_BODY).toContain(
+		'Doc-level comment threads can start from the CLI (`agent comment <doc> --body "…"`)',
+	);
+	expect(AGENTS_BODY).toContain("reply and resolve via the CLI either way");
+});
+
 test("the taught rules demand unwrapped paragraph prose – the edit-mode reflow warning's twin", () => {
 	expect(AGENTS_BODY).toContain(
 		"- Write paragraph prose unwrapped – one line per paragraph. Hard-wrapped text reflows wholesale on the first UI save, drowning that diff.",
