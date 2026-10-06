@@ -347,11 +347,17 @@ export async function runValidate(
 		return 2;
 	}
 	if (fix) {
-		const { files } = await fixOkf(repoRoot, docsRoot);
+		// #58: honest output – commitAs returns HEAD unchanged when the staged
+		// diff is empty, and the churn guard makes that the CRLF-tree norm, so
+		// "in one commit" is only printed when a commit actually landed. The
+		// no-commit variant is belt and braces; fix 1 should keep it unreachable.
+		const { files, committed } = await fixOkf(repoRoot, docsRoot);
 		write(
 			files.length === 0
 				? "nothing to fix\n"
-				: `fixed ${files.length} file(s) in one commit\n`,
+				: committed
+					? `fixed ${files.length} file(s) in one commit\n`
+					: `fixed ${files.length} file(s) locally (no commit – changes are line-ending no-ops)\n`,
 		);
 	}
 	const { conformant, findings } = await validateOkf(repoRoot, docsRoot);

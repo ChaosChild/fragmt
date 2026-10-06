@@ -16,6 +16,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { runValidate } from "../src/cli/index.js";
 import {
 	configPath,
 	enableOkf,
@@ -305,13 +306,13 @@ afterEach(() => {
 		rmSync(d, { recursive: true, force: true });
 });
 
-function gitRepo(): string {
+function gitRepo(autocrlf = false): string {
 	const r = mkdtempSync(join(tmpdir(), "fragmt-okf-git-"));
 	for (const args of [
 		["init", "-q", "-b", "main"],
 		["config", "user.name", "OKF Test"],
 		["config", "user.email", "okf@example.com"],
-		["config", "core.autocrlf", "false"],
+		["config", "core.autocrlf", String(autocrlf)],
 	])
 		execFileSync("git", args, { cwd: r });
 	gitDirs.push(r);
@@ -382,6 +383,64 @@ test("fixOkf: an adopted bundle's directory links self-heal to the index.md shap
 	expect(readFileSync(join(r, "index.md"), "utf8")).toContain(
 		"* [sub](/sub/index.md)",
 	);
+	const check = await validateOkf(r, ".");
+	expect(check.conformant).toBe(true);
+});
+
+test("#58: a CRLF working tree is not churn – nothing is written, counted, or lied about", async () => {
+	// The #58 repro: core.autocrlf=true, conformant CRLF docs committed (the
+	// clean filter stores LF blobs). Pre-fix, validate --fix "fixed" every
+	// doc – a rewrite whose only change is stripped \r, staging to an empty
+	// diff that commitAs (by design) declines to commit – and still printed
+	// "fixed N file(s) in one commit".
+	const r = gitRepo(true);
+	writeConfig(r, ".", true);
+	writeFileSync(
+		join(r, "a.md"),
+		'---\r\ntype: concept\r\nstatus: "draft"\r\n---\r\n# A\r\n',
+	);
+	writeFileSync(
+		join(r, "index.md"),
+		'---\r\nokf_version: "0.2"\r\n---\r\n\r\n# concept\r\n\r\n* [a](/a.md)\r\n',
+	);
+	gitOut(r, ["add", "-A"]);
+	gitOut(r, ["commit", "-q", "-m", "seed"]);
+	const before = Number(gitOut(r, ["rev-list", "--count", "HEAD"]));
+
+	let out = "";
+	const code = await runValidate(true, r, (s) => {
+		out += s;
+	});
+
+	// The churn is killed at the source: nothing differs beyond line
+	// endings, so nothing is written, nothing is counted, nothing commits.
+	expect(out).toBe("nothing to fix\nconformant\n");
+	expect(code).toBe(0);
+	expect(Number(gitOut(r, ["rev-list", "--count", "HEAD"]))).toBe(before);
+	expect(await validateOkf(r, ".")).toEqual({
+		conformant: true,
+		findings: [],
+	});
+});
+
+test("#58: a CRLF doc that genuinely needs a fix commits – the message stays honest", async () => {
+	const r = gitRepo(true);
+	writeConfig(r, ".", true);
+	writeFileSync(join(r, "a.md"), "# bare\r\n");
+	gitOut(r, ["add", "-A"]);
+	gitOut(r, ["commit", "-q", "-m", "seed"]);
+	const before = Number(gitOut(r, ["rev-list", "--count", "HEAD"]));
+
+	let out = "";
+	const code = await runValidate(true, r, (s) => {
+		out += s;
+	});
+
+	// The fence-less doc gains real frontmatter and the index is born – a
+	// real commit, so "in one commit" is the truth, not the #58 lie.
+	expect(out).toBe("fixed 2 file(s) in one commit\nconformant\n");
+	expect(code).toBe(0);
+	expect(Number(gitOut(r, ["rev-list", "--count", "HEAD"]))).toBe(before + 1);
 	const check = await validateOkf(r, ".");
 	expect(check.conformant).toBe(true);
 });
