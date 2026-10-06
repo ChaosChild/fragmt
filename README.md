@@ -261,10 +261,11 @@ In OKF mode, agents self-declare the `generated` stamp's actor with
 `fragmt-agent/unspecified`. A `--file` body may carry frontmatter: its keys
 merge into the doc's when creating a new doc; an update needs body-only
 content, since the doc's existing frontmatter is preserved.
-`draft --merge` stamps the doc on
-the draft branch before merging; `comment --resolve` appends the actor's
-`verified` event beside the sidecar write; `verify` appends it standalone –
-the UI's Verify button without the HTTP detour.
+`draft --merge` stamps every doc the draft branch lands on main before
+merging – a doc already carrying a `generated.by` keeps its producer's
+stamp; `comment --resolve` appends the actor's `verified` event beside the
+sidecar write; `verify` appends it standalone – the UI's Verify button
+without the HTTP detour.
 
 `fragmt init` also writes a delimited `<!-- fragmt:begin -->…<!-- fragmt:end -->`
 block into `AGENTS.md`, teaching any agent the drafting rules; with

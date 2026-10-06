@@ -15,9 +15,12 @@ import {
 	hasFence,
 	inMerge,
 	isFrontmatterKey,
+	isReservedBase,
 	loadConfig,
 	localUser,
+	logCommits,
 	MANAGED_FRONTMATTER_KEYS,
+	mainBranch,
 	mergeToMain,
 	okfEnabled,
 	populateOkf,
@@ -424,6 +427,47 @@ async function runComment(
 	return 0;
 }
 
+/**
+ * #59: the docs a `draft --merge` will land on main – A/M paths under
+ * docsRoot in the `<main>..<branch>` walk (repoMeta walk 2's shape:
+ * renames/deletes unmapped, one capped spawn), returned docsRoot-relative
+ * and sorted, reserved filenames excluded (writeDoc's §3.1 guard). The
+ * branch is the current checkout at the call site.
+ */
+async function mergeDocs(
+	repoRoot: string,
+	docsRoot: string,
+	main: string,
+	branch: string,
+): Promise<string[]> {
+	const prefix =
+		docsRoot === "." ? "" : docsRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+	const out = await logCommits(repoRoot, [
+		"-n",
+		"500",
+		`${main}..${branch}`,
+		"--name-status",
+		"--format=%H",
+	]);
+	const docs: string[] = [];
+	for (const line of out.split("\n")) {
+		const tab = line.indexOf("\t");
+		if (tab < 0) continue; // commit sha lines carry no tab
+		if (line[0] !== "A" && line[0] !== "M") continue; // renames/deletes unmapped
+		const repoRel = line.slice(tab + 1);
+		if (!repoRel.toLowerCase().endsWith(".md")) continue;
+		const doc =
+			prefix === ""
+				? repoRel
+				: repoRel.startsWith(`${prefix}/`)
+					? repoRel.slice(prefix.length + 1)
+					: null;
+		if (doc === null || isReservedBase(doc) || docs.includes(doc)) continue;
+		docs.push(doc);
+	}
+	return docs.sort();
+}
+
 async function runDraft(
 	repoRoot: string,
 	docsRoot: string,
@@ -467,22 +511,50 @@ async function runDraft(
 		return 0;
 	}
 	const branch = await currentBranch(repoRoot);
-	// D4: OKF mode stamps the draft's doc on the DRAFT branch pre-merge – a
-	// tiny commit that rides into main with the merge. The doc's presence is
-	// the guard at the top (#42), so the stamp can no longer skip silently.
+	// D4: OKF mode stamps the docs the merge will land on the DRAFT branch
+	// pre-merge (#59) – every doc the branch carries, not just the positional
+	// one: siblings riding the same branch used to reach main unstamped. A
+	// doc already carrying a parseable generated.by keeps its producer's
+	// stamp. A conflicted merge (stood:true) takes a different path and skips
+	// this pre-merge stamping entirely.
 	if (okfEnabled(repoRoot)) {
-		const actor = agentActor(values, "draft");
-		const next = stampGenerated(readFileSync(abs, "utf8"), actor);
-		if (next !== null) {
-			writeFileSync(abs, next);
-			await commitAs(
-				user ?? (await localUser(repoRoot)),
-				{
-					files: [relative(repoRoot, abs).split(sep).join("/")],
-					message: `OKF: stamp ${doc} as ${actor}`,
-				},
-				repoRoot,
-			);
+		const main = await mainBranch(repoRoot);
+		if (main !== null) {
+			const actor = agentActor(values, "draft");
+			const stamped: { doc: string; rel: string }[] = [];
+			for (const docPath of await mergeDocs(repoRoot, docsRoot, main, branch)) {
+				const gen = readDoc(repoRoot, docsRoot, docPath).frontmatter.generated;
+				const by =
+					typeof gen === "object" && gen !== null
+						? (gen as { by?: unknown }).by
+						: undefined;
+				if (typeof by === "string" && by !== "") continue;
+				const abs = resolveDocPath(repoRoot, docsRoot, docPath);
+				const next = stampGenerated(readFileSync(abs, "utf8"), actor);
+				if (next === null) continue;
+				writeFileSync(abs, next);
+				stamped.push({
+					doc: docPath,
+					rel: relative(repoRoot, abs).split(sep).join("/"),
+				});
+			}
+			if (stamped.length > 0) {
+				await commitAs(
+					user ?? (await localUser(repoRoot)),
+					{
+						files: stamped.map((s) => s.rel),
+						// The common case (one doc) keeps the singular message.
+						message:
+							stamped.length === 1
+								? `OKF: stamp ${stamped[0].doc} as ${actor}`
+								: `OKF: stamp ${stamped.length} doc(s) as ${actor}`,
+					},
+					repoRoot,
+				);
+				out(
+					`ok: stamped ${stamped.map((s) => s.doc).join(", ")} as ${actor} · 1 commit`,
+				);
+			}
 		}
 	}
 	const result = await mergeAs(user, () => mergeToMain(repoRoot, docsRoot));
